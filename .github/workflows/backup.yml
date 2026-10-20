@@ -14,13 +14,29 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RAW_URL: ${{ secrets.ERP_DATABASE_URL }}
+      PASS: ${{ secrets.BACKUP_PASSPHRASE }}
     steps:
       - name: Check secrets
-        env:
-          URL: ${{ secrets.ERP_DATABASE_URL }}
-          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
-          if [ -z "$URL" ] || [ -z "$PASS" ]; then echo "::error::Set ERP_DATABASE_URL and BACKUP_PASSPHRASE (see the top of this file)."; exit 1; fi
+          if [ -z "$RAW_URL" ] || [ -z "$PASS" ]; then echo "::error::Set ERP_DATABASE_URL and BACKUP_PASSPHRASE (see the top of this file)."; exit 1; fi
+          # Tidy what was pasted (spaces, quotes, line breaks), then say what's wrong without printing it:
+          # only the host and port are shown.
+          url="$(printf '%s' "$RAW_URL" | tr -d '\r\n' | sed -E "s/^[\"' ]+//; s/[\"' ]+\$//")"
+          case "$url" in
+            postgres://*|postgresql://*) ;;
+            *) echo "::error::ERP_DATABASE_URL must start with postgresql:// — copy the value of DATABASE_PUBLIC_URL from Railway."; exit 1;;
+          esac
+          if printf '%s' "$url" | grep -q '[$]{'; then echo "::error::ERP_DATABASE_URL still has placeholders in it: in Railway, reveal the variable and copy the value it shows."; exit 1; fi
+          hostport="$(printf '%s' "$url" | sed -E 's#^[a-z]+://##; s#^[^@/]*@##; s#[/?].*$##')"
+          echo "Database host: $hostport"
+          case "$hostport" in
+            *.railway.internal*) echo "::error::That's Railway's internal address. Use DATABASE_PUBLIC_URL (its host ends in proxy.rlwy.net)."; exit 1;;
+            ""|:*) echo "::error::ERP_DATABASE_URL has no host in it."; exit 1;;
+          esac
+          echo "DB_URL=$url" >> "$GITHUB_ENV"
+          echo "::add-mask::$url"
       - name: Install pg_dump 18 (reads any older server too)
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -28,12 +44,9 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-18
       - name: Dump and encrypt
-        env:
-          URL: ${{ secrets.ERP_DATABASE_URL }}
-          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           name="kabuor-erp-$(date -u +%Y-%m-%dT%H%MZ)"
-          /usr/lib/postgresql/18/bin/pg_dump "$URL" --format=custom --no-owner --no-privileges --file "$name.dump"
+          /usr/lib/postgresql/18/bin/pg_dump "$DB_URL" --format=custom --no-owner --no-privileges --file "$name.dump"
           test -s "$name.dump"
           gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 --output "$name.dump.gpg" "$name.dump"
           rm "$name.dump"
