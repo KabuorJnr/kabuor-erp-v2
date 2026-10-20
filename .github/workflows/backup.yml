@@ -24,6 +24,7 @@ jobs:
           # Tidy what was pasted (spaces, quotes, line breaks), then say what's wrong without printing it:
           # only the host and port are shown.
           url="$(printf '%s' "$RAW_URL" | tr -d '\r\n' | sed -E "s/^[\"' ]+//; s/[\"' ]+\$//")"
+          echo "::add-mask::$url"
           case "$url" in
             postgres://*|postgresql://*) ;;
             *) echo "::error::ERP_DATABASE_URL must start with postgresql:// — copy the value of DATABASE_PUBLIC_URL from Railway."; exit 1;;
@@ -36,7 +37,6 @@ jobs:
             ""|:*) echo "::error::ERP_DATABASE_URL has no host in it."; exit 1;;
           esac
           echo "DB_URL=$url" >> "$GITHUB_ENV"
-          echo "::add-mask::$url"
       - name: Install pg_dump 18 (reads any older server too)
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
