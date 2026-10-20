@@ -1,0 +1,254 @@
+// The database. Two rules are enforced here so no endpoint can forget them:
+//  1. Company isolation: every company-owned table is filtered by the signed-in user's company, and new rows
+//     are stamped with it. A request without a company sees nothing.
+//  2. Audit: every insert, change and delete is written to AuditEntries in the same transaction.
+using System.Text.Json;
+using Kabuor.Erp.Domain;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+
+namespace Kabuor.Erp.Data;
+
+/// <summary>Who is making this request. Set by the auth middleware; empty for anonymous requests.</summary>
+public sealed class RequestContext
+{
+    public Guid CompanyId { get; set; }
+    public Guid? UserId { get; set; }
+    public string Actor { get; set; } = "system";
+    public Role Role { get; set; } = Role.Viewer;
+    public Guid? EmployeeId { get; set; }
+    public bool HasCompany => CompanyId != Guid.Empty;
+    public bool Can(string policy) => Kabuor.Erp.Auth.Policies.Roles[policy].Contains(Role);
+}
+
+public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) : DbContext(options)
+{
+    public Guid CompanyId => ctx.CompanyId;
+
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Item> Items => Set<Item>();
+    public DbSet<SalesDoc> SalesDocs => Set<SalesDoc>();
+    public DbSet<SalesLine> SalesLines => Set<SalesLine>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalLine> JournalLines => Set<JournalLine>();
+    public DbSet<Sequence> Sequences => Set<Sequence>();
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+    public DbSet<Proposal> Proposals => Set<Proposal>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<PurchaseDoc> PurchaseDocs => Set<PurchaseDoc>();
+    public DbSet<PurchaseLine> PurchaseLines => Set<PurchaseLine>();
+    public DbSet<SupplierPayment> SupplierPayments => Set<SupplierPayment>();
+    public DbSet<Location> Locations => Set<Location>();
+    public DbSet<StockLevel> StockLevels => Set<StockLevel>();
+    public DbSet<StockMove> StockMoves => Set<StockMove>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<Payslip> Payslips => Set<Payslip>();
+    public DbSet<Lead> Leads => Set<Lead>();
+    public DbSet<Activity> Activities => Set<Activity>();
+    public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<RecipeLine> RecipeLines => Set<RecipeLine>();
+    public DbSet<ProductionRun> ProductionRuns => Set<ProductionRun>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignRecipient> CampaignRecipients => Set<CampaignRecipient>();
+    public DbSet<PosSession> PosSessions => Set<PosSession>();
+    public DbSet<AgentSetup> AgentSetups => Set<AgentSetup>();
+    public DbSet<AgentTask> AgentTasks => Set<AgentTask>();
+    public DbSet<AgentStep> AgentSteps => Set<AgentStep>();
+
+    protected override void OnModelCreating(ModelBuilder b)
+    {
+        // Company isolation on every company-owned table (EF applies these to every query, including Includes).
+        b.Entity<User>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Customer>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Item>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<SalesDoc>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Payment>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Account>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<JournalEntry>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Sequence>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<AuditEntry>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Proposal>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<SalesLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PaymentAllocation>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<JournalLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Supplier>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PurchaseDoc>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PurchaseLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<SupplierPayment>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Location>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<StockLevel>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<StockMove>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Employee>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<LeaveRequest>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PayrollRun>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Payslip>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Lead>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Activity>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Recipe>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<RecipeLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<ProductionRun>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Campaign>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<CampaignRecipient>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PosSession>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PosSession>().HasIndex(x => new { x.CompanyId, x.Status });
+        b.Entity<AgentSetup>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<AgentSetup>().HasIndex(x => new { x.CompanyId, x.Key }).IsUnique();
+        b.Entity<AgentTask>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<AgentTask>().HasIndex(x => new { x.CompanyId, x.Status, x.CreatedAt });
+        b.Entity<AgentTask>().HasIndex(x => new { x.CompanyId, x.AgentKey, x.SubjectId });
+        b.Entity<AgentTask>().HasMany(x => x.Steps).WithOne().HasForeignKey(x => x.AgentTaskId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<AgentStep>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+
+        // Lookups the app does all the time, indexed with the company first.
+        b.Entity<User>().HasIndex(x => x.Email).IsUnique().HasFilter("\"Email\" <> ''"); // one login per email across the platform
+        b.Entity<User>().HasIndex(x => x.Phone); // employees sign in with their phone
+        b.Entity<User>().HasIndex(x => new { x.CompanyId, x.EmployeeId });
+        b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Phone });
+        b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<Item>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.Kind, x.Status, x.DueDate });
+        b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.CustomerId });
+        b.Entity<SalesDoc>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalesDocId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<SalesDoc>().Ignore(x => x.Balance);
+        // Two people paying the same invoice at the same moment: the second save fails instead of overpaying.
+        b.Entity<SalesDoc>().Property(x => x.Paid).IsConcurrencyToken();
+        b.Entity<SalesDoc>().Property(x => x.Status).IsConcurrencyToken();
+        b.Entity<Payment>().HasIndex(x => new { x.CompanyId, x.Reference }).IsUnique().HasFilter("\"Reference\" <> ''");
+        b.Entity<Payment>().HasIndex(x => new { x.CompanyId, x.Status, x.ReceivedAt });
+        b.Entity<Payment>().HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Payment>().Ignore(x => x.Unallocated);
+        b.Entity<Payment>().Property(x => x.Allocated).IsConcurrencyToken();
+        b.Entity<PaymentAllocation>().HasIndex(x => x.SalesDocId);
+        b.Entity<Account>().HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
+        b.Entity<Account>().HasIndex(x => new { x.CompanyId, x.SystemKey });
+        b.Entity<JournalEntry>().HasIndex(x => new { x.CompanyId, x.Date });
+        b.Entity<JournalEntry>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<JournalLine>().HasIndex(x => new { x.CompanyId, x.AccountId });
+        b.Entity<Sequence>().HasKey(x => new { x.CompanyId, x.Key });
+        b.Entity<AuditEntry>().HasIndex(x => new { x.CompanyId, x.At });
+        b.Entity<Proposal>().HasIndex(x => new { x.CompanyId, x.Status });
+        b.Entity<Company>().HasIndex(x => x.MpesaShortcode);
+        b.Entity<Supplier>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<Supplier>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<PurchaseDoc>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<PurchaseDoc>().HasIndex(x => new { x.CompanyId, x.Kind, x.Status, x.DueDate });
+        b.Entity<PurchaseDoc>().HasIndex(x => new { x.CompanyId, x.SupplierId });
+        b.Entity<PurchaseDoc>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.PurchaseDocId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PurchaseDoc>().Ignore(x => x.Balance);
+        b.Entity<PurchaseDoc>().Property(x => x.Paid).IsConcurrencyToken();
+        b.Entity<PurchaseDoc>().Property(x => x.Status).IsConcurrencyToken();
+        b.Entity<SupplierPayment>().HasIndex(x => new { x.CompanyId, x.PurchaseDocId });
+        b.Entity<SupplierPayment>().HasIndex(x => new { x.CompanyId, x.PaidAt });
+        b.Entity<Location>().HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
+        b.Entity<StockLevel>().HasKey(x => new { x.CompanyId, x.ItemId, x.LocationId });
+        b.Entity<StockMove>().HasIndex(x => new { x.CompanyId, x.ItemId, x.At });
+        b.Entity<StockMove>().HasIndex(x => new { x.CompanyId, x.SourceType, x.SourceId });
+        b.Entity<Employee>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<Employee>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<LeaveRequest>().HasIndex(x => new { x.CompanyId, x.Status, x.From });
+        b.Entity<LeaveRequest>().HasIndex(x => new { x.CompanyId, x.EmployeeId });
+        b.Entity<PayrollRun>().HasIndex(x => new { x.CompanyId, x.Period }).IsUnique();
+        b.Entity<PayrollRun>().HasMany(x => x.Payslips).WithOne().HasForeignKey(x => x.PayrollRunId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PayrollRun>().Property(x => x.Status).IsConcurrencyToken();
+        b.Entity<Payslip>().HasIndex(x => new { x.CompanyId, x.EmployeeId });
+        b.Entity<Lead>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<Lead>().HasIndex(x => new { x.CompanyId, x.Stage });
+        b.Entity<Lead>().HasIndex(x => new { x.CompanyId, x.Phone });
+        b.Entity<Activity>().HasIndex(x => new { x.CompanyId, x.LeadId });
+        b.Entity<Activity>().HasIndex(x => new { x.CompanyId, x.CustomerId });
+        b.Entity<Activity>().HasIndex(x => new { x.CompanyId, x.FollowUpDone, x.FollowUpOn });
+        b.Entity<Recipe>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.RecipeId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProductionRun>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<ProductionRun>().HasIndex(x => new { x.CompanyId, x.Status });
+        b.Entity<ProductionRun>().Property(x => x.Status).IsConcurrencyToken();
+        b.Entity<Campaign>().HasMany(x => x.Recipients).WithOne().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Campaign>().Property(x => x.Status).IsConcurrencyToken();
+        b.Entity<CampaignRecipient>().HasIndex(x => new { x.CompanyId, x.CampaignId });
+
+        // Enums as readable text, so the data makes sense to anyone reading the database.
+        // SQLite (local development only) can't sort or compare DateTimeOffset, so there they're stored as
+        // sortable numbers; PostgreSQL keeps them as real timestamps.
+        var sqlite = Database.IsSqlite();
+        foreach (var entity in b.Model.GetEntityTypes())
+        foreach (var prop in entity.GetProperties())
+        {
+            // Ids are made in code (Guid.NewGuid), so a new child added to a loaded record is an insert, not an update.
+            if (prop.IsPrimaryKey() && prop.ClrType == typeof(Guid)) prop.ValueGenerated = Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never;
+            if (prop.ClrType.IsEnum) prop.SetProviderClrType(typeof(string));
+            if (sqlite && (prop.ClrType == typeof(DateTimeOffset) || prop.ClrType == typeof(DateTimeOffset?)))
+                prop.SetValueConverter(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.DateTimeOffsetToBinaryConverter());
+            // PostgreSQL's timestamptz takes UTC only; Kenya-time values (e.g. an M-Pesa TransTime) are converted.
+            else if (prop.ClrType == typeof(DateTimeOffset) || prop.ClrType == typeof(DateTimeOffset?))
+                prop.SetValueConverter(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTimeOffset, DateTimeOffset>(v => v.ToUniversalTime(), v => v));
+            // SQLite can't add up or compare decimals; there quantities and unit costs are stored as doubles.
+            if (sqlite && prop.ClrType == typeof(decimal))
+                prop.SetValueConverter(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.CastingConverter<decimal, double>());
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) => throw new NotSupportedException("Use SaveChangesAsync.");
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
+    {
+        StampAndAudit();
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+    }
+
+    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey"];
+
+    void StampAndAudit()
+    {
+        var audit = new List<AuditEntry>();
+        foreach (var e in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
+        {
+            if (e.Entity is AuditEntry) continue;
+            if (e.Entity is ICompanyOwned owned && e.State == EntityState.Added && owned.CompanyId == Guid.Empty)
+            {
+                if (!ctx.HasCompany) throw new InvalidOperationException($"No company for new {e.Entity.GetType().Name}.");
+                owned.CompanyId = ctx.CompanyId;
+            }
+            var companyId = e.Entity switch
+            {
+                ICompanyOwned o => o.CompanyId,
+                Company c => c.Id,
+                _ => ctx.CompanyId,
+            };
+            if (companyId == Guid.Empty) continue;
+            audit.Add(new AuditEntry
+            {
+                CompanyId = companyId,
+                UserId = ctx.UserId,
+                Actor = ctx.Actor,
+                Action = e.State.ToString(),
+                Entity = e.Entity.GetType().Name,
+                EntityId = KeyOf(e),
+                Changes = ChangesOf(e),
+            });
+        }
+        AuditEntries.AddRange(audit);
+    }
+
+    static string KeyOf(EntityEntry e) =>
+        string.Join("/", e.Metadata.FindPrimaryKey()?.Properties.Select(p => e.Property(p.Name).CurrentValue?.ToString()) ?? []);
+
+    static string ChangesOf(EntityEntry e)
+    {
+        var props = e.Properties.Where(p => !Secret.Contains(p.Metadata.Name) && (e.State != EntityState.Modified || p.IsModified));
+        var map = e.State switch
+        {
+            EntityState.Modified => props.ToDictionary(p => p.Metadata.Name, p => (object?)new { from = p.OriginalValue, to = p.CurrentValue }),
+            EntityState.Deleted => props.ToDictionary(p => p.Metadata.Name, p => p.OriginalValue),
+            _ => props.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue),
+        };
+        return JsonSerializer.Serialize(map);
+    }
+}
