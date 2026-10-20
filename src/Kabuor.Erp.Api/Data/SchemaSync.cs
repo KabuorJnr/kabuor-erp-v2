@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Kabuor.Erp.Data;
 
@@ -21,6 +22,12 @@ public static partial class SchemaSync
     static async Task Migrate(ErpDb db)
     {
         var first = db.Database.GetMigrations().First();
+        // A brand-new server has no database yet: migrations create it from scratch.
+        if (!await db.GetService<IRelationalDatabaseCreator>().ExistsAsync())
+        {
+            await db.Database.MigrateAsync();
+            return;
+        }
         var conn = db.Database.GetDbConnection();
         await db.Database.OpenConnectionAsync();
         try

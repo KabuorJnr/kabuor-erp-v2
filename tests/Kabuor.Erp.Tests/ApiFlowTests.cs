@@ -15,7 +15,7 @@ namespace Kabuor.Erp.Tests;
 /// schema comes from the EF migrations, so every test also checks the migrations.</summary>
 public sealed class ErpFactory : WebApplicationFactory<Program>
 {
-    public static readonly string? Pg = Environment.GetEnvironmentVariable("ERP_TEST_PG");
+    public static readonly string? Pg = Environment.GetEnvironmentVariable("ERP_TEST_PG") is { Length: > 0 } pg ? pg : null;
     readonly string _name = $"kabuor_erp_test_{Guid.NewGuid():N}";
     string Sqlite => Path.Combine(Path.GetTempPath(), $"{_name}.db");
     public string ConnectionString => Pg is null ? $"Data Source={Sqlite}" : $"{Pg};Database={_name}";

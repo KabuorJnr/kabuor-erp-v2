@@ -117,7 +117,11 @@ app.Use(async (ctx, next) =>
 });
 
 // Problems the user can fix come back as { error }, with the right status. Anything else is logged, not leaked.
-app.UseExceptionHandler(e => e.Run(async ctx =>
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    // Expected answers (wrong password, a rule the person can fix) aren't errors: keep them out of the error log.
+    SuppressDiagnosticsCallback = c => c.Exception is AppException or BadHttpRequestException,
+    ExceptionHandler = async ctx =>
 {
     var ex = ctx.Features.Get<IExceptionHandlerFeature>()?.Error;
     var (status, message) = ex switch
@@ -133,7 +137,8 @@ app.UseExceptionHandler(e => e.Run(async ctx =>
     // In development, 500s carry the exception so problems are quick to find; never in production.
     if (ex is not AppException && app.Environment.IsDevelopment()) await ctx.Response.WriteAsJsonAsync(new { error = message, detail = ex?.ToString() });
     else await ctx.Response.WriteAsJsonAsync(new { error = message });
-}));
+},
+});
 
 app.UseCors("dev");
 app.UseDefaultFiles();
