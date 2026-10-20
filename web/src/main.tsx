@@ -28,6 +28,7 @@ import { CampaignEditor, CampaignList, CampaignView } from './pages/Campaigns';
 import Pos from './pages/Pos';
 import MyPortal from './pages/MyPortal';
 import Agents from './pages/Agents';
+import Security from './pages/Security';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -97,6 +98,7 @@ function App() {
         <Route path="money-in" element={<Need p="sales.view"><Payments /></Need>} />
         <Route path="reports" element={<Need p="reports"><Reports /></Need>} />
         <Route path="agents" element={<Agents />} />
+        <Route path="security" element={<Security />} />
         <Route path="settings" element={<Need p="admin"><Settings /></Need>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -53,6 +53,14 @@ public sealed class User : ICompanyOwned
     public bool MustChangePassword { get; set; }
     public int FailedLogins { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
+    /// <summary>Goes up to end every session at once (password changed, access removed, role changed, "sign out everywhere").</summary>
+    public int TokenVersion { get; set; }
+    /// <summary>Two-step sign-in: the authenticator secret (encrypted), on or off, the last code used (no replays)
+    /// and the one-time recovery codes (hashed).</summary>
+    public string TotpSecret { get; set; } = "";
+    public bool TwoFactorEnabled { get; set; }
+    public long TotpLastStep { get; set; }
+    public string RecoveryCodes { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 

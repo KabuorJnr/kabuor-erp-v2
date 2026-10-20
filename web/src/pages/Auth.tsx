@@ -41,15 +41,61 @@ function Frame({ children }: { children: React.ReactNode }) {
 export function SignIn() {
   const [f, setF] = useState({ email: '', password: '' });
   const [state, setState] = useState({ busy: false, error: '' });
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [recovery, setRecovery] = useState(false);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setState({ busy: true, error: '' });
     try {
-      setSession(await api<Session>('/auth/login', { body: f }));
+      const r = await api<Session | { needsCode: true; challenge: string }>('/auth/login', { body: f });
+      if ('needsCode' in r) {
+        setChallenge(r.challenge);
+        setState({ busy: false, error: '' });
+      } else setSession(r);
     } catch (err) {
       setState({ busy: false, error: (err as Error).message });
     }
   };
+  const submitCode = async (e: FormEvent) => {
+    e.preventDefault();
+    setState({ busy: true, error: '' });
+    try {
+      setSession(await api<Session>('/auth/login/code', { body: { challenge, code } }));
+    } catch (err) {
+      const message = (err as Error).message;
+      if (/password again|too long/i.test(message)) setChallenge(null);
+      setState({ busy: false, error: message });
+    }
+  };
+  if (challenge)
+    return (
+      <Frame>
+        <h1 className="font-display text-3xl font-bold tracking-tight">Enter your code</h1>
+        <p className="mt-1 text-sm text-muted">{recovery ? 'Type one of the recovery codes you saved. Each works once.' : 'Open your authenticator app and type the 6-digit code for Kabuor ERP.'}</p>
+        <form onSubmit={submitCode} className="mt-8 space-y-4">
+          <Field label={recovery ? 'Recovery code' : 'Code'}>
+            {recovery ? (
+              <input className="field font-mono" autoFocus required value={code} onChange={(e) => setCode(e.target.value)} placeholder="abcd-2345" autoComplete="off" />
+            ) : (
+              <input className="field num text-center font-display text-2xl tracking-[0.4em]" autoFocus required inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
+            )}
+          </Field>
+          {state.error && <ErrorNote>{state.error}</ErrorNote>}
+          <button className="btn btn-primary w-full py-3" disabled={state.busy || (!recovery && code.length !== 6)}>
+            {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Sign in
+          </button>
+        </form>
+        <div className="mt-6 flex justify-between text-sm">
+          <button onClick={() => (setRecovery(!recovery), setCode(''), setState({ busy: false, error: '' }))} className="font-semibold text-brand hover:underline">
+            {recovery ? 'Use the app code instead' : 'Lost your phone? Use a recovery code'}
+          </button>
+          <button onClick={() => (setChallenge(null), setCode(''))} className="text-muted hover:underline">
+            Back
+          </button>
+        </div>
+      </Frame>
+    );
   return (
     <Frame>
       <h1 className="font-display text-3xl font-bold tracking-tight">Welcome back</h1>

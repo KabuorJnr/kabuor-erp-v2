@@ -1,0 +1,47 @@
+# Nightly backup of the live ERP database (01:00 Nairobi), encrypted, kept 30 days as a workflow artifact.
+# Needs two repository secrets (Settings → Secrets and variables → Actions), set by the owner:
+#   ERP_DATABASE_URL   Railway → Postgres → Variables → DATABASE_PUBLIC_URL
+#   BACKUP_PASSPHRASE  a long passphrase, kept somewhere safe off GitHub (needed to restore)
+# Restoring is in docs/OPERATIONS.md.
+name: Backup
+
+on:
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check secrets
+        env:
+          URL: ${{ secrets.ERP_DATABASE_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$PASS" ]; then echo "::error::Set ERP_DATABASE_URL and BACKUP_PASSPHRASE (see the top of this file)."; exit 1; fi
+      - name: Install pg_dump 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Dump and encrypt
+        env:
+          URL: ${{ secrets.ERP_DATABASE_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="kabuor-erp-$(date -u +%Y-%m-%dT%H%MZ)"
+          /usr/lib/postgresql/17/bin/pg_dump "$URL" --format=custom --no-owner --no-privileges --file "$name.dump"
+          test -s "$name.dump"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 --output "$name.dump.gpg" "$name.dump"
+          rm "$name.dump"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          ls -lh "$name.dump.gpg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

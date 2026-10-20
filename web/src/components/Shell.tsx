@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BarChart3, Bot, CalendarDays, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  BarChart3, Bot, CalendarDays, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -41,7 +41,7 @@ export default function Shell({ session }: { session: Session }) {
     ? [
         {
           title: 'Self Service',
-          links: [{ to: '/portal', label: 'My Portal', icon: UserRound, end: true }],
+          links: [{ to: '/portal', label: 'My Portal', icon: UserRound, end: true }, { to: '/security', label: 'Sign-in security', icon: ShieldCheck }],
         },
       ]
     : [
@@ -87,7 +87,7 @@ export default function Shell({ session }: { session: Session }) {
             can(session, 'people') && { to: '/payroll', label: 'Payroll', icon: Banknote },
           ],
         },
-        { title: '', links: [can(session, 'admin') && { to: '/settings', label: t('Settings'), icon: Cog }] },
+        { title: '', links: [{ to: '/security', label: 'Sign-in security', icon: ShieldCheck }, can(session, 'admin') && { to: '/settings', label: t('Settings'), icon: Cog }] },
       ];
   const visible = groups.map((g) => ({ ...g, links: g.links.filter(Boolean) as Link[] })).filter((g) => g.links.length);
   // Phone tabs: Today, then the first three sections this role uses most, in this order of preference.

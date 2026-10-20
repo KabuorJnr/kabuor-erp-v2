@@ -118,8 +118,28 @@ work itself, and turns anything that leaves the business or moves money into a t
 
 `Dockerfile` builds the web app and the API into one container; `railway.json` sets the health check. Set
 `DATABASE_URL` (Railway Postgres; URLs are converted for Npgsql) and `JWT__KEY` (32+ characters). Optional:
-`ANTHROPIC__APIKEY`, Africa's Talking keys. New tables are added on start (`Data/SchemaSync.cs`); new columns
-on existing tables still need EF migrations.
+`ANTHROPIC__APIKEY`, Africa's Talking keys. The schema comes from EF migrations on PostgreSQL (`Data/Migrations`, applied on start; see docs/OPERATIONS.md).
+
+## Sign-in security
+
+- **Two-step sign-in** (`Auth/TwoFactor.cs`, *Sign-in security* page): any authenticator app (TOTP), codes can't be
+  replayed, 8 one-time recovery codes (stored hashed), the secret encrypted at rest. Today nudges owners and
+  accountants until it's on.
+- **Sessions end everywhere** when the password changes, access is removed, two-step sign-in is turned off, or the
+  person chooses *Sign out everywhere*: each token carries the user's `TokenVersion`, checked on every request
+  (with Active and role).
+- Lockout after 5 wrong passwords or codes; Content-Security-Policy, nosniff, frame and referrer headers.
+
+## Tests and CI
+
+`dotnet test` runs everything on SQLite. With `ERP_TEST_PG="Host=localhost;Username=postgres;Password=postgres"` the
+same tests run on PostgreSQL through the EF migrations. GitHub Actions (`.github/workflows/ci.yml`) runs both, checks
+the model and migrations agree, builds the web app and fails on known high-severity package vulnerabilities.
+Beyond examples, `LedgerInvariantTests` drives random sequences of invoices, payments, matches, voids and till sales
+and checks the books against the documents after every step; `PayrollPropertyTests` checks every salary up to
+KSh 1,000,000.
+
+Production running, backups and restore: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Run it
 

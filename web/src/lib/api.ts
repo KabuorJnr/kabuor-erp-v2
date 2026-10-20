@@ -11,7 +11,7 @@ const KEY = 'kerp-session';
 
 export type Session = {
   token: string;
-  user: { id: string; name: string; email: string; role: Role; language: 'en' | 'sw'; employeeId?: string | null; mustChangePassword?: boolean; permissions?: Permission[] };
+  user: { id: string; name: string; email: string; role: Role; language: 'en' | 'sw'; employeeId?: string | null; mustChangePassword?: boolean; twoFactorEnabled?: boolean; permissions?: Permission[] };
   company: { id: string; name: string; kraPin: string; vatRegistered: boolean };
 };
 export type Role = 'Owner' | 'Accountant' | 'Sales' | 'Storekeeper' | 'Viewer' | 'HR' | 'Employee' | 'Procurement';

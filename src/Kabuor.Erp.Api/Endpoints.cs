@@ -23,11 +23,21 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
         api.MapGet("/health", () => Results.Ok(new { ok = true }));
+        // Ready = the database answers too (the host waits for this before sending traffic to a new version).
+        api.MapGet("/health/ready", async (ErpDb db) =>
+            await db.Database.CanConnectAsync() ? Results.Ok(new { ok = true, database = "ok" }) : Results.Json(new { ok = false, database = "unreachable" }, statusCode: 503));
 
         // ---------- sign up / sign in ----------
         var auth = api.MapGroup("/auth").RequireRateLimiting("auth");
         auth.MapPost("/register", (RegisterInput input, AuthService s) => s.Register(input));
         auth.MapPost("/login", (LoginInput input, AuthService s) => s.Login(input));
+        auth.MapPost("/login/code", (CodeInput input, AuthService s) => s.LoginCode(input));
+        var me = api.MapGroup("/auth/security").RequireAuthorization();
+        me.MapGet("", (AuthService s) => s.Security());
+        me.MapPost("/2fa/start", (AuthService s) => s.StartTwoFactor());
+        me.MapPost("/2fa/enable", (TwoFactorInput input, AuthService s) => s.EnableTwoFactor(input));
+        me.MapPost("/2fa/disable", async (TwoFactorInput input, AuthService s) => { await s.DisableTwoFactor(input); return Results.NoContent(); });
+        me.MapPost("/sign-out-everywhere", async (AuthService s) => { await s.SignOutEverywhere(); return Results.NoContent(); });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
         var mpesa = api.MapGroup("/mpesa/c2b/{key}");
@@ -164,7 +174,7 @@ public static class Endpoints
             };
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.Number).Skip(s).Take(t)
-                .Select(d => new { d.Id, d.Kind, d.Number, d.Status, d.IssueDate, d.DueDate, d.Total, d.Paid, d.EtimsStatus, customer = d.Customer!.Name, customerId = d.CustomerId })
+                .Select(d => new { d.Id, d.Kind, d.Number, d.Status, d.IssueDate, d.DueDate, d.Total, d.Tax, d.Paid, d.EtimsStatus, customer = d.Customer!.Name, customerId = d.CustomerId })
                 .ToListAsync();
             return new { counts, page = new Page<object>(rows.Cast<object>().ToList(), total, s, t) };
         });

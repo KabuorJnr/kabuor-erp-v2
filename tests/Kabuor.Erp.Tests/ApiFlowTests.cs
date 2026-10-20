@@ -10,14 +10,20 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Kabuor.Erp.Tests;
 
+/// <summary>The app on a throwaway database: a SQLite file by default, or a fresh PostgreSQL database when
+/// ERP_TEST_PG is set (e.g. "Host=localhost;Username=postgres;Password=postgres"), as in CI. On PostgreSQL the
+/// schema comes from the EF migrations, so every test also checks the migrations.</summary>
 public sealed class ErpFactory : WebApplicationFactory<Program>
 {
-    readonly string _db = Path.Combine(Path.GetTempPath(), $"kabuor-erp-test-{Guid.NewGuid():N}.db");
+    public static readonly string? Pg = Environment.GetEnvironmentVariable("ERP_TEST_PG");
+    readonly string _name = $"kabuor_erp_test_{Guid.NewGuid():N}";
+    string Sqlite => Path.Combine(Path.GetTempPath(), $"{_name}.db");
+    public string ConnectionString => Pg is null ? $"Data Source={Sqlite}" : $"{Pg};Database={_name}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
-        builder.UseSetting("ConnectionStrings:Erp", $"Data Source={_db}");
+        builder.UseSetting("ConnectionStrings:Erp", ConnectionString);
         builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
         builder.UseSetting("Agents:Disabled", "true"); // tests run agents explicitly
     }
@@ -25,8 +31,18 @@ public sealed class ErpFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { File.Delete(_db); } catch (IOException) { }
+        if (Pg is null)
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { File.Delete(Sqlite); } catch (IOException) { }
+            return;
+        }
+        Npgsql.NpgsqlConnection.ClearAllPools();
+        using var conn = new Npgsql.NpgsqlConnection($"{Pg};Database=postgres");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"DROP DATABASE IF EXISTS \"{_name}\" WITH (FORCE)";
+        cmd.ExecuteNonQuery();
     }
 }
 

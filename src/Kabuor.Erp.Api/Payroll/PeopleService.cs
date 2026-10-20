@@ -157,6 +157,9 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
         var run = await GetRun(runId);
         if (run.Status != PayrollStatus.Draft) throw new AppException("Already approved.");
         var p = run.Payslips;
+        // A very small salary can be less than the SHIF minimum: a person must look at that before anyone is paid.
+        if (p.FirstOrDefault(x => x.Net < 0) is { } short_)
+            throw new AppException($"{short_.EmployeeName}'s deductions are more than their pay this month. Check their pay before approving.");
         var date = run.Period.AddMonths(1).AddDays(-1);
         await ledger.Post(date, $"Payroll {run.Period:MMMM yyyy}", "Payroll", run.Id,
             (SystemAccounts.Salaries, p.Sum(x => x.Gross + x.NonTaxableAllowances), 0),

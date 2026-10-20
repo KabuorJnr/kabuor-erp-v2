@@ -34,6 +34,7 @@ builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddSingleton<SecretBox>();
 builder.Services.AddScoped<AssistantService>();
 builder.Services.AddScoped<Kabuor.Erp.Inventory.InventoryService>();
 builder.Services.AddScoped<Kabuor.Erp.Purchases.PurchaseService>();
@@ -94,11 +95,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 
 var app = builder.Build();
 
-// Create the database on first start. (Switch to EF migrations before the first production customer.)
+// Bring the database to the model's shape on start (see Data/SchemaSync.cs).
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ErpDb>();
-    await SchemaSync.AddMissingTables(db); // creates new modules' tables in an existing database too
+    await SchemaSync.Prepare(db); // migrations on PostgreSQL; EnsureCreated + new tables/columns on SQLite
 }
 
 app.UseForwardedHeaders();
@@ -109,6 +110,8 @@ app.Use(async (ctx, next) =>
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
     h.XFrameOptions = "DENY";
     h["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()";
+    // Only this site's own scripts, styles, fonts and API: injected scripts and other sites' code can't run.
+    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
     if (ctx.Request.IsHttps) h.StrictTransportSecurity = "max-age=31536000";
     await next();
 });
@@ -150,6 +153,16 @@ app.Use(async (http, next) =>
         ctx.Actor = u.FindFirst("name")?.Value ?? "user";
         ctx.Role = Enum.TryParse<Role>(u.FindFirst("role")?.Value, out var r) ? r : Role.Viewer;
         ctx.EmployeeId = Guid.TryParse(u.FindFirst("eid")?.Value, out var eid) ? eid : null;
+        // A session ends when the person is switched off, or their sessions were ended (password, sign out everywhere).
+        var tv = int.TryParse(u.FindFirst("tv")?.Value, out var v) ? v : 0;
+        var db = http.RequestServices.GetRequiredService<ErpDb>();
+        var current = await db.Users.IgnoreQueryFilters().Where(x => x.Id == ctx.UserId).Select(x => new { x.Active, x.TokenVersion, x.Role }).SingleOrDefaultAsync();
+        if (current is null || !current.Active || current.TokenVersion != tv || current.Role != ctx.Role)
+        {
+            http.Response.StatusCode = 401;
+            await http.Response.WriteAsJsonAsync(new { error = "Your session has ended. Please sign in again." });
+            return;
+        }
     }
     await next();
 });

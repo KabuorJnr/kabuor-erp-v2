@@ -1,7 +1,7 @@
 // The Role Center: what needs me today, and how is money moving? A one-line headline, the common actions,
 // then cue tiles (a count per job, coloured by urgency, each opening the filtered list), then the numbers.
 import { Link } from 'react-router';
-import { Bot, Lightbulb, MessageCircle, Plus } from 'lucide-react';
+import { Bot, Lightbulb, MessageCircle, Plus, ShieldAlert } from 'lucide-react';
 import { can, useApi, useSession } from '../lib/api';
 import { cn, day, daysBetween, ksh, msisdn, todayIso } from '../lib/format';
 import { useLang } from '../lib/i18n';
@@ -150,6 +150,16 @@ export default function Today() {
           <p className="flex items-start gap-3 rounded-md bg-brand-soft px-4 py-3 text-[15px] text-ink">
             <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-brand" /> {d.headline}
           </p>
+        )}
+
+        {(session?.user.role === 'Owner' || session?.user.role === 'Accountant') && !session.user.twoFactorEnabled && (
+          <Link to="/security" className="flex items-center gap-3 rounded-md bg-warn-soft px-4 py-3 text-warn hover:brightness-95">
+            <ShieldAlert className="h-5 w-5 shrink-0" />
+            <span className="flex-1 text-[15px]">
+              <b>Protect the books:</b> a stolen password is all it takes to sign in as you. Turn on two-step sign-in (two minutes).
+            </span>
+            <span className="text-sm font-semibold">Turn on →</span>
+          </Link>
         )}
 
         {(d.agentTasks ?? 0) > 0 && (

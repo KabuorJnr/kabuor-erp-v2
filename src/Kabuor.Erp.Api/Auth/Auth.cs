@@ -78,6 +78,7 @@ public sealed class TokenIssuer(IConfiguration config)
             new("name", u.Name),
         };
         if (u.EmployeeId is { } eid) claims.Add(new Claim("eid", eid.ToString()));
+        claims.Add(new Claim("tv", u.TokenVersion.ToString()));
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
@@ -89,6 +90,35 @@ public sealed class TokenIssuer(IConfiguration config)
     }
 }
 
+public sealed record CodeInput(string Challenge, string Code);
+public sealed record TwoFactorInput(string? Code, string? Password);
+
+public static class TokenIssuerChallenge
+{
+    const string Audience = "kabuor-erp-2fa";
+
+    /// <summary>A five-minute ticket between "password right" and "code right". It can't be used as a sign-in.</summary>
+    public static string Challenge(this TokenIssuer t, User u) =>
+        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity([new Claim("sub", u.Id.ToString()), new Claim("tv", u.TokenVersion.ToString())]),
+            Expires = DateTime.UtcNow.AddMinutes(5),
+            Issuer = "kabuor-erp",
+            Audience = Audience,
+            SigningCredentials = new SigningCredentials(t.Key, SecurityAlgorithms.HmacSha256),
+        });
+
+    public static async Task<(Guid User, int Version)?> ReadChallenge(this TokenIssuer t, string token)
+    {
+        var r = await new JsonWebTokenHandler().ValidateTokenAsync(token ?? "", new TokenValidationParameters
+        {
+            ValidIssuer = "kabuor-erp", ValidAudience = Audience, IssuerSigningKey = t.Key, ClockSkew = TimeSpan.FromSeconds(30),
+        });
+        if (!r.IsValid || !Guid.TryParse(r.Claims["sub"]?.ToString(), out var id) || !int.TryParse(r.Claims["tv"]?.ToString(), out var tv)) return null;
+        return (id, tv);
+    }
+}
+
 public sealed record RegisterInput(string CompanyName, string OwnerName, string Email, string Phone, string Password, string? KraPin, bool? VatRegistered);
 /// <summary>Email, or (for employees) the phone number HR registered.</summary>
 public sealed record LoginInput(string Email, string Password);
@@ -96,7 +126,7 @@ public sealed record PasswordInput(string Current, string New);
 public sealed record AccessGrant(string Phone, string Password, bool Reset);
 public sealed record Session(string Token, object User, object Company);
 
-public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens)
+public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens, SecretBox box)
 {
     static readonly PasswordHasher<User> Hasher = new();
 
@@ -134,7 +164,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         return Session(owner, company);
     }
 
-    public async Task<Session> Login(LoginInput input)
+    public async Task<object> Login(LoginInput input)
     {
         var id = (input.Email ?? "").Trim();
         const string wrong = "Wrong email, phone or password.";
@@ -165,10 +195,89 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             throw new AppException(wrong, 401);
         }
         if (ok == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hasher.HashPassword(user, input.Password!);
+        if (user.TwoFactorEnabled)
+        {
+            await db.SaveChangesAsync();
+            return new { needsCode = true, challenge = tokens.Challenge(user) };
+        }
         (user.FailedLogins, user.LockedUntil) = (0, null);
         await db.SaveChangesAsync();
         var company = await db.Companies.SingleAsync(c => c.Id == user.CompanyId);
         return Session(user, company);
+    }
+
+    /// <summary>The second step: a code from the authenticator app, or one of the recovery codes.</summary>
+    public async Task<Session> LoginCode(CodeInput input)
+    {
+        var who = await tokens.ReadChallenge(input.Challenge) ?? throw new AppException("That took too long. Enter your password again.", 401);
+        var user = await db.Users.IgnoreQueryFilters().SingleOrDefaultAsync(u => u.Id == who.User);
+        if (user is null || !user.Active || user.TokenVersion != who.Version || !user.TwoFactorEnabled) throw new AppException("Enter your password again.", 401);
+        if (user.LockedUntil > DateTimeOffset.UtcNow) throw new AppException("Too many wrong tries. Wait 15 minutes, or ask your admin to reset your password.", 429);
+        (ctx.CompanyId, ctx.UserId, ctx.Actor) = (user.CompanyId, user.Id, user.Name);
+        var code = (input.Code ?? "").Trim();
+        if (Totp.Match(box.Open(user.TotpSecret), code, user.TotpLastStep) is { } step) user.TotpLastStep = step;
+        else if (RecoveryCodes.Use(user.RecoveryCodes, code) is { } left) user.RecoveryCodes = left;
+        else
+        {
+            user.FailedLogins++;
+            if (user.FailedLogins >= 5) (user.LockedUntil, user.FailedLogins) = (DateTimeOffset.UtcNow.AddMinutes(15), 0);
+            await db.SaveChangesAsync();
+            throw new AppException("That code isn't right. Use the 6 digits in your authenticator app now, or a recovery code.", 401);
+        }
+        (user.FailedLogins, user.LockedUntil) = (0, null);
+        await db.SaveChangesAsync();
+        return Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
+    }
+
+    // ---------- two-step sign-in and sessions (for the signed-in person) ----------
+
+    async Task<User> Me() => await db.Users.SingleOrDefaultAsync(u => u.Id == ctx.UserId) ?? throw new AppException("Please sign in again.", 401);
+
+    public async Task<object> Security()
+    {
+        var u = await Me();
+        return new { twoFactorEnabled = u.TwoFactorEnabled, recoveryCodesLeft = u.TwoFactorEnabled ? RecoveryCodes.Left(u.RecoveryCodes) : 0 };
+    }
+
+    /// <summary>Step 1 of turning it on: a new secret to scan. Nothing changes until a code from it is confirmed.</summary>
+    public async Task<object> StartTwoFactor()
+    {
+        var u = await Me();
+        if (u.TwoFactorEnabled) throw new AppException("Two-step sign-in is already on.");
+        var secret = Totp.NewSecret();
+        u.TotpSecret = box.Seal(secret);
+        await db.SaveChangesAsync();
+        return new { secret, uri = Totp.Uri(secret, string.IsNullOrEmpty(u.Email) ? u.Name : u.Email) };
+    }
+
+    /// <summary>Step 2: the first code proves the app is set up. Returns the recovery codes, shown once.</summary>
+    public async Task<object> EnableTwoFactor(TwoFactorInput input)
+    {
+        var u = await Me();
+        if (u.TwoFactorEnabled) throw new AppException("Two-step sign-in is already on.");
+        if (u.TotpSecret.Length == 0) throw new AppException("Start again: scan the code first.");
+        var step = Totp.Match(box.Open(u.TotpSecret), input.Code ?? "", 0) ?? throw new AppException("That code isn't right. Check the time on your phone is automatic, and try the newest code.");
+        var codes = RecoveryCodes.New();
+        (u.TwoFactorEnabled, u.TotpLastStep, u.RecoveryCodes) = (true, step, string.Join(';', codes.Select(RecoveryCodes.Hash)));
+        await db.SaveChangesAsync();
+        return new { recoveryCodes = codes };
+    }
+
+    public async Task DisableTwoFactor(TwoFactorInput input)
+    {
+        var u = await Me();
+        if (Hasher.VerifyHashedPassword(u, u.PasswordHash, input.Password ?? "") == PasswordVerificationResult.Failed) throw new AppException("Your password isn't right.");
+        (u.TwoFactorEnabled, u.TotpSecret, u.RecoveryCodes, u.TotpLastStep) = (false, "", "", 0);
+        u.TokenVersion++; // other devices sign in again
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Ends every session of this person, including this one (a lost phone, a shared computer).</summary>
+    public async Task SignOutEverywhere()
+    {
+        var u = await Me();
+        u.TokenVersion++;
+        await db.SaveChangesAsync();
     }
 
     /// <summary>The owner adds a colleague with a role and a starting password they'll share privately.</summary>
@@ -214,6 +323,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
     {
         var user = await db.Users.SingleOrDefaultAsync(u => u.EmployeeId == employeeId) ?? throw new AppException("They don't have app access.", 404);
         user.Active = false;
+        user.TokenVersion++;
         await db.SaveChangesAsync();
     }
 
@@ -233,12 +343,13 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         if (input.New == input.Current) throw new AppException("Choose a new password, not the one you were given.");
         user.PasswordHash = Hasher.HashPassword(user, input.New);
         user.MustChangePassword = false;
+        user.TokenVersion++; // signed-in devices elsewhere sign in again; this one gets a new token below
         await db.SaveChangesAsync();
         return Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
     }
 
     Session Session(User u, Company c) => new(
         tokens.Issue(u),
-        new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, permissions = Policies.For(u.Role) },
+        new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, permissions = Policies.For(u.Role) },
         new { c.Id, c.Name, c.KraPin, c.VatRegistered });
 }
