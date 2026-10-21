@@ -10,3 +10,4 @@ src/Kabuor.Erp.Api/wwwroot/
 *.user
 .vs/
 crash.log
+demo/logins.json
