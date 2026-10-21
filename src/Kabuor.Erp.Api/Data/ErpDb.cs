@@ -83,12 +83,6 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<PortalCode> PortalCodes => Set<PortalCode>();
     public DbSet<StockCountLine> StockCountLines => Set<StockCountLine>();
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        base.OnConfiguring(optionsBuilder);
-        optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-    }
-
     protected override void OnModelCreating(ModelBuilder b)
     {
         // Company isolation on every company-owned table (EF applies these to every query, including Includes).

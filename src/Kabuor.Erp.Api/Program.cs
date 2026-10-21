@@ -60,7 +60,6 @@ builder.Services.AddDbContext<ErpDb>(o =>
 {
     if (cs.StartsWith("Host=", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(cs);
     else o.UseSqlite(cs);
-    o.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 });
 
 builder.Services.AddScoped<Ledger>();

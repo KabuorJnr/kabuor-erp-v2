@@ -4,13 +4,14 @@
 // into the system for live real-time monitoring and analytics.
 //
 // Usage:
-//   node tools/live-stream-pipeline.mjs                                  # Streams to Render production
-//   node tools/live-stream-pipeline.mjs http://localhost:5000            # Streams to local dev server
+//   node tools/live-stream-pipeline.mjs                                  # Streams to the local dev server (:5000)
+//   node tools/live-stream-pipeline.mjs https://kabuor-erp.onrender.com  # Streams to the live site: demo data only
 //   node tools/live-stream-pipeline.mjs --interval=3                     # Streams every 3 seconds
 //   node tools/live-stream-pipeline.mjs --limit=20                       # Runs 20 events and exits
 
 const args = process.argv.slice(2);
-let BASE = 'https://kabuor-erp.onrender.com';
+// Local by default: this posts simulated sales, so pointing it at the live site has to be deliberate.
+let BASE = 'http://localhost:5000';
 let intervalMs = 3500;
 let maxIterations = Infinity;
 

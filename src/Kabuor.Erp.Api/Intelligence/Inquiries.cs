@@ -79,7 +79,8 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, AppCache appCache,
 
     public async Task<object> List(string? status, bool mine)
     {
-        var cacheKey = $"inquiries:{ctx.CompanyId}:{status ?? "all"}:{mine}";
+        // "Mine" is per person, so it's cached per person; everyone else shares the company's list.
+        var cacheKey = $"inquiries:{ctx.CompanyId}:{status ?? "all"}:{(mine ? $"mine:{ctx.UserId}" : "all")}";
         var cached = await appCache.GetStringAsync(cacheKey);
         if (!string.IsNullOrEmpty(cached))
         {
