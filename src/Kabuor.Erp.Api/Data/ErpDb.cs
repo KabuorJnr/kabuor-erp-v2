@@ -76,6 +76,11 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<AgentSetup> AgentSetups => Set<AgentSetup>();
     public DbSet<AgentTask> AgentTasks => Set<AgentTask>();
     public DbSet<AgentStep> AgentSteps => Set<AgentStep>();
+    public DbSet<TrackingLink> TrackingLinks => Set<TrackingLink>();
+    public DbSet<LinkVisit> LinkVisits => Set<LinkVisit>();
+    public DbSet<Inquiry> Inquiries => Set<Inquiry>();
+    public DbSet<InquiryMessage> InquiryMessages => Set<InquiryMessage>();
+    public DbSet<PortalCode> PortalCodes => Set<PortalCode>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -153,6 +158,19 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<AgentTask>().HasIndex(x => new { x.CompanyId, x.AgentKey, x.SubjectId });
         b.Entity<AgentTask>().HasMany(x => x.Steps).WithOne().HasForeignKey(x => x.AgentTaskId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AgentStep>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<TrackingLink>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<TrackingLink>().HasIndex(x => x.Code).IsUnique();
+        b.Entity<TrackingLink>().HasIndex(x => new { x.CompanyId, x.Channel });
+        b.Entity<LinkVisit>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<LinkVisit>().HasIndex(x => new { x.CompanyId, x.LinkId, x.At });
+        b.Entity<Inquiry>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Inquiry>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
+        b.Entity<Inquiry>().HasIndex(x => new { x.CompanyId, x.Status });
+        b.Entity<Inquiry>().HasIndex(x => new { x.CompanyId, x.Phone });
+        b.Entity<Inquiry>().HasMany(x => x.Messages).WithOne().HasForeignKey(x => x.InquiryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<InquiryMessage>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PortalCode>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<PortalCode>().HasIndex(x => new { x.CompanyId, x.Phone, x.ExpiresAt });
 
         // Lookups the app does all the time, indexed with the company first.
         b.Entity<User>().HasIndex(x => x.Email).IsUnique().HasFilter("\"Email\" <> ''"); // one login per email across the platform
@@ -161,10 +179,13 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Phone });
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.FirstLinkId });
         b.Entity<Item>().HasIndex(x => new { x.CompanyId, x.Name });
+        b.Entity<Lead>().HasIndex(x => new { x.CompanyId, x.LinkId });
         b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
         b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.Kind, x.Status, x.DueDate });
         b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.CustomerId });
+        b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.LinkId });
         b.Entity<SalesDoc>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalesDocId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<SalesDoc>().Ignore(x => x.Balance);
         // Two people paying the same invoice at the same moment: the second save fails instead of overpaying.

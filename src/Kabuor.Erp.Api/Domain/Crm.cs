@@ -42,6 +42,10 @@ public sealed class Lead : ICompanyOwned
     public string OwnerName { get; set; } = "";
     public string LostReason { get; set; } = "";
     public Guid? CustomerId { get; set; } // once won
+    /// <summary>Attribution: the tracking link, channel, or inquiry that brought this lead in.</summary>
+    public Guid? LinkId { get; set; }
+    public Channel? Channel { get; set; }
+    public Guid? InquiryId { get; set; }
     public DateTimeOffset StageChangedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -145,6 +145,10 @@ public sealed class Customer : ICompanyOwned
     public string Notes { get; set; } = "";
     /// <summary>Asked not to get marketing messages (Data Protection Act): never included in campaigns.</summary>
     public bool MarketingOptOut { get; set; }
+    /// <summary>Where they first found the business: the tracking link, channel, and salesperson who brought them.</summary>
+    public Guid? FirstLinkId { get; set; }
+    public Channel? AcquisitionChannel { get; set; }
+    public Guid? AcquiredByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -244,6 +248,12 @@ public sealed class SalesDoc : ICompanyOwned
     public long EtimsInvcNo { get; set; }
     public string EtimsQrUrl { get; set; } = "";
     public string EtimsError { get; set; } = "";
+    /// <summary>Attribution: which tracking link, inquiry, marketing channel, or salesperson brought this sale.</summary>
+    public Guid? LinkId { get; set; }
+    public Guid? InquiryId { get; set; }
+    public Channel? Channel { get; set; }
+    public Guid? SalespersonUserId { get; set; }
+    public string SalespersonName { get; set; } = "";
     public List<SalesLine> Lines { get; set; } = [];
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Balance => Total - Paid;
