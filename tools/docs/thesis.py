@@ -11,7 +11,7 @@ b.cover('Confidential · Prepared for investors', 'Why Kabuor', 'The investment 
         ['Kabuor ERP is a Kenya-first cloud business system for small and medium enterprises: KRA eTIMS invoicing, M-Pesa, stock, payroll and customers in one product, with AI agents that watch the books.',
          'Raising: [US$150,000] pre-seed, for 18 months. Figures in brackets are proposals for the founders to confirm.'],
         [('Document', 'KAB-IT-001, Investment Thesis'), ('Date', '21 October 2026'),
-         ('Company', 'Kabuor Builds, Nairobi, Kenya'), ('Founders', 'Rooney Odhiambo Kabuor, Founder and Holder; David Kiragu, Co-founder, Product and Engineering'),
+         ('Company', 'Kabuor Builds, Nairobi, Kenya'), ('Founders', 'Rooney Odhiambo Kabuor, Founder and Holder, who built the product; David Kiragu, Co-founder [role to confirm]'),
          ('Companion documents', 'Investor pitch deck; Information Memorandum (KAB-IM-001); Legal and Compliance Pack (KAB-LEG-001); System Documentation'),
          ('Contact', 'Rooney Odhiambo Kabuor, Founder and Holder; rooneyodhiambo2004@gmail.com · +254 705 607 954 · linkedin.com/in/rooney-odhiambo'),
          ('Currency', 'Kenya shillings; US dollars at KSh 129 = US$1 where shown')])
@@ -76,8 +76,8 @@ T('Illustrative scale (not a forecast)', [
 ], [3.0, 2.6, 2.6], 'Assumes 50% Starter, 40% Business and 10% Growth plans (average KSh 3,500 a month). Sales and staff costs excluded.')
 
 H1('Why this team')
-P('<b>Rooney Odhiambo Kabuor, Founder and Holder</b>, owns and leads the company: strategy, partnerships and the raise. [Background and experience to be added.]')
-P('<b>David Kiragu, Co-founder, Product and Engineering</b>, built Kabuor ERP end to end: the .NET API, the React application, the KRA eTIMS and Safaricom Daraja integrations, Kenyan payroll, Kabuor Intelligence and the agents, together with its test suite and compliance documentation. [Background to be added.]')
+P('<b>Rooney Odhiambo Kabuor, Founder and Holder</b>, owns the company and built Kabuor ERP end to end: the .NET API, the React application, the KRA eTIMS and Safaricom Daraja integrations, Kenyan payroll, Kabuor Intelligence and the agents, together with its test suite and compliance documentation. [Background and experience to be added.]')
+P('<b>David Kiragu, Co-founder</b>. [Role and background to be confirmed.]')
 P('The round adds two engineers and a sales lead. That also meets KRA’s requirement that integrator applicants show at least three qualified technical staff.')
 
 H1('Why invest now')
