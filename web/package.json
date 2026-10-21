@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^9.47.2",
     "lucide-react": "^1.59.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",

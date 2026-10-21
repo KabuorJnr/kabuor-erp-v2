@@ -52,6 +52,8 @@ public static class Endpoints
         });
 
         // Public: who to contact about privacy, and where the data lives (for the privacy notice and terms).
+        // Public settings the web app needs before sign-in: where to report browser errors (empty = off).
+        api.MapGet("/client-config", (IConfiguration config) => new { sentryDsn = config["Sentry:BrowserDsn"] ?? config["Sentry:Dsn"] ?? "", environment = config["Sentry:Environment"] ?? "production" });
         api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "21 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------

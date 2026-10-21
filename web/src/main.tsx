@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router';
 import './index.css';
 import { registerShell } from './lib/offline';
+import { reportError, startMonitoring } from './lib/monitoring';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
@@ -117,7 +118,8 @@ function App() {
 }
 
 registerShell();
-createRoot(document.getElementById('root')!).render(
+startMonitoring();
+createRoot(document.getElementById('root')!, { onUncaughtError: (e) => (reportError(e), console.error(e)), onCaughtError: (e) => reportError(e) }).render(
   <StrictMode>
     <BrowserRouter>
       <App />

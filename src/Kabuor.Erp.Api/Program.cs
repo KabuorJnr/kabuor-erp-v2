@@ -19,6 +19,22 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
+// Error alerts (Sentry), only when SENTRY__DSN is set: every crash and every logged error is reported, with the
+// route and the company id, never request bodies, names or phone numbers.
+if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
+    builder.WebHost.UseSentry(o =>
+    {
+        o.Dsn = config["Sentry:Dsn"];
+        o.Environment = config["Sentry:Environment"] ?? builder.Environment.EnvironmentName;
+        o.Release = config["RAILWAY_GIT_COMMIT_SHA"] is { Length: > 7 } sha ? sha[..7] : null;
+        o.SendDefaultPii = false;
+        o.MaxRequestBodySize = Sentry.Extensibility.RequestSize.None;
+        o.MinimumEventLevel = LogLevel.Error;
+        o.TracesSampleRate = config.GetValue("Sentry:TracesSampleRate", 0.05);
+        // Expected answers (a wrong password, a rule the person can fix) aren't errors.
+        o.SetBeforeSend(e => e.Exception is Kabuor.Erp.Common.AppException ? null : e);
+    });
+
 // Database: PostgreSQL in production (a "Host=…" connection string), SQLite file locally.
 var cs = Program.ConnectionString(config.GetConnectionString("Erp") ?? config["DATABASE_URL"] ?? "Data Source=kabuor-erp.db");
 builder.Services.AddScoped<RequestContext>();
@@ -124,7 +140,7 @@ app.Use(async (ctx, next) =>
     h.XFrameOptions = "DENY";
     h["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()";
     // Only this site's own scripts, styles, fonts and API: injected scripts and other sites' code can't run.
-    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
     if (ctx.Request.IsHttps) h.StrictTransportSecurity = "max-age=31536000";
     await next();
 });
@@ -171,6 +187,7 @@ app.Use(async (http, next) =>
         ctx.Actor = u.FindFirst("name")?.Value ?? "user";
         ctx.Role = Enum.TryParse<Role>(u.FindFirst("role")?.Value, out var r) ? r : Role.Viewer;
         ctx.EmployeeId = Guid.TryParse(u.FindFirst("eid")?.Value, out var eid) ? eid : null;
+        Sentry.SentrySdk.ConfigureScope(scope => scope.SetTag("company", cid.ToString()));
         // A session ends when the person is switched off, or their sessions were ended (password, sign out everywhere).
         var tv = int.TryParse(u.FindFirst("tv")?.Value, out var v) ? v : 0;
         var db = http.RequestServices.GetRequiredService<ErpDb>();
