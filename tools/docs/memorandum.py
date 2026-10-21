@@ -9,9 +9,9 @@ b.cover('Confidential · For qualified buyers only', 'Kabuor ERP', 'Information 
         ['Offered by Kabuor Builds, Nairobi, Kenya.',
          'Guide price: <b>KSh 3,500,000</b> for the software, intellectual property and documentation, with optional transition support.',
          'This memorandum is confidential and is provided on the terms of the Important Notice on the next page.'],
-        [('Document', 'KAB-IM-001, Information Memorandum'), ('Date', '21 October 2026'), ('Seller', 'Kabuor Builds (David Kiragu)'),
+        [('Document', 'KAB-IM-001, Information Memorandum'), ('Date', '21 October 2026'), ('Seller', 'Rooney Odhiambo Kabuor, Founder and Holder, trading as Kabuor Builds'),
          ('Asset', 'Kabuor ERP: source code, intellectual property, documentation, test and simulation tooling, brand name Kabuor ERP'),
-         ('Contact', 'David Kiragu, dkiragunderitu@gmail.com'),
+         ('Contact', 'Rooney Odhiambo Kabuor, Founder and Holder; rooneyodhiambo2004@gmail.com · +254 705 607 954 · linkedin.com/in/rooney-odhiambo'),
          ('Companion documents', 'Kabuor ERP System Documentation (PDF); Legal and Compliance Pack (KAB-LEG-001); API.md; OPERATIONS.md; PRODUCT.md')])
 
 b.story.append(__import__('reportlab.platypus', fromlist=['PageBreak']).PageBreak())
@@ -206,7 +206,7 @@ T('Available on request after the NDA', [
     ['5', 'Eight-month simulation tool and results; demonstration logins for the simulated business'],
     ['6', 'Hosting blueprint (render.yaml), database migration and backup workflows'],
 ], [0.4, 7.8])
-P('<b>Contact</b>: David Kiragu, Kabuor Builds, dkiragunderitu@gmail.com.')
+P('<b>Contact</b>: Rooney Odhiambo Kabuor, Founder and Holder, Kabuor Builds; rooneyodhiambo2004@gmail.com · +254 705 607 954 · linkedin.com/in/rooney-odhiambo.')
 
 # ------------------------------------------------------------------ A
 H1('Appendix A: API surface', numbered=False)

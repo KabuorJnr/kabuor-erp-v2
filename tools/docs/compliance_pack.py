@@ -8,7 +8,7 @@ P, H1, H2, H3, B, N, T, BOX = b.P, b.H1, b.H2, b.H3, b.B, b.N, b.T, b.BOX
 b.cover('Kabuor Builds · Kenya', 'Legal and Compliance Pack', 'Kabuor ERP under the laws of Kenya: data protection, tax, employment and information security',
         ['Prepared for: the owner of Kabuor ERP, an advocate reviewing it, the Office of the Data Protection Commissioner (on request), and prospective buyers in due diligence.',
          'Status: working compliance file. Review by an Advocate of the High Court of Kenya is required before it is relied on.'],
-        [('Document', 'KAB-LEG-001, Legal and Compliance Pack'), ('Version', '1.0, 21 October 2026'), ('Owner', 'David Kiragu, Kabuor Builds (proposed Data Protection Officer contact)'),
+        [('Document', 'KAB-LEG-001, Legal and Compliance Pack'), ('Version', '1.0, 21 October 2026'), ('Owner', 'Rooney Odhiambo Kabuor, Founder and Holder, Kabuor Builds (proposed Data Protection Officer contact)'),
          ('System', 'Kabuor ERP (repository kabuor-erp, main branch, with the data-rights release of 21 October 2026)'),
          ('Laws covered', 'Data Protection Act, 2019 and its 2021 Regulations; Tax Procedures Act, 2015; VAT Act, 2013 and eTIMS rules; Income Tax Act; Employment Act, 2007; Computer Misuse and Cybercrimes Act, 2018; Consumer Protection Act, 2012; Kenya Information and Communications Act; National Payment System Act, 2011; Copyright Act, 2001'),
          ('Review cycle', 'Every 12 months, after any change of hosting or sub-processor, and after any incident'),

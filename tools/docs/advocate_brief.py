@@ -13,9 +13,9 @@ clause = ParagraphStyle('clause', parent=body, leftIndent=34, firstLineIndent=-3
 
 b.cover('Privileged and confidential · Prepared for legal review', 'Brief for Advocate Review', 'Kabuor ERP: privacy notice, terms of service and data protection compliance under the laws of Kenya',
         ['To: the Advocate of the High Court of Kenya instructed to review Kabuor ERP’s legal documents.',
-         'From: David Kiragu, Kabuor Builds.',
+         'From: Rooney Odhiambo Kabuor, Founder and Holder, Kabuor Builds.',
          'Enclosed with: Legal and Compliance Pack, KAB-LEG-001 (22 pages).'],
-        [('Document', 'KAB-LEG-002, Brief for Advocate Review'), ('Date', '21 October 2026'), ('Client', 'Kabuor Builds (David Kiragu), dkiragunderitu@gmail.com'),
+        [('Document', 'KAB-LEG-002, Brief for Advocate Review'), ('Date', '21 October 2026'), ('Client', 'Rooney Odhiambo Kabuor, Founder and Holder, trading as Kabuor Builds; rooneyodhiambo2004@gmail.com · +254 705 607 954 · linkedin.com/in/rooney-odhiambo'),
          ('Product', 'Kabuor ERP, a cloud business system for Kenyan SMEs'),
          ('Documents for review', 'Annex A: Privacy notice. Annex B: Terms of service. Enclosure: Legal and Compliance Pack (KAB-LEG-001)'),
          ('Response requested', 'A marked-up copy of Annexes A and B, written answers to the questions in section 3, and a fee note')])

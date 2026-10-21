@@ -37,7 +37,7 @@ boxed = ParagraphStyle('boxed', parent=plain, fontSize=10.5, leading=14)
 
 
 class Builder:
-    def __init__(self, path, title, subject, running, author='David Kiragu'):
+    def __init__(self, path, title, subject, running, author='Rooney Odhiambo Kabuor'):
         self.story, self.n1, self.n2, self.tables = [], 0, 0, 0
         self.running = running
         doc = self.doc = BaseDocTemplate(path, pagesize=A4, leftMargin=2.4 * cm, rightMargin=2.4 * cm, topMargin=2.5 * cm, bottomMargin=2.3 * cm,
