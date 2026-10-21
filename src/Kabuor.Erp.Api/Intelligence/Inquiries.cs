@@ -14,7 +14,7 @@ public sealed record ReplyInput(string Text);
 public sealed record AssignInput(Guid? UserId);
 public sealed record CloseInput(bool Won, string? Reason, Guid? InvoiceId);
 
-public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx)
+public sealed class InquiryService(ErpDb db, Numbers numbers, AppCache appCache, RequestContext ctx)
 {
     public static readonly string[] LostReasons = ["Price too high", "Out of stock", "Bought elsewhere", "No reply from customer", "Just comparing / asking", "Delivery or location", "Took too long to answer", "Other"];
 
@@ -79,6 +79,14 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
 
     public async Task<object> List(string? status, bool mine)
     {
+        var cacheKey = $"inquiries:{ctx.CompanyId}:{status ?? "all"}:{mine}";
+        var cached = await appCache.GetStringAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cached))
+        {
+            try { return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(cached); }
+            catch {}
+        }
+
         var baseQuery = db.Inquiries.AsNoTracking();
         if (mine && ctx.UserId is { } uid) baseQuery = baseQuery.Where(i => i.AssignedUserId == uid);
 
@@ -129,11 +137,20 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
             waitingHours = i.Status == InquiryStatus.Open && i.FirstResponseAt is null ? Math.Round((now - i.CreatedAt).TotalHours, 1) : (double?)null,
         });
 
-        return new
+        var result = new
         {
             counts, lostReasons = LostReasons,
             items,
         };
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result);
+            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(20));
+        }
+        catch {}
+
+        return result;
     }
 
     public async Task<Inquiry> Get(Guid id) =>

@@ -43,7 +43,7 @@ public sealed record QuoteVarianceReport(
     List<QuoteVarianceLine> Lines
 );
 
-public sealed class QuoteAuditService(ErpDb db)
+public sealed class QuoteAuditService(ErpDb db, AppCache appCache, RequestContext ctx)
 {
     static string Ksh(long cents) => Money.Ksh(cents);
 
@@ -113,6 +113,14 @@ public sealed class QuoteAuditService(ErpDb db)
 
     public async Task<object> AllVariances(int days = 90)
     {
+        var cacheKey = $"variances:{ctx.CompanyId}:{days}";
+        var cached = await appCache.GetStringAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cached))
+        {
+            try { return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(cached); }
+            catch {}
+        }
+
         var since = Clock.Today.AddDays(-days);
         var invoices = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer)
             .Where(d => d.Kind == SalesDocKind.Invoice && d.FromQuoteId != null && d.IssueDate >= since)
@@ -164,7 +172,7 @@ public sealed class QuoteAuditService(ErpDb db)
         var totalInvoiced = reports.Sum(r => r.InvoicedTotal);
         var netVariance = totalInvoiced - totalQuoted;
 
-        return new
+        var result = new
         {
             days,
             count = reports.Count,
@@ -185,6 +193,15 @@ public sealed class QuoteAuditService(ErpDb db)
                 lineCount = r.Lines.Count
             })
         };
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result);
+            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(60));
+        }
+        catch {}
+
+        return result;
     }
 
     private static QuoteVarianceReport BuildReportSync(SalesDoc quote, SalesDoc invoice, Dictionary<Guid, Item> items, Inquiry? inq, TrackingLink? link)
