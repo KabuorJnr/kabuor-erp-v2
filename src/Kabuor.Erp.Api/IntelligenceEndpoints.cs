@@ -37,11 +37,14 @@ public static class IntelligenceEndpoints
         insights.MapGet("/inquiries", (InsightsService s, DateOnly? from, DateOnly? to) => s.Inquiries(From(from), To(to)));
         insights.MapGet("/channels", (InsightsService s, DateOnly? from, DateOnly? to) => s.Channels(From(from), To(to)));
         insights.MapGet("/accuracy", (InsightsService s, int? days) => s.StockAccuracy(Math.Clamp(days ?? 90, 7, 730)));
+        insights.MapGet("/quote-variance", (QuoteAuditService s, int? days) => s.AllVariances(days ?? 90));
         // Profiles and journeys are for anyone who looks after customers.
         staff.MapGet("/insights/customer/{id:guid}", (Guid id, InsightsService s) => s.Customer(id)).RequireAuthorization(Policies.SalesView);
         staff.MapGet("/insights/journey/{id:guid}", (Guid id, InsightsService s) => s.Journey(id)).RequireAuthorization(Policies.SalesView);
         // The leaderboard is for the whole team to see.
         staff.MapGet("/insights/salespeople", (InsightsService s, int? year) => s.Salespeople(year ?? Clock.Today.Year));
+        staff.MapGet("/sales/{id:guid}/variance", async (Guid id, QuoteAuditService audit) =>
+            await audit.AuditDoc(id) is { } res ? Results.Ok(res) : Results.NotFound(new { error = "No variance report found for this document." })).RequireAuthorization(Policies.SalesView);
 
         // ---------- tracking links ----------
         var links = staff.MapGroup("/links").RequireAuthorization(Policies.Crm);
@@ -59,10 +62,13 @@ public static class IntelligenceEndpoints
             return new
             {
                 i.Id, i.Number, i.Name, i.Phone, i.Email, i.Subject, channel = i.Channel.ToString(), status = i.Status.ToString(), i.AssignedUserId, i.AssignedName, i.CustomerId, i.LeadId,
+                i.BroughtByName, broughtBy = !string.IsNullOrWhiteSpace(i.BroughtByName) ? i.BroughtByName : (!string.IsNullOrWhiteSpace(i.AssignedName) ? i.AssignedName : "Website / Direct"),
                 i.QuoteId, i.InvoiceId, i.LostReason, i.CreatedAt, i.FirstResponseAt, i.ClosedAt, item, lostReasons = InquiryService.LostReasons,
                 messages = i.Messages.OrderBy(m => m.At).Select(m => new { m.From, m.Author, m.Text, m.At }),
             };
         });
+        inbox.MapGet("/{id:guid}/variance", async (Guid id, QuoteAuditService audit) =>
+            await audit.AuditInquiry(id) is { } res ? Results.Ok(res) : Results.NotFound(new { error = "No quote/invoice variance found for this inquiry." }));
         inbox.MapPost("", (InquiryInput input, InquiryService s) => s.Create(input)).RequireAuthorization(Policies.Sell);
         inbox.MapPost("/{id:guid}/reply", async (Guid id, ReplyInput input, InquiryService s) => { var i = await s.Reply(id, input); return new { i.Id, status = i.Status.ToString() }; }).RequireAuthorization(Policies.Sell);
         inbox.MapPost("/{id:guid}/assign", async (Guid id, AssignInput input, InquiryService s) => { var i = await s.Assign(id, input); return new { i.Id, i.AssignedName }; }).RequireAuthorization(Policies.Sell);
@@ -76,6 +82,12 @@ public static class IntelligenceEndpoints
             i.CustomerId = customerId;
             var line = i.ItemId is { } item ? new LineInput(item, null, 1, null, null) : new LineInput(null, i.Subject, 1, 0, null);
             var quote = await sales.Create(new SalesDocInput(SalesDocKind.Quote, customerId, null, 14, $"For inquiry {i.Number}", [line]));
+            quote.InquiryId = i.Id;
+            quote.LinkId = i.LinkId;
+            quote.Channel = i.Channel;
+            quote.SalespersonUserId = i.AssignedUserId;
+            quote.SalespersonName = !string.IsNullOrWhiteSpace(i.AssignedName) ? i.AssignedName : i.BroughtByName;
+            await db.SaveChangesAsync();
             await s.LinkQuote(i.Id, quote.Id);
             return new { quoteId = quote.Id };
         }).RequireAuthorization(Policies.Sell);
@@ -139,7 +151,11 @@ public static class IntelligenceEndpoints
 
         shop.MapGet("", (HttpContext h, PortalService s) => s.Shop(h.Items["customer"] as Guid?));
         shop.MapPost("/inquiries", async (InquiryInput input, PortalService s, InquiryService inquiries, HttpContext h) =>
-            h.Items["customer"] is Guid cid ? await s.Ask(cid, input) : new { (await inquiries.Create(input with { CustomerId = null }, "customer")).Id });
+        {
+            var refCode = !string.IsNullOrWhiteSpace(input.Ref) ? input.Ref : h.Request.Cookies["kref"];
+            var enriched = input with { Ref = refCode };
+            return h.Items["customer"] is Guid cid ? await s.Ask(cid, enriched) : new { (await inquiries.Create(enriched with { CustomerId = null }, "customer")).Id };
+        });
         shop.MapPost("/auth/code", (PortalCodeInput input, PortalService s) => s.SendCode(input));
         shop.MapPost("/auth/verify", (VerifyInput input, PortalService s) => s.Verify(input));
         shop.MapGet("/me", (HttpContext h, PortalService s) => s.Account(Customer(h)));

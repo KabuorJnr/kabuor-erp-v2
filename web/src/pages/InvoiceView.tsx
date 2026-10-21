@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Ban, Smartphone, FileCheck2, Loader2, MessageCircle, Pencil, Printer, RefreshCw, Send, Wallet } from 'lucide-react';
+import { ArrowLeft, Ban, Smartphone, FileCheck2, Loader2, MessageCircle, Pencil, Printer, RefreshCw, Send, Wallet, Sparkles } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { dateTime, dayYear, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
+import { cn, dateTime, dayYear, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
 import { DocStatus } from './Invoices';
 import { RequestPayment } from '../components/MpesaPrompt';
 import { ErrorNote, Field, Loading, Sheet, Status } from '../components/ui';
@@ -95,6 +95,116 @@ function RecordPayment({ doc, open, onClose, onDone }: { doc: any; open: boolean
         </button>
       </form>
     </Sheet>
+  );
+}
+
+
+function QuoteAuditCard({ invoiceId }: { invoiceId: string }) {
+  const { data: variance, loading } = useApi<any>(`/sales/${invoiceId}/variance`);
+  if (loading || !variance) return null;
+
+  const isIdentical = variance.status === 'Identical';
+  const isDiscount = variance.varianceAmount < 0;
+
+  return (
+    <section className="mb-6 rounded-xl border border-line bg-gradient-to-br from-white to-paper p-5 shadow-sm print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-ink">Quote vs Invoice Audit</h3>
+            <p className="text-xs text-muted">
+              Quoted in <Link className="font-medium text-brand hover:underline" to={`/sales/${variance.quoteId}`}>{variance.quoteNumber}</Link> · Converted to invoice {variance.invoiceNumber}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted">Brought in by:</span>
+          <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand">
+            {variance.broughtBy}
+          </span>
+          <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold',
+            isIdentical ? 'bg-good-soft text-good' : isDiscount ? 'bg-warn-soft text-warn' : 'bg-indigo-soft text-indigo'
+          )}>
+            {isIdentical ? 'Identical (0.0%)' : `${variance.varianceAmount > 0 ? '+' : ''}${ksh(variance.varianceAmount)} (${variance.variancePercent > 0 ? '+' : ''}${variance.variancePercent}%)`}
+          </span>
+        </div>
+      </div>
+
+      {/* AI Agent Verdict & Explanation */}
+      <div className="mt-3.5 rounded-lg bg-paper/80 p-3.5 text-sm">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[10px] font-bold text-white">AI</span>
+          <div className="space-y-1.5 text-ink-2">
+            <p className="font-medium text-ink">{variance.agentSummary}</p>
+            {variance.agentReasons?.length > 0 && (
+              <ul className="list-inside list-disc space-y-1 text-xs text-muted">
+                {variance.agentReasons.map((r: string, idx: number) => (
+                  <li key={idx}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Line-by-line diff table if there are changes */}
+      {variance.lines?.some((l: any) => l.changeKind !== 'Unchanged') && (
+        <div className="mt-4 overflow-x-auto">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Line Variance Audit</p>
+          <table className="w-full min-w-[32rem] text-xs">
+            <thead className="border-b border-line text-left text-muted">
+              <tr>
+                <th className="py-1.5">Item / Brand</th>
+                <th className="py-1.5 text-right">Quoted</th>
+                <th className="py-1.5 text-right">Invoiced</th>
+                <th className="py-1.5 text-right">Diff</th>
+                <th className="py-1.5 pl-4">Reason / Audit Finding</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/60">
+              {variance.lines.map((l: any, i: number) => {
+                const diff = l.invoicedTotal - l.quotedTotal;
+                return (
+                  <tr key={i} className={l.changeKind === 'Unchanged' ? 'opacity-60' : ''}>
+                    <td className="py-2 pr-2">
+                      <b className="text-ink">{l.description}</b>
+                      {l.brand && <span className="ml-1 text-[11px] text-muted">({l.brand})</span>}
+                    </td>
+                    <td className="num py-2 text-right text-muted">
+                      {l.quotedQty} × {ksh(l.quotedUnitPrice)}
+                      <span className="block font-semibold text-ink">{ksh(l.quotedTotal)}</span>
+                    </td>
+                    <td className="num py-2 text-right">
+                      {l.invoicedQty} × {ksh(l.invoicedUnitPrice)}
+                      <span className="block font-semibold text-ink">{ksh(l.invoicedTotal)}</span>
+                    </td>
+                    <td className={cn('num py-2 text-right font-bold', diff < 0 ? 'text-warn' : diff > 0 ? 'text-indigo' : 'text-good')}>
+                      {diff === 0 ? '0' : `${diff > 0 ? '+' : ''}${ksh(diff)}`}
+                    </td>
+                    <td className="py-2 pl-4 text-muted">
+                      <span className={cn('inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold mr-1.5',
+                        l.changeKind === 'Discounted' ? 'bg-warn-soft text-warn' :
+                        l.changeKind === 'PriceIncreased' ? 'bg-indigo-soft text-indigo' :
+                        l.changeKind === 'QtyReduced' ? 'bg-warn-soft text-warn' :
+                        l.changeKind === 'QtyIncreased' ? 'bg-good-soft text-good' :
+                        l.changeKind === 'ItemAdded' ? 'bg-brand-soft text-brand' :
+                        l.changeKind === 'ItemDropped' ? 'bg-bad-soft text-bad' : 'bg-paper text-muted'
+                      )}>
+                        {l.changeKind}
+                      </span>
+                      {l.reason}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -205,6 +315,8 @@ export default function InvoiceView() {
           </button>
         </div>
       )}
+
+      {invoice && <QuoteAuditCard invoiceId={d.id} />}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_18rem]">
         {/* The document as the customer sees it (and as it prints). */}

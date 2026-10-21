@@ -190,6 +190,11 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         var inv = await Create(new SalesDocInput(SalesDocKind.Invoice, q.CustomerId, Clock.Today, null, q.Notes,
             q.Lines.Select(l => new LineInput(l.ItemId, l.Description, l.Quantity, l.UnitPrice, l.TaxType, l.Unit)).ToList()));
         inv.FromQuoteId = q.Id;
+        inv.InquiryId = q.InquiryId;
+        inv.LinkId = q.LinkId;
+        inv.Channel = q.Channel;
+        inv.SalespersonUserId = q.SalespersonUserId;
+        inv.SalespersonName = q.SalespersonName;
         q.Status = SalesDocStatus.Accepted;
         await db.SaveChangesAsync();
         return inv;

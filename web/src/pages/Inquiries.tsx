@@ -4,9 +4,9 @@
 // why people ask but don't buy).
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { Clock, FileText, Loader2, MessageCircle, Plus, Send } from 'lucide-react';
+import { Clock, FileText, Loader2, MessageCircle, Plus, Send, Sparkles } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { cn, dateTime, msisdn, prettyPhone } from '../lib/format';
+import { cn, dateTime, ksh, msisdn, prettyPhone } from '../lib/format';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, Sheet, Status } from '../components/ui';
 
 const CHANNELS = ['WhatsApp', 'Call', 'WalkIn', 'Facebook', 'Instagram', 'TikTok', 'LinkedIn', 'X', 'Email', 'Sms', 'Website', 'Referral', 'Event', 'Other'];
@@ -38,7 +38,7 @@ export default function Inquiries() {
             <li key={i.id}>
               <button className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-paper" onClick={() => setOpen(i.id)}>
                 <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2"><b className="truncate">{i.name}</b><span className="text-xs text-muted">{i.number} · {label(i.channel)}</span></span>
+                  <span className="flex flex-wrap items-center gap-2"><b className="truncate">{i.name}</b><span className="text-xs text-muted">{i.number} · {label(i.channel)}</span>{i.broughtBy && <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">via {i.broughtBy}</span>}</span>
                   <span className="block truncate text-sm text-muted">{i.subject}</span>
                 </span>
                 <span className="shrink-0 text-right text-xs">
@@ -53,6 +53,42 @@ export default function Inquiries() {
       )}
       {open && <Thread id={open} onClose={() => (setOpen(null), reload())} />}
       <NewInquiry open={adding} onClose={() => setAdding(false)} onDone={(id) => (setAdding(false), reload(), setOpen(id))} />
+    </div>
+  );
+}
+
+
+function InquiryQuoteVarianceCard({ inquiryId }: { inquiryId: string }) {
+  const { data: v } = useApi<any>(`/inquiries/${inquiryId}/variance`);
+  if (!v) return null;
+
+  const isIdentical = v.status === 'Identical';
+  const isDiscount = v.varianceAmount < 0;
+
+  return (
+    <div className="rounded-lg border border-line bg-gradient-to-br from-paper to-white p-3.5 text-xs shadow-sm space-y-2">
+      <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
+        <span className="font-semibold text-ink flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-brand" /> Quote vs Invoice Audit
+        </span>
+        <span className={cn('rounded-full px-2 py-0.5 font-bold text-[11px]',
+          isIdentical ? 'bg-good-soft text-good' : isDiscount ? 'bg-warn-soft text-warn' : 'bg-indigo-soft text-indigo'
+        )}>
+          {isIdentical ? 'Exact match' : `${v.varianceAmount > 0 ? '+' : ''}${ksh(v.varianceAmount)} (${v.variancePercent > 0 ? '+' : ''}${v.variancePercent}%)`}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-muted">
+        <div>Quoted: <b className="text-ink">{ksh(v.quotedTotal)}</b> ({v.quoteNumber})</div>
+        <div>Invoiced: <b className="text-ink">{ksh(v.invoicedTotal)}</b> ({v.invoiceNumber})</div>
+      </div>
+      <div className="rounded bg-paper p-2 text-ink">
+        <p className="font-medium text-[11px]"><b className="text-brand">Agent Explanation:</b> {v.agentSummary}</p>
+        {v.agentReasons?.length > 0 && (
+          <ul className="mt-1 list-inside list-disc text-[10px] text-muted space-y-0.5">
+            {v.agentReasons.map((r: string, idx: number) => <li key={idx}>{r}</li>)}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -82,8 +118,9 @@ function Thread({ id, onClose }: { id: string; onClose: () => void }) {
       {error ? <ErrorNote>{error}</ErrorNote> : !data ? <Loading /> : (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            {label(data.channel)}{data.phone && <> · {prettyPhone(data.phone)}</>}{data.item && <> · asked about <b className="text-ink">{data.item}</b></>} · {data.assignedName ? `with ${data.assignedName}` : 'nobody yet'}
+            {label(data.channel)}{data.phone && <> · {prettyPhone(data.phone)}</>}{data.item && <> · asked about <b className="text-ink">{data.item}</b></>} · {data.assignedName ? `with ${data.assignedName}` : 'nobody yet'}{data.broughtBy && <> · <span className="font-semibold text-brand">Brought by: {data.broughtBy}</span></>}
           </p>
+          <InquiryQuoteVarianceCard inquiryId={id} />
           <ol className="space-y-2">
             {data.messages.map((m: any, i: number) => (
               <li key={i} className={cn('max-w-[85%] rounded-lg px-3 py-2 text-sm', m.from === 'customer' ? 'bg-paper' : 'ml-auto bg-brand-soft')}>
@@ -127,13 +164,13 @@ function Thread({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 function NewInquiry({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (id: string) => void }) {
-  const [f, setF] = useState({ name: '', phone: '', message: '', channel: 'WhatsApp' });
+  const [f, setF] = useState({ name: '', phone: '', message: '', channel: 'WhatsApp', broughtBy: '' });
   const [state, setState] = useState({ busy: false, error: '' });
   const save = async () => {
     setState({ busy: true, error: '' });
     try {
       const r = await api<any>('/inquiries', { body: f });
-      setF({ name: '', phone: '', message: '', channel: 'WhatsApp' });
+      setF({ name: '', phone: '', message: '', channel: 'WhatsApp', broughtBy: '' });
       setState({ busy: false, error: '' });
       onDone(r.id);
     } catch (e) {
@@ -152,6 +189,7 @@ function NewInquiry({ open, onClose, onDone }: { open: boolean; onClose: () => v
         </div>
         <Field label="Name"><input className="field" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Phone"><input className="field" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="0712 345 678" /></Field>
+        <Field label="Who brought them in?" hint="Salesperson name, tracking link, campaign, or referral"><input className="field" value={f.broughtBy} onChange={(e) => setF({ ...f, broughtBy: e.target.value })} placeholder="e.g. Kelvin, John Safari, Facebook Campaign" /></Field>
         <Field label="What they asked"><textarea className="field min-h-20" value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} /></Field>
         {state.error && <ErrorNote>{state.error}</ErrorNote>}
         <button className="btn btn-primary w-full py-3" disabled={state.busy || f.message.trim().length < 2} onClick={save}>{state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Save</button>

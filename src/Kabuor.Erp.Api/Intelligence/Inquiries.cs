@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Intelligence;
 
-public sealed record InquiryInput(string? Name, string? Phone, string? Email, string Message, Guid? ItemId, Guid? CustomerId, Channel? Channel, string? Ref);
+public sealed record InquiryInput(string? Name, string? Phone, string? Email, string Message, Guid? ItemId, Guid? CustomerId, Channel? Channel, string? Ref, string? BroughtBy = null);
 public sealed record ReplyInput(string Text);
 public sealed record AssignInput(Guid? UserId);
 public sealed record CloseInput(bool Won, string? Reason, Guid? InvoiceId);
@@ -44,10 +44,15 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
             : phone.Length > 0 ? await db.Customers.FirstOrDefaultAsync(c => c.Phone == phone) : null;
         var item = input.ItemId is { } iid ? await db.Items.SingleOrDefaultAsync(i => i.Id == iid) : null;
         var name = (input.Name ?? "").Trim();
+        var broughtBy = !string.IsNullOrWhiteSpace(input.BroughtBy)
+            ? input.BroughtBy.Trim()
+            : (link != null ? (!string.IsNullOrWhiteSpace(link.OwnerName) ? $"{link.OwnerName} (via {link.Name})" : link.Name)
+            : (from == "customer" ? "Website visitor" : (ctx.Actor.Length > 0 ? ctx.Actor : "Direct")));
         var inq = new Inquiry
         {
             Number = await numbers.Next("ENQ"), CustomerId = customer?.Id, Name = customer?.Name ?? (name.Length > 0 ? name : "Visitor"), Phone = phone.Length > 0 ? phone : customer?.Phone ?? "",
             Email = (input.Email ?? "").Trim(), Subject = message.Length > 90 ? message[..90] + "…" : message, ItemId = item?.Id, Channel = channel, LinkId = link?.Id,
+            BroughtByName = broughtBy,
             AssignedUserId = link?.OwnerUserId, AssignedName = link?.OwnerName ?? "",
         };
         inq.Messages.Add(new InquiryMessage { From = from, Author = from == "customer" ? inq.Name : ctx.Actor, Text = message });
@@ -60,7 +65,7 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
                 lead = new Lead
                 {
                     Number = await numbers.Next("L"), Name = inq.Name, Phone = phone, Email = inq.Email, Source = SourceOf(channel), Interest = item?.Name ?? inq.Subject,
-                    OwnerUserId = link?.OwnerUserId, OwnerName = link?.OwnerName ?? "", LinkId = link?.Id, Channel = channel, InquiryId = inq.Id,
+                    OwnerUserId = link?.OwnerUserId, OwnerName = link?.OwnerName ?? broughtBy, LinkId = link?.Id, Channel = channel, InquiryId = inq.Id,
                 };
                 db.Leads.Add(lead);
             }
@@ -96,6 +101,7 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
             items = shown.OrderBy(i => i.Status == InquiryStatus.Open ? 0 : 1).ThenBy(i => i.CreatedAt).Take(200).Select(i => new
             {
                 i.Id, i.Number, i.Name, i.Phone, i.Subject, channel = i.Channel.ToString(), status = i.Status.ToString(), i.AssignedUserId, i.AssignedName, i.CustomerId, i.LeadId,
+                i.BroughtByName, broughtBy = !string.IsNullOrWhiteSpace(i.BroughtByName) ? i.BroughtByName : (!string.IsNullOrWhiteSpace(i.AssignedName) ? i.AssignedName : "Website / Direct"),
                 i.QuoteId, i.InvoiceId, i.CreatedAt, i.FirstResponseAt, i.LostReason,
                 waitingHours = i.Status == InquiryStatus.Open && i.FirstResponseAt is null ? Math.Round((now - i.CreatedAt).TotalHours, 1) : (double?)null,
             }),
@@ -179,5 +185,6 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
         invoice.InquiryId ??= open.Id;
         invoice.LinkId ??= open.LinkId;
         invoice.Channel ??= open.Channel;
+        invoice.FromQuoteId ??= open.QuoteId;
     }
 }

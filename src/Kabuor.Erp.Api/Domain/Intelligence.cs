@@ -82,6 +82,8 @@ public sealed class Inquiry : ICompanyOwned
     public InquiryStatus Status { get; set; } = InquiryStatus.Open;
     public Guid? AssignedUserId { get; set; }
     public string AssignedName { get; set; } = "";
+    /// <summary>Who or what brought this inquiry in (salesperson name, link, campaign, or channel).</summary>
+    public string BroughtByName { get; set; } = "";
     public DateTimeOffset? FirstResponseAt { get; set; }
     public string LostReason { get; set; } = "";
     public Guid? QuoteId { get; set; }

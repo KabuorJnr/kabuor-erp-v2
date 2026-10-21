@@ -39,7 +39,7 @@ public static class AgentKick
 }
 
 public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentService payments, PurchaseService purchases, SalesService sales, EtimsService etims,
-    Assistant.AssistantService assistant, ISmsSender sms, IHttpClientFactory http, IConfiguration config, ILogger<AgentService> log)
+    Assistant.AssistantService assistant, ISmsSender sms, IHttpClientFactory http, IConfiguration config, ILogger<AgentService> log, Intelligence.QuoteAuditService quoteAudit)
 {
     public static readonly AgentInfo[] All =
     [
@@ -81,6 +81,14 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
             ["Sending the quote to the customer"],
             TimeSpan.FromDays(3650), "When you paste in a customer's order",
             Trigger: "When you hand it a customer's message"),
+        new("audit", "Sales audit agent",
+            "Audits quotes versus final invoices, detects pricing and quantity differences, tracks customer attribution, and explains why differences occurred so management gets full transparency.",
+            Policies.Sell,
+            ["Audits every invoice converted from a quote line-by-line", "Analyzes unit price changes, discounts, quantity shifts, and item alterations", "Identifies who brought the customer in and provides plain explanations of sales variance"],
+            ["Flagging unauthorized or substantial price differences (>10%) for owner review"],
+            TimeSpan.FromHours(1), "Every hour",
+            WhenSure: "Automatically records and audits standard variances (under 2% or rounding adjustments) as normal operations.",
+            Trigger: "When an invoice is issued or converted from a quote"),
     ];
 
     public static AgentInfo Info(string key) => All.FirstOrDefault(a => a.Key == key) ?? throw new AppException("No such agent.", 404);
@@ -97,6 +105,64 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
         "send_order" => Policies.Buy,
         _ => agentPolicy,
     };
+
+    async Task<string> Audit(AgentInfo a, JsonObject settings)
+    {
+        var since = Clock.Today.AddDays(-30);
+        var invoices = await db.SalesDocs.Where(d => d.Kind == SalesDocKind.Invoice && d.FromQuoteId != null && d.IssueDate >= since)
+            .OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.CreatedAt)
+            .Take(50)
+            .ToListAsync();
+
+        if (invoices.Count == 0) return "No quote-to-invoice conversions found in the last 30 days to audit.";
+
+        var existingTasks = await db.AgentTasks
+            .Where(t => t.AgentKey == a.Key && t.SubjectKind == "invoice")
+            .Select(t => t.SubjectId)
+            .ToListAsync();
+        var existingSet = existingTasks.Where(x => x.HasValue).Select(x => x!.Value).ToHashSet();
+
+        int auditedCount = 0;
+        int flaggedCount = 0;
+
+        foreach (var inv in invoices)
+        {
+            if (existingSet.Contains(inv.Id)) continue;
+
+            var report = await quoteAudit.AuditDoc(inv.Id);
+            if (report is null) continue;
+
+            auditedCount++;
+
+            var t = NewTask(a, $"Audit: {report.InvoiceNumber} vs Quote {report.QuoteNumber} ({report.Status})",
+                $"Customer: {report.CustomerName}",
+                $"Attribution: {report.BroughtBy}",
+                $"Quoted {K(report.QuotedTotal)} -> Invoiced {K(report.InvoicedTotal)} (Diff: {(report.VarianceAmount >= 0 ? "+" : "")}{K(report.VarianceAmount)}, {report.VariancePercent:F1}%)");
+
+            (t.SubjectKind, t.SubjectId, t.Link, t.Detail) = ("invoice", inv.Id, $"/invoices/{inv.Id}", report.AgentSummary);
+
+            foreach (var reason in report.AgentReasons)
+            {
+                t.Steps.Add(new AgentStep { Who = a.Name, Text = reason });
+            }
+
+            if (Math.Abs(report.VarianceAmount) <= 20000 || Math.Abs(report.VariancePercent) <= 2.0)
+            {
+                DidItself(a, t, report.Status == "Identical" ? "Audited: Invoiced exactly as quoted." : "Audited: Variance within normal operational limits.",
+                    "The variance is within allowable operational thresholds (<2% or <KSh 200).");
+            }
+            else
+            {
+                flaggedCount++;
+                t.Action = "review_variance";
+                t.Steps.Add(new AgentStep { Who = a.Name, Text = $"FLAGGED FOR ADMIN: Variance exceeds tolerance ({report.VariancePercent:F1}%). Review why line prices or quantities were modified." });
+            }
+        }
+
+        return auditedCount == 0 
+            ? "All recent quote-to-invoice conversions are already audited." 
+            : $"Audited {auditedCount} sales. Flagged {flaggedCount} with notable price/qty variances for admin review.";
+    }
 
     static readonly JsonObject CollectionsDefaults = new() { ["remindEveryDays"] = 7, ["minDaysLate"] = 1, ["language"] = "en" };
 
@@ -229,6 +295,7 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
                 "restock" => await Restock(a, settings),
                 "payables" => await Payables(a, settings),
                 "orders" => "I work when someone hands me a customer's order.",
+                "audit" => await Audit(a, settings),
                 _ when s.Key.StartsWith("custom:") => await RunCustom(a, s),
                 _ => "",
             };

@@ -9,10 +9,10 @@ import { useApi } from '../lib/api';
 import { cn, day, ksh } from '../lib/format';
 import { Chips, Empty, ErrorNote, Loading, PageHeader, Status } from '../components/ui';
 
-type Tab = 'overview' | 'selling' | 'shelf' | 'buy' | 'customers' | 'inquiries' | 'channels' | 'team' | 'accuracy';
+type Tab = 'overview' | 'selling' | 'shelf' | 'buy' | 'customers' | 'inquiries' | 'quotes' | 'channels' | 'team' | 'accuracy';
 const TABS: [Tab, string][] = [
   ['overview', 'Questions'], ['selling', 'What sells'], ['shelf', 'What sits'], ['buy', 'What to buy'], ['customers', 'Who buys'],
-  ['inquiries', 'Why no sale'], ['channels', 'Channels'], ['team', 'Salespeople'], ['accuracy', 'Stock accuracy'],
+  ['inquiries', 'Why no sale'], ['quotes', 'Quote vs Invoice'], ['channels', 'Channels'], ['team', 'Salespeople'], ['accuracy', 'Stock accuracy'],
 ];
 
 /** A proportion bar: the value against the largest in the list, so rows can be compared at a glance. */
@@ -54,7 +54,7 @@ export default function Intelligence() {
       <PageHeader title="Kabuor Intelligence" subtitle="Answers from your own sales, stock, customers and links. Ask Msaidizi for anything else." />
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <Chips label="Show" value={tab} onChange={go} options={TABS} />
-        {['selling', 'inquiries', 'channels'].includes(tab) && (
+        {['selling', 'inquiries', 'channels', 'quotes'].includes(tab) && (
           <Chips label="Period" value={days} onChange={setDays} options={[['30', '30 days'], ['90', '90 days'], ['365', 'Year']]} />
         )}
       </div>
@@ -64,6 +64,7 @@ export default function Intelligence() {
       {tab === 'buy' && <Buy />}
       {tab === 'customers' && <Customers />}
       {tab === 'inquiries' && <Inquiries range={range} />}
+      {tab === 'quotes' && <QuoteVariance days={days} />}
       {tab === 'channels' && <Channels range={range} />}
       {tab === 'team' && <Team />}
       {tab === 'accuracy' && <Accuracy />}
@@ -109,6 +110,8 @@ function Overview({ go }: { go: (t: Tab) => void }) {
         answer={d.salespersonOfTheYear ? d.salespersonOfTheYear.name : 'No sales yet'} detail={d.salespersonOfTheYear && `${kes(d.salespersonOfTheYear.sold)} sold · ${kes(d.salespersonOfTheYear.brought)} from customers they brought`} />
       <Question icon={ScanLine} q="Does stock match the shelf?" onOpen={() => go('accuracy')} tone={d.stockAccuracy != null && d.stockAccuracy < 95 ? 'warn' : d.stockAccuracy != null ? 'good' : undefined}
         answer={d.stockAccuracy == null ? 'Not counted yet' : `${d.stockAccuracy}% of counts exact`} detail={d.stockAccuracy == null ? 'Count your stock to measure it.' : 'Last 90 days of counts'} />
+      <Question icon={Sparkles} q="Why quotes differ from invoices?" onOpen={() => go('quotes')}
+        answer="Quote vs Invoice Audit" detail="Compare quoted vs actual invoices, attribution (who brought them), and AI explanations." />
     </div>
   );
 }
@@ -292,4 +295,113 @@ function Accuracy() {
 
 export function IntelligenceHint() {
   return <span className="inline-flex items-center gap-1 text-xs text-indigo"><Sparkles className="h-3.5 w-3.5" /> Kabuor Intelligence</span>;
+}
+
+function QuoteVariance({ days }: { days: string }) {
+  const { data, error, loading } = useApi<any>(`/insights/quote-variance?days=${days}`);
+  if (loading) return <Loading />;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data || data.reports.length === 0) {
+    return <Empty title="No quote-to-invoice conversions">No invoices were converted from quotes in the selected {days} days.</Empty>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Top metrics */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-muted uppercase">Total Quoted</p>
+          <p className="mt-1 text-xl font-bold">{ksh(data.totalQuoted)}</p>
+          <p className="mt-0.5 text-xs text-muted">{data.count} quotes converted</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-muted uppercase">Total Invoiced</p>
+          <p className="mt-1 text-xl font-bold">{ksh(data.totalInvoiced)}</p>
+          <p className="mt-0.5 text-xs text-muted">What actually left the business</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-muted uppercase">Net Variance</p>
+          <p className={cn('mt-1 text-xl font-bold', data.netVariance < 0 ? 'text-warn' : data.netVariance > 0 ? 'text-indigo' : 'text-good')}>
+            {data.netVariance === 0 ? '0' : `${data.netVariance > 0 ? '+' : ''}${ksh(data.netVariance)}`}
+          </p>
+          <p className="mt-0.5 text-xs text-muted">{data.discountedCount} discounted · {data.identicalCount} exact</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-muted uppercase">Audit Coverage</p>
+          <p className="mt-1 text-xl font-bold text-good">100%</p>
+          <p className="mt-0.5 text-xs text-muted">AI Agent audits every difference</p>
+        </div>
+      </div>
+
+      {/* Reports Table with Agent Explanations */}
+      <div className="card divide-y divide-line">
+        <div className="p-4 bg-paper/50 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-ink">Converted Sales & AI Audit Log</h3>
+            <p className="text-xs text-muted">Every quote compared line-by-line with its issued invoice to show management what actually happens.</p>
+          </div>
+          <span className="rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
+            {data.reports.length} audits
+          </span>
+        </div>
+
+        {data.reports.map((r: any) => {
+          const isIdentical = r.status === 'Identical';
+          const isDiscount = r.varianceAmount < 0;
+
+          return (
+            <div key={r.invoiceId} className="p-5 hover:bg-paper/30 transition">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-ink">{r.customerName}</span>
+                    <span className="text-xs text-muted">· {r.invoiceNumber} (from {r.quoteNumber})</span>
+                    <span className="rounded bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand">
+                      Brought by: {r.broughtBy}
+                    </span>
+                    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold',
+                      isIdentical ? 'bg-good-soft text-good' : isDiscount ? 'bg-warn-soft text-warn' : 'bg-indigo-soft text-indigo'
+                    )}>
+                      {isIdentical ? 'Exact match' : `${r.varianceAmount > 0 ? '+' : ''}${ksh(r.varianceAmount)} (${r.variancePercent > 0 ? '+' : ''}${r.variancePercent}%)`}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    Quoted by {r.quotedBy} ({day(r.quoteDate)}) · Invoiced by {r.invoicedBy} ({day(r.invoiceDate)})
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted">Quoted: <b className="text-ink">{ksh(r.quotedTotal)}</b></span>
+                    <span className="text-muted">→</span>
+                    <span>Invoiced: <b className="text-ink">{ksh(r.invoicedTotal)}</b></span>
+                  </div>
+                  <Link className="mt-1 inline-block text-xs font-semibold text-brand hover:underline" to={`/invoices/${r.invoiceId}`}>
+                    Open invoice & full line audit →
+                  </Link>
+                </div>
+              </div>
+
+              {/* AI Agent Reasoning & Explanations */}
+              <div className="mt-3.5 rounded-lg border border-line bg-paper/60 p-3 text-xs">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-ink text-[9px] font-bold text-white">AI</span>
+                  <div className="space-y-1">
+                    <p className="font-medium text-ink">{r.agentSummary}</p>
+                    {r.agentReasons?.length > 0 && (
+                      <ul className="list-inside list-disc text-muted space-y-0.5">
+                        {r.agentReasons.map((reason: string, i: number) => (
+                          <li key={i}>{reason}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
