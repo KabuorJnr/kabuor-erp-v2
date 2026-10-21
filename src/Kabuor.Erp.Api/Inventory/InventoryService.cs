@@ -84,8 +84,15 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
 
     /// <summary>Stock going out (sold): returns its cost at the current average, in cents. Items kept by batch go
     /// first-to-expire first; stock with no batch is used after the batches; expired stock is refused.</summary>
-    public async Task<long> Issue(Item item, Guid locationId, decimal qty, string sourceType, Guid? sourceId, string reference)
+    public async Task<long> Issue(Item item, Guid locationId, decimal qty, string sourceType, Guid? sourceId, string reference, DateOnly? soldOn = null)
     {
+        var day = soldOn ?? Clock.Today;
+        var company = await db.Companies.Where(c => c.Id == db.CompanyId).Select(c => new { c.PreventNegativeStock }).SingleAsync();
+        if (company.PreventNegativeStock && item.TrackStock)
+        {
+            var have = (await Level(item.Id, locationId)).Quantity;
+            if (have < qty) throw new AppException($"Only {Math.Max(have, 0):0.##} {item.Unit} of {item.Name} in stock here; this needs {qty:0.##}. Receive the stock first (or switch off \"Don't sell what isn't in stock\" in Settings).");
+        }
         var cost = (long)Math.Round(qty * item.AverageCost, MidpointRounding.AwayFromZero);
         if (!item.TrackBatches)
         {
@@ -96,7 +103,7 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         var level = await Level(item.Id, locationId);
         var unbatched = Math.Max(0, level.Quantity - batches.Where(b => b.Quantity > 0).Sum(b => b.Quantity));
         var left = qty;
-        foreach (var b in batches.Where(b => b.Quantity > 0 && !(b.Expiry < Clock.Today)).OrderBy(b => b.Expiry ?? DateOnly.MaxValue).ThenBy(b => b.ReceivedOn))
+        foreach (var b in batches.Where(b => b.Quantity > 0 && !(b.Expiry < day)).OrderBy(b => b.Expiry ?? DateOnly.MaxValue).ThenBy(b => b.ReceivedOn))
         {
             var take = Math.Min(left, b.Quantity);
             b.Quantity -= take;
@@ -106,7 +113,7 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         }
         var plain = Math.Min(left, unbatched);
         left -= plain;
-        var expired = batches.Where(b => b.Quantity > 0 && b.Expiry < Clock.Today).OrderBy(b => b.Expiry).FirstOrDefault();
+        var expired = batches.Where(b => b.Quantity > 0 && b.Expiry < day).OrderBy(b => b.Expiry).FirstOrDefault();
         if (left > 0 && expired is not null)
             throw new AppException($"Only expired {item.Name} is left (batch {expired.BatchNo}, expired {expired.Expiry:d MMM yyyy}). Write it off in Stock instead of selling it.");
         await Move(item, locationId, -(plain + left), StockMoveKind.Sold, item.AverageCost, sourceType, sourceId, reference);
@@ -237,20 +244,20 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         {
             var at = levels.Where(l => l.ItemId == i.Id).ToList();
             var total = at.Sum(l => l.Quantity);
-            var state = total <= 0 ? "out" : total <= i.ReorderLevel ? "low" : "ok";
+            var state = total < 0 ? "below" : total == 0 ? "out" : total <= i.ReorderLevel ? "low" : "ok";
             return new
             {
                 i.Id, i.Name, i.Sku, i.Unit, i.ReorderLevel, i.Price,
                 averageCost = (long)Math.Round(i.AverageCost),
-                total, value = (long)Math.Round(Math.Max(0, total) * i.AverageCost),
+                total, value = (long)Math.Round(total * i.AverageCost),
                 state,
                 byLocation = locations.ToDictionary(l => l.Id.ToString(), l => at.FirstOrDefault(x => x.LocationId == l.Id)?.Quantity ?? 0),
             };
         }).ToList();
-        var counts = new { all = rows.Count, low = rows.Count(r => r.state is "low" or "out"), @out = rows.Count(r => r.state == "out") };
-        var shown = rows.Where(r => filter switch { "low" => r.state is "low" or "out", "out" => r.state == "out", _ => true })
+        var counts = new { all = rows.Count, low = rows.Count(r => r.state is "low" or "out" or "below"), @out = rows.Count(r => r.state is "out" or "below"), below = rows.Count(r => r.state == "below") };
+        var shown = rows.Where(r => filter switch { "low" => r.state is "low" or "out" or "below", "out" => r.state is "out" or "below", "below" => r.state == "below", _ => true })
             .Where(r => string.IsNullOrWhiteSpace(q) || r.Name.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase) || r.Sku.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
-            .OrderBy(r => r.state == "out" ? 0 : r.state == "low" ? 1 : 2).ThenBy(r => r.Name).ToList();
+            .OrderBy(r => r.state == "below" ? 0 : r.state == "out" ? 1 : r.state == "low" ? 2 : 3).ThenBy(r => r.Name).ToList();
         return new { counts, locations, totalValue = rows.Sum(r => r.value), items = shown };
     }
 }

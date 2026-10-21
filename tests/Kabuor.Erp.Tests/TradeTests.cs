@@ -61,8 +61,10 @@ public class TradeTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var milk = Id(await Ok(await c.PostAsJsonAsync("/api/items", new { name = "Milk 500ml", unit = "packet", price = 60_00, trackStock = true, trackBatches = true })));
         var supplier = Id(await Ok(await c.PostAsJsonAsync("/api/suppliers", new { name = "Dairy Co-op" })));
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
-        var noBatch = await c.PostAsJsonAsync("/api/purchases", new { kind = "Bill", supplierId = supplier, lines = new[] { new { itemId = milk, quantity = 5, unitCost = 40_00 } } });
-        Assert.Equal(HttpStatusCode.BadRequest, noBatch.StatusCode); // batch number required
+        // An order doesn't know batches yet; a bill can't be posted without them.
+        await Ok(await c.PostAsJsonAsync("/api/purchases", new { kind = "Order", supplierId = supplier, lines = new[] { new { itemId = milk, quantity = 5, unitCost = 40_00 } } }));
+        var noBatch = await Ok(await c.PostAsJsonAsync("/api/purchases", new { kind = "Bill", supplierId = supplier, lines = new[] { new { itemId = milk, quantity = 5, unitCost = 40_00 } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync($"/api/purchases/{Id(noBatch)}/post", null)).StatusCode);
         var bill = await Ok(await c.PostAsJsonAsync("/api/purchases", new
         {
             kind = "Bill", supplierId = supplier, lines = new object[]
@@ -126,5 +128,38 @@ public class TradeTests(ErpFactory factory) : IClassFixture<ErpFactory>
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.PostAsync($"/api/sales/{Id(inv)}/issue?overLimit=true", null)).StatusCode);
 
         await Ok(await c.PostAsync($"/api/sales/{Id(inv)}/issue?overLimit=true", null));
+    }
+    [Fact]
+    public async Task Expiry_is_judged_on_the_sale_date_and_the_owner_can_forbid_selling_below_zero()
+    {
+        var c = await Owner();
+        var juice = Id(await Ok(await c.PostAsJsonAsync("/api/items", new { name = "Juice 1L", unit = "carton", price = 220_00, trackStock = true, trackBatches = true })));
+        var supplier = Id(await Ok(await c.PostAsJsonAsync("/api/suppliers", new { name = "Juice Co" })));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+        var bill = await Ok(await c.PostAsJsonAsync("/api/purchases", new { kind = "Bill", supplierId = supplier, issueDate = today.AddDays(-20), lines = new[] { new { itemId = juice, quantity = 10, unitCost = 150_00, batchNo = "J1", expiry = today.AddDays(-5) } } }));
+        await Ok(await c.PostAsync($"/api/purchases/{Id(bill)}/post", null));
+        var cust = Id(await Ok(await c.PostAsJsonAsync("/api/customers", new { name = "Cafe" })));
+
+        // Sold ten days ago, when the batch was still good: allowed.
+        var past = await Ok(await c.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = cust, issueDate = today.AddDays(-10), lines = new[] { new { itemId = juice, quantity = 4 } } }));
+        await Ok(await c.PostAsync($"/api/sales/{Id(past)}/issue", null));
+        // Today it has expired: refused.
+        var now = await Ok(await c.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = cust, lines = new[] { new { itemId = juice, quantity = 1 } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync($"/api/sales/{Id(now)}/issue", null)).StatusCode);
+
+        // Selling more than is there: allowed by default (and shown as below zero), refused once the owner says so.
+        var soap = Id(await Ok(await c.PostAsJsonAsync("/api/items", new { name = "Soap", price = 100_00, trackStock = true })));
+        await Ok(await c.PostAsJsonAsync("/api/stock/opening", new { itemId = soap, quantity = 2, unitCost = 60_00 }));
+        var over = await Ok(await c.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = cust, lines = new[] { new { itemId = soap, quantity = 3 } } }));
+        await Ok(await c.PostAsync($"/api/sales/{Id(over)}/issue", null));
+        var stock = await Ok(await c.GetAsync("/api/stock"));
+        Assert.Equal(1, stock.GetProperty("counts").GetProperty("below").GetInt32());
+        Assert.Equal(-60_00 + 6 * 150_00, stock.GetProperty("totalValue").GetInt64()); // signed: agrees with the books
+        var company = await Ok(await c.GetAsync("/api/settings/company"));
+        await c.PutAsJsonAsync("/api/settings/company", new { name = company.GetProperty("name").GetString(), vatRegistered = false, preventNegativeStock = true });
+        var refused = await Ok(await c.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = cust, lines = new[] { new { itemId = soap, quantity = 1 } } }));
+        var r = await c.PostAsync($"/api/sales/{Id(refused)}/issue", null);
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Contains("in stock", await r.Content.ReadAsStringAsync());
     }
 }

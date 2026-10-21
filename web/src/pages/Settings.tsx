@@ -26,7 +26,7 @@ function Company() {
   const [state, setState] = useState({ busy: false, error: '', saved: false });
   const [copied, setCopied] = useState(false);
   useEffect(() => {
-    if (data) setF({ name: data.name, kraPin: data.kraPin, phone: data.phone, email: data.email, county: data.county, vatRegistered: data.vatRegistered, mpesaShortcode: data.mpesaShortcode });
+    if (data) setF({ name: data.name, kraPin: data.kraPin, phone: data.phone, email: data.email, county: data.county, vatRegistered: data.vatRegistered, mpesaShortcode: data.mpesaShortcode, preventNegativeStock: data.preventNegativeStock ?? false });
   }, [data]);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!f) return <Loading />;
@@ -65,6 +65,13 @@ function Company() {
         <label className="flex items-center gap-2.5 text-sm">
           <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand)]" checked={f.vatRegistered} onChange={set('vatRegistered')} />
           Registered for VAT (invoices charge VAT and are signed with KRA eTIMS)
+        </label>
+        <label className="flex items-start gap-2.5 text-sm">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]" checked={f.preventNegativeStock} onChange={set('preventNegativeStock')} />
+          <span>
+            Don’t sell what isn’t in stock
+            <span className="block text-xs text-muted">Invoices and the till refuse a sale that would take an item below zero. Leave off if goods often arrive before their supplier bill is entered.</span>
+          </span>
         </label>
         <Field label="M-Pesa Paybill or Till (store number)" hint="Customers pay here; the payments arrive in Kabuor ERP by themselves.">
           <input className="field num" inputMode="numeric" value={f.mpesaShortcode} onChange={set('mpesaShortcode')} placeholder="e.g. 522522" />

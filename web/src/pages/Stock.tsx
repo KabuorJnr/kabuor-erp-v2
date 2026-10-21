@@ -18,7 +18,7 @@ type StockItem = {
   total: number;
   averageCost: number;
   value: number;
-  state: 'ok' | 'low' | 'out';
+  state: 'ok' | 'low' | 'out' | 'below';
   byLocation: Record<string, number>;
 };
 
@@ -41,7 +41,7 @@ type Location = {
 };
 
 type StockOverviewData = {
-  counts: { all: number; low: number; out: number };
+  counts: { all: number; low: number; out: number; below?: number };
   totalValue: number;
   items: StockItem[];
   locations: Location[];
@@ -372,7 +372,7 @@ export default function Stock() {
   const session = useSession();
   const { t } = useLang();
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'expiring'>(() => (['low', 'out', 'expiring'].includes(params.get('filter') ?? '') ? (params.get('filter') as 'low' | 'out' | 'expiring') : 'all'));
+  const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'below' | 'expiring'>(() => (['low', 'out', 'below', 'expiring'].includes(params.get('filter') ?? '') ? (params.get('filter') as 'low' | 'out' | 'below' | 'expiring') : 'all'));
   const [q, setQ] = useState(params.get('q') ?? '');
   const [query, setQuery] = useState(params.get('q') ?? '');
 
@@ -428,6 +428,7 @@ export default function Stock() {
             ['all', t('All'), data?.counts.all],
             ['low', t('Low stock'), data?.counts.low],
             ['out', t('Out of stock'), data?.counts.out],
+            ...(data?.counts.below ? [['below', 'Below zero', data.counts.below] as ['below', string, number]] : []),
             ['expiring', 'Expiring'],
           ]}
         />
@@ -435,6 +436,11 @@ export default function Stock() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+      {(data?.counts.below ?? 0) > 0 && filter !== 'expiring' && (
+        <p className="mb-3 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
+          {data!.counts.below} item{data!.counts.below === 1 ? ' was' : 's were'} sold beyond what was recorded as received. Enter the missing supplier bills, or count {data!.counts.below === 1 ? 'it' : 'them'} to correct the stock. The owner can stop this happening in Settings.
+        </p>
+      )}
       {filter === 'expiring' ? (
         <Expiring />
       ) : loading && !data ? (
@@ -467,7 +473,7 @@ export default function Stock() {
                     <Status
                       tone={it.state === 'ok' ? 'good' : it.state === 'low' ? 'warn' : 'bad'}
                     >
-                      {it.state === 'ok' ? t('In stock') : it.state === 'low' ? t('Low stock') : t('Out of stock')}
+                      {it.state === 'ok' ? t('In stock') : it.state === 'low' ? t('Low stock') : it.state === 'below' ? `Below zero (${it.total})` : t('Out of stock')}
                     </Status>
                   </div>
                   <p className="text-xs text-muted mt-1">
@@ -505,7 +511,7 @@ export default function Stock() {
                     <Status
                       tone={it.state === 'ok' ? 'good' : it.state === 'low' ? 'warn' : 'bad'}
                     >
-                      {it.state === 'ok' ? t('In stock') : it.state === 'low' ? t('Low stock') : t('Out of stock')}
+                      {it.state === 'ok' ? t('In stock') : it.state === 'low' ? t('Low stock') : it.state === 'below' ? `Below zero (${it.total})` : t('Out of stock')}
                     </Status>
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-ink num">

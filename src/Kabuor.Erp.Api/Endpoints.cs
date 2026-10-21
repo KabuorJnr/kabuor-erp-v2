@@ -15,7 +15,7 @@ namespace Kabuor.Erp;
 
 public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
 public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null);
-public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode);
+public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null);
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
 public sealed record UserInput(string Name, string Email, string? Phone, Role Role, string Password);
@@ -332,7 +332,7 @@ public static class Endpoints
         settings.MapGet("/company", async (ErpDb db, HttpRequest req) =>
         {
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
-            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, mpesaConfirmationUrl = $"{req.Scheme}://{req.Host}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
+            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, mpesaConfirmationUrl = $"{req.Scheme}://{req.Host}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
         }).RequireAuthorization(Policies.Admin);
         settings.MapGet("/mpesa-prompt", (StkService s) => s.Setup()).RequireAuthorization(Policies.Admin);
         settings.MapPut("/mpesa-prompt", (StkSetupInput input, StkService s) => s.Save(input)).RequireAuthorization(Policies.Admin);
@@ -344,6 +344,7 @@ public static class Endpoints
             if ((input.Name ?? "").Trim().Length < 2) throw new AppException("Enter the business name.");
             (c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered) = (input.Name!.Trim(), pin, Phones.ToMsisdn(input.Phone) ?? c.Phone, (input.Email ?? "").Trim(), (input.County ?? "").Trim(), input.VatRegistered);
             c.MpesaShortcode = new string((input.MpesaShortcode ?? "").Where(char.IsDigit).ToArray());
+            c.PreventNegativeStock = input.PreventNegativeStock ?? c.PreventNegativeStock;
             await db.SaveChangesAsync();
             return Results.NoContent();
         }).RequireAuthorization(Policies.Admin);

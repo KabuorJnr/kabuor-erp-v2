@@ -494,6 +494,9 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("PreventNegativeStock")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("StkConsumerKey")
                         .IsRequired()
                         .HasColumnType("text");

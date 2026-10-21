@@ -88,7 +88,6 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
                 (unitName, factor) = (u.Name, u.Factor);
             }
             var batch = item?.TrackBatches == true ? (l.BatchNo ?? "").Trim() : "";
-            if (item?.TrackBatches == true && batch.Length == 0) throw new AppException($"{item.Name} is kept by batch: enter the batch number and expiry from the packaging.");
             var cost = l.UnitCost ?? throw new AppException("Give each line a cost.");
             if (cost < 0) throw new AppException("Costs can't be negative.");
             var type = l.TaxType ?? item?.TaxType ?? TaxType.B_Standard16;
@@ -122,6 +121,8 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
             var item = l.ItemId is { } iid ? items.GetValueOrDefault(iid) : null;
             if (item?.TrackStock == true)
             {
+                // Batches are known when the goods arrive: an order doesn't need one, a bill being posted does.
+                if (item.TrackBatches && l.BatchNo.Length == 0) throw new AppException($"{item.Name} is kept by batch: enter the batch number and expiry from the packaging before posting this bill.");
                 l.AccountId = stockAccount;
                 var qty = l.Quantity * l.UnitFactor;
                 await stock.Receive(item, location.Id, qty, (decimal)l.Net / qty, StockMoveKind.Received, "Bill", doc.Id, doc.Number, l.BatchNo, l.Expiry);

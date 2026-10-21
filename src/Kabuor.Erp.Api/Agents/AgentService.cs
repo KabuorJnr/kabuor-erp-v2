@@ -140,7 +140,8 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
     {
         if (reminders.Count == 0) return 0;
         var ids = reminders.Select(r => r.Customer).Distinct().ToList();
-        var paid = await db.PaymentAllocations.Join(db.SalesDocs.Where(d => ids.Contains(d.CustomerId)), a => a.SalesDocId, d => d.Id, (a, d) => new { d.CustomerId, a.Amount, a.At }).ToListAsync();
+        var paid = await db.PaymentAllocations.Join(db.SalesDocs.Where(d => ids.Contains(d.CustomerId)), a => a.SalesDocId, d => d.Id, (a, d) => new { d.CustomerId, a.Amount, a.PaymentId })
+            .Join(db.Payments, x => x.PaymentId, p => p.Id, (x, p) => new { x.CustomerId, x.Amount, At = p.ReceivedAt }).ToListAsync();
         return paid.Where(p => reminders.Any(r => r.Customer == p.CustomerId && p.At >= r.At && p.At <= r.At.AddDays(14))).Sum(p => p.Amount);
     }
 

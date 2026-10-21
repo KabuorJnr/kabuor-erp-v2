@@ -127,7 +127,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         doc.LocationId = location.Id;
         foreach (var l in doc.Lines)
             if (l.ItemId is { } iid && items.GetValueOrDefault(iid) is { } item)
-                l.Cost = await stock.Issue(item, location.Id, l.Quantity * l.UnitFactor, "Invoice", doc.Id, doc.Number);
+                l.Cost = await stock.Issue(item, location.Id, l.Quantity * l.UnitFactor, "Invoice", doc.Id, doc.Number, doc.IssueDate);
         await ledger.PostCostOfSales(doc.IssueDate, doc.Number, doc.Id, doc.Lines.Sum(l => l.Cost));
         await Agents.AgentKick.Kick(db, "restock"); // stock went down: the restock agent checks within a minute
     }

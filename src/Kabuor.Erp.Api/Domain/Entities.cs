@@ -17,6 +17,8 @@ public sealed class Company
     public string Email { get; set; } = "";
     public string County { get; set; } = "";
     public bool VatRegistered { get; set; } = true;
+    /// <summary>Refuse a sale that would take stock below zero (Business Central's "prevent negative inventory").</summary>
+    public bool PreventNegativeStock { get; set; }
     /// <summary>The Paybill/Till customers pay into; M-Pesa confirmations for it land in this company.</summary>
     public string MpesaShortcode { get; set; } = "";
     /// <summary>Secret part of this company's M-Pesa confirmation URL (Safaricom doesn't sign callbacks).</summary>

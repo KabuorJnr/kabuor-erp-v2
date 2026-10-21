@@ -48,6 +48,10 @@ public static class PosEndpoints
             var items = await db.Items.Where(i => i.Active).OrderBy(i => i.Name).ToListAsync();
             var stockLevels = await db.StockLevels.Where(s => s.LocationId == selectedLocation.Id).ToDictionaryAsync(s => s.ItemId, s => s.Quantity);
             var allStockLevels = await db.StockLevels.GroupBy(s => s.ItemId).Select(g => new { ItemId = g.Key, Quantity = g.Sum(x => x.Quantity) }).ToDictionaryAsync(s => s.ItemId, s => s.Quantity);
+            // Expired batches are still on the shelf but can't be sold: the till doesn't count them.
+            var today = Clock.Today;
+            var expired = (await db.StockBatches.Where(b => b.LocationId == selectedLocation.Id && b.Quantity > 0 && b.Expiry != null).ToListAsync())
+                .Where(b => b.Expiry < today).GroupBy(b => b.ItemId).ToDictionary(g => g.Key, g => g.Sum(b => b.Quantity));
 
             var catalog = items.Select(i => new
             {
@@ -58,7 +62,8 @@ public static class PosEndpoints
                 i.Price,
                 i.TaxType,
                 i.TrackStock,
-                onHand = i.TrackStock ? stockLevels.GetValueOrDefault(i.Id, 0m) : 999m,
+                onHand = i.TrackStock ? Math.Max(0, stockLevels.GetValueOrDefault(i.Id, 0m) - expired.GetValueOrDefault(i.Id, 0m)) : 999m,
+                expired = expired.GetValueOrDefault(i.Id, 0m),
                 totalOnHand = i.TrackStock ? allStockLevels.GetValueOrDefault(i.Id, 0m) : 999m,
             }).ToList();
 
