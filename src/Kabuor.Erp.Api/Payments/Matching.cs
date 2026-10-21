@@ -13,6 +13,8 @@ public sealed record Allocation(Guid InvoiceId, string InvoiceNumber, long Amoun
 
 public sealed record MatchResult(bool Auto, string Reason, IReadOnlyList<Allocation> Allocations)
 {
+    /// <summary>Not certain, but strong: paid from the customer's own phone (a same-amount guess is not).</summary>
+    public bool Likely { get; init; }
     public static readonly MatchResult None = new(false, "", []);
     public long Total => Allocations.Sum(a => a.Amount);
 }
@@ -35,7 +37,7 @@ public static class Matching
             var theirs = byDue.Where(i => Common.Phones.ToMsisdn(i.CustomerPhone) == payerMsisdn).ToList();
             var exact = theirs.Where(i => i.Balance == amount).ToList();
             if (exact.Count == 1) return new(true, $"Paid from {Owner(exact[0].CustomerName)} phone, exactly the balance of {exact[0].Number}", Fill(amount, exact));
-            if (theirs.Count > 0) return new(false, $"Paid from {Owner(theirs[0].CustomerName)} phone", Fill(amount, theirs));
+            if (theirs.Count > 0) return new(false, $"Paid from {Owner(theirs[0].CustomerName)} phone", Fill(amount, theirs)) { Likely = true };
         }
 
         var sameAmount = byDue.Where(i => i.Balance == amount).ToList();

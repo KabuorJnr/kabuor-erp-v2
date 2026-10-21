@@ -113,6 +113,11 @@ export function PurchaseList() {
                 {t('Purchase orders')}
               </button>
             </div>
+            {isBill && can(session, 'finance') && (
+              <Link to="/purchases/etims" className="btn btn-ghost">
+                From suppliers’ eTIMS
+              </Link>
+            )}
             {isBill
               ? can(session, 'finance') && (
                   <Link to="/purchases/new?kind=Bill" className="btn btn-primary">

@@ -1,9 +1,11 @@
 // Every HTTP endpoint. Each group asks for a policy (see Auth/Policies); the database filters every query by
 // the caller's company, so handlers never pass company ids around.
+using Kabuor.Erp.Accounting;
 using Kabuor.Erp.Auth;
 using Kabuor.Erp.Common;
 using Kabuor.Erp.Data;
 using Kabuor.Erp.Domain;
+using Kabuor.Erp.Etims;
 using Kabuor.Erp.Payments;
 using Kabuor.Erp.Reports;
 using Kabuor.Erp.Sales;
@@ -11,9 +13,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp;
 
-public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null);
-public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel);
+public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
+public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null);
 public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode);
+public sealed record AcceptPurchaseInput(Guid? AccountId);
+public sealed record RejectPurchaseInput(string? Reason);
 public sealed record UserInput(string Name, string Email, string? Phone, Role Role, string Password);
 public sealed record AllocateInput(List<AllocationInput> Allocations);
 
@@ -39,7 +43,26 @@ public static class Endpoints
         me.MapPost("/2fa/disable", async (TwoFactorInput input, AuthService s) => { await s.DisableTwoFactor(input); return Results.NoContent(); });
         me.MapPost("/sign-out-everywhere", async (AuthService s) => { await s.SignOutEverywhere(); return Results.NoContent(); });
 
+        // Safaricom's answer to a subscription prompt (the secret in the URL is ours, from configuration).
+        api.MapPost("/billing/mpesa/{secret}", async (string secret, System.Text.Json.Nodes.JsonObject body, IConfiguration config, Kabuor.Erp.Billing.BillingService s) =>
+        {
+            if (string.IsNullOrEmpty(config["Billing:Mpesa:CallbackSecret"]) || secret != config["Billing:Mpesa:CallbackSecret"]) return Results.NotFound();
+            await s.Callback(body);
+            return MpesaAck();
+        });
+
+        // Public: who to contact about privacy, and where the data lives (for the privacy notice and terms).
+        api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "21 October 2026" });
+
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
+        api.MapPost("/mpesa/stk/{key}", async (string key, System.Text.Json.Nodes.JsonObject body, ErpDb db, RequestContext ctx, StkService stk) =>
+        {
+            var company = await db.Companies.SingleOrDefaultAsync(c => c.MpesaCallbackKey == key);
+            if (company is null) return Results.NotFound();
+            (ctx.CompanyId, ctx.Actor) = (company.Id, "M-Pesa");
+            await stk.Callback(company, body);
+            return MpesaAck();
+        });
         var mpesa = api.MapGroup("/mpesa/c2b/{key}");
         mpesa.MapPost("/validation", () => MpesaAck());
         mpesa.MapPost("/confirmation", async (string key, MpesaC2B body, ErpDb db, RequestContext ctx, PaymentService payments, ILogger<PaymentService> log) =>
@@ -75,7 +98,7 @@ public static class Endpoints
             }
             var rows = await query.Select(c => new
             {
-                c.Id, c.Number, c.Name, c.Phone, c.Email, c.KraPin,
+                c.Id, c.Number, c.Name, c.Phone, c.Email, c.KraPin, c.PriceListId, c.CreditLimit,
                 owes = db.SalesDocs.Where(d => d.CustomerId == c.Id && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid)).Sum(d => d.Total - d.Paid),
                 overdue = db.SalesDocs.Where(d => d.CustomerId == c.Id && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid) && d.DueDate < today).Sum(d => d.Total - d.Paid),
             }).ToListAsync();
@@ -101,18 +124,18 @@ public static class Endpoints
                 lifetime = docs.Where(d => d.Kind == SalesDocKind.Invoice && d.Status != SalesDocStatus.Void && d.Status != SalesDocStatus.Draft).Sum(d => d.Total),
             };
         });
-        customers.MapPost("", async (CustomerInput input, ErpDb db, Numbers numbers) =>
+        customers.MapPost("", async (CustomerInput input, ErpDb db, Numbers numbers, RequestContext ctx) =>
         {
             var c = new Customer { Number = await numbers.Next("C"), Name = "" };
-            await ApplyCustomer(db, c, input);
+            await ApplyCustomer(db, c, input, ctx);
             db.Customers.Add(c);
             await db.SaveChangesAsync();
             return Results.Created($"/api/customers/{c.Id}", c);
         }).RequireAuthorization(Policies.Sell);
-        customers.MapPut("/{id:guid}", async (Guid id, CustomerInput input, ErpDb db) =>
+        customers.MapPut("/{id:guid}", async (Guid id, CustomerInput input, ErpDb db, RequestContext ctx) =>
         {
             var c = await db.Customers.SingleOrDefaultAsync(x => x.Id == id) ?? throw new AppException("Not found.", 404);
-            await ApplyCustomer(db, c, input);
+            await ApplyCustomer(db, c, input, ctx);
             await db.SaveChangesAsync();
             return c;
         }).RequireAuthorization(Policies.Sell);
@@ -184,17 +207,22 @@ public static class Endpoints
             var paidBy = await db.PaymentAllocations.Where(a => a.SalesDocId == id)
                 .Join(db.Payments, a => a.PaymentId, p => p.Id, (a, p) => new { a.Amount, a.MatchedBy, a.At, p.Method, p.Reference, p.ReceivedAt }).ToListAsync();
             var company = await db.Companies.SingleAsync(c => c.Id == db.CompanyId);
-            return new { document = d, payments = paidBy, payTo = new { paybill = company.MpesaShortcode, account = d.Number } };
+            var prompt = company.StkShortcode.Length > 0 && company.StkConsumerKey.Length > 0 && company.StkPasskey.Length > 0;
+            return new { document = d, payments = paidBy, payTo = new { paybill = company.MpesaShortcode, account = d.Number, prompt } };
         });
         docs.MapPost("", async (SalesDocInput input, SalesService s) => Results.Created("", await s.Create(input))).RequireAuthorization(Policies.Sell);
         docs.MapPut("/{id:guid}", (Guid id, SalesDocInput input, SalesService s) => s.Update(id, input)).RequireAuthorization(Policies.Sell);
-        docs.MapPost("/{id:guid}/issue", async (Guid id, SalesService s, PaymentService payments) =>
+        docs.MapPost("/{id:guid}/issue", async (Guid id, SalesService s, PaymentService payments, RequestContext ctx, bool? overLimit) =>
         {
-            var d = await s.Issue(id);
+            // Going over a customer's credit limit is the owner's or accountant's call.
+            if (overLimit == true && !ctx.Role.Allows(Policies.Finance)) throw new AppException("Only the owner or the accountant can allow an invoice over the customer's credit limit.", 403);
+            var d = await s.Issue(id, overLimit == true);
             if (d.Kind == SalesDocKind.Invoice) await payments.RetryUnmatched(); // money that arrived before the invoice
             return await s.Get(id);
         }).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/void", (Guid id, SalesService s) => s.Void(id)).RequireAuthorization(Policies.Finance);
+        docs.MapPost("/{id:guid}/mpesa-request", (Guid id, StkRequestInput input, StkService s, HttpRequest req) => s.Request(id, input, $"{req.Scheme}://{req.Host}")).RequireAuthorization(Policies.Sell);
+        docs.MapGet("/{id:guid}/mpesa-requests", (Guid id, StkService s) => s.ForInvoice(id));
         docs.MapPost("/{id:guid}/to-invoice", (Guid id, SalesService s) => s.ToInvoice(id)).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/etims", async (Guid id, SalesService s) =>
         {
@@ -242,6 +270,62 @@ public static class Endpoints
             r.Vat(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
         reports.MapGet("/trial-balance", (ReportService r, DateOnly? to) => r.TrialBalance(to));
         reports.MapGet("/accounts", async (ReportService r) => await r.Balances());
+        reports.MapGet("/balance-sheet", (ReportService r, DateOnly? at) => r.BalanceSheet(at ?? Clock.Today));
+        reports.MapGet("/cash-flow", (ReportService r, DateOnly? from, DateOnly? to) =>
+            r.CashFlow(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
+        reports.MapGet("/withheld", (ReportService r, DateOnly? from, DateOnly? to) =>
+            r.Withheld(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
+        // KRA VAT3 registers, to paste into the iTax return template.
+        reports.MapGet("/itax/sales.csv", async (ReportService r, DateOnly? from, DateOnly? to, string? rate) =>
+        {
+            var (f, t) = (from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today);
+            var csv = await r.ItaxSales(f, t, rate == "8" ? TaxType.E_Reduced8 : TaxType.B_Standard16);
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", $"VAT3-sales-{(rate == "8" ? "8pc" : "16pc")}-{f:yyyy-MM}.csv");
+        });
+        reports.MapGet("/itax/purchases.csv", async (ReportService r, DateOnly? from, DateOnly? to) =>
+        {
+            var (f, t) = (from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today);
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(await r.ItaxPurchases(f, t)), "text/csv", $"VAT3-purchases-{f:yyyy-MM}.csv");
+        });
+
+        // ---------- KRA eTIMS ----------
+        var etims = app_.MapGroup("/etims");
+        etims.MapGet("", (EtimsService s) => s.Status()).RequireAuthorization(Policies.Finance);
+        etims.MapPut("", (EtimsSetupInput input, EtimsService s) => s.Setup(input)).RequireAuthorization(Policies.Admin);
+        etims.MapPost("/retry", async (ErpDb db, SalesService s) =>
+        {
+            var waiting = await db.SalesDocs.Where(d => d.EtimsStatus == EtimsStatus.Failed || d.EtimsStatus == EtimsStatus.Pending).Select(d => d.Id).Take(100).ToListAsync();
+            var signed = 0;
+            foreach (var id in waiting) { var d = await s.Get(id); await s.Sign(d); if (d.EtimsStatus == EtimsStatus.Signed) signed++; }
+            return new { tried = waiting.Count, signed };
+        }).RequireAuthorization(Policies.Finance);
+        etims.MapGet("/purchases", (string? status, EtimsService s) => s.Purchases(status)).RequireAuthorization(Policies.Finance);
+        etims.MapPost("/purchases/sync", async (EtimsService s) => new { received = await s.SyncPurchases() }).RequireAuthorization(Policies.Finance);
+        etims.MapPost("/purchases/{id:guid}/accept", (Guid id, AcceptPurchaseInput? input, EtimsService s) => s.Accept(id, input?.AccountId)).RequireAuthorization(Policies.Finance);
+        etims.MapPost("/purchases/{id:guid}/reject", (Guid id, RejectPurchaseInput input, EtimsService s) => s.Reject(id, input.Reason)).RequireAuthorization(Policies.Finance);
+
+        // ---------- tax withheld by customers ----------
+        docs.MapPost("/{id:guid}/withheld", (Guid id, WithholdingInput input, WithholdingService s) => s.Record(id, input)).RequireAuthorization(Policies.Finance);
+
+        // ---------- subscription ----------
+        var billing = app_.MapGroup("/billing").RequireAuthorization(Policies.Admin);
+        billing.MapGet("", (Kabuor.Erp.Billing.BillingService s) => s.Status());
+        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, $"{req.Scheme}://{req.Host}"));
+
+        // ---------- moving in: CSV from Excel, QuickBooks, Sage, Zoho ----------
+        var import = app_.MapGroup("/import").RequireAuthorization(Policies.Admin);
+        import.MapPost("/customers", (Kabuor.Erp.Import.ImportRequest r, Kabuor.Erp.Import.ImportService s) => s.Parties(false, r));
+        import.MapPost("/suppliers", (Kabuor.Erp.Import.ImportRequest r, Kabuor.Erp.Import.ImportService s) => s.Parties(true, r));
+        import.MapPost("/items", (Kabuor.Erp.Import.ImportRequest r, Kabuor.Erp.Import.ImportService s) => s.Items(r));
+
+        // ---------- M-Pesa and bank statements ----------
+        var statements = app_.MapGroup("/statements").RequireAuthorization(Policies.Finance);
+        statements.MapGet("/{account}", (string account, StatementService s) => s.Overview(account));
+        statements.MapPost("/import", (ImportInput input, StatementService s) => s.Import(input));
+        statements.MapPost("/{account}/match", async (string account, StatementService s) => new { matched = await s.Match(account.ToUpperInvariant()) });
+        statements.MapPost("/lines/{id:guid}/payment", (Guid id, RecordPaymentInput input, StatementService s) => s.RecordPayment(id, input));
+        statements.MapPost("/lines/{id:guid}/expense", (Guid id, RecordExpenseInput input, StatementService s) => s.RecordExpense(id, input));
+        statements.MapPost("/lines/{id:guid}/ignore", (Guid id, IgnoreInput input, StatementService s) => s.Ignore(id, input));
 
         // ---------- company, people, audit ----------
         var settings = app_.MapGroup("/settings");
@@ -250,6 +334,8 @@ public static class Endpoints
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
             return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, mpesaConfirmationUrl = $"{req.Scheme}://{req.Host}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
         }).RequireAuthorization(Policies.Admin);
+        settings.MapGet("/mpesa-prompt", (StkService s) => s.Setup()).RequireAuthorization(Policies.Admin);
+        settings.MapPut("/mpesa-prompt", (StkSetupInput input, StkService s) => s.Save(input)).RequireAuthorization(Policies.Admin);
         settings.MapPut("/company", async (CompanyInput input, ErpDb db) =>
         {
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
@@ -275,6 +361,8 @@ public static class Endpoints
         }).RequireAuthorization(Policies.Finance);
 
         BuyingEndpoints.Map(app_);
+        TradeEndpoints.Map(app_);
+        Integrations.IntegrationEndpoints.Map(api, app_);
         PosEndpoints.Map(app_);
         PeopleEndpoints.Map(app_);
         GrowthEndpoints.Map(app_);
@@ -289,8 +377,11 @@ public static class Endpoints
     static readonly System.Text.Json.JsonSerializerOptions Exact = new();
     static IResult MpesaAck() => Results.Json(new { ResultCode = 0, ResultDesc = "Accepted" }, Exact);
 
-    static async Task ApplyCustomer(ErpDb db, Customer c, CustomerInput input)
+    static async Task ApplyCustomer(ErpDb db, Customer c, CustomerInput input, RequestContext ctx)
     {
+        // Credit terms are the owner's or accountant's call, not the salesperson's.
+        var termsChange = (input.CreditLimit is { } cl && Math.Max(0, cl) != c.CreditLimit) || (input.PriceListId is { } pid && (pid == Guid.Empty ? null : (Guid?)pid) != c.PriceListId);
+        if (termsChange && !ctx.Role.Allows(Policies.Finance)) throw new AppException("Only the owner or the accountant can change a customer's credit limit or price list.", 403);
         var name = (input.Name ?? "").Trim();
         if (name.Length < 2) throw new AppException("Enter the customer's name.");
         var phone = string.IsNullOrWhiteSpace(input.Phone) ? "" : Phones.ToMsisdn(input.Phone) ?? throw new AppException("That phone number doesn't look right (e.g. 0712 345 678).");
@@ -301,10 +392,14 @@ public static class Endpoints
         (c.Name, c.Phone, c.Email, c.KraPin, c.Address, c.Notes) = (name, phone, (input.Email ?? "").Trim(), pin, (input.Address ?? "").Trim(), (input.Notes ?? "").Trim());
         c.CreditLimit = Math.Max(0, input.CreditLimit ?? c.CreditLimit);
         c.MarketingOptOut = input.MarketingOptOut ?? c.MarketingOptOut;
+        // Guid.Empty takes the customer off their price list.
+        if (input.PriceListId is { } pl && pl != Guid.Empty && !await db.PriceLists.AnyAsync(x => x.Id == pl)) throw new AppException("That price list no longer exists.");
+        if (input.PriceListId is { } chosen) c.PriceListId = chosen == Guid.Empty ? null : chosen;
     }
 
     static void ApplyItem(Item i, ItemInput input)
     {
+        if (input.EtimsClassCode is { } cls) i.EtimsClassCode = new string(cls.Where(char.IsDigit).ToArray());
         var name = (input.Name ?? "").Trim();
         if (name.Length < 2) throw new AppException("Enter the item's name.");
         if (input.Price < 0) throw new AppException("Prices can't be negative.");
@@ -312,5 +407,6 @@ public static class Endpoints
         if (input.ReorderLevel < 0) throw new AppException("The reorder level can't be negative.");
         i.TrackStock = (input.TrackStock ?? i.TrackStock) && i.Kind == ItemKind.Product; // services aren't counted
         i.ReorderLevel = input.ReorderLevel ?? i.ReorderLevel;
+        i.TrackBatches = (input.TrackBatches ?? i.TrackBatches) && i.TrackStock;
     }
 }

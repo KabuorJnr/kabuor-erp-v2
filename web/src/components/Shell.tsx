@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BarChart3, Bot, CalendarDays, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  BarChart3, Bot, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
 import { setLang, useLang } from '../lib/i18n';
 import AssistantPanel from './AssistantPanel';
 import TellMe from './TellMe';
+import { TrialBanner } from './Plan';
 import { Sheet } from './ui';
 
 type Link = { to: string; label: string; icon: typeof Home; end?: boolean };
@@ -68,6 +69,7 @@ export default function Shell({ session }: { session: Session }) {
           links: [
             can(session, 'sales.view') && { to: '/money-in', label: t('Money in'), icon: Wallet },
             can(session, 'buy.view') && { to: '/purchases', label: t('Purchases'), icon: ShoppingBag },
+            can(session, 'finance') && { to: '/reconcile', label: 'Reconcile', icon: ListChecks },
             can(session, 'reports') && { to: '/reports', label: t('Reports'), icon: BarChart3 },
           ],
         },
@@ -190,6 +192,7 @@ export default function Shell({ session }: { session: Session }) {
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 sm:px-6 lg:px-8 lg:pt-6 lg:pb-12">
+          {can(session, 'admin') && <TrialBanner />}
           <Outlet />
         </main>
       </div>

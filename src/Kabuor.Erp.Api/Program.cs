@@ -39,6 +39,16 @@ builder.Services.AddScoped<AssistantService>();
 builder.Services.AddScoped<Kabuor.Erp.Inventory.InventoryService>();
 builder.Services.AddScoped<Kabuor.Erp.Purchases.PurchaseService>();
 builder.Services.AddScoped<Kabuor.Erp.Payroll.PeopleService>();
+builder.Services.AddScoped<Kabuor.Erp.Payroll.DeductionService>();
+builder.Services.AddScoped<WithholdingService>();
+builder.Services.AddScoped<StatementService>();
+builder.Services.AddScoped<Kabuor.Erp.Import.ImportService>();
+builder.Services.AddScoped<Kabuor.Erp.Billing.BillingService>();
+builder.Services.AddScoped<Kabuor.Erp.Payments.StkService>();
+builder.Services.AddScoped<Kabuor.Erp.Integrations.WebhookService>();
+builder.Services.AddHostedService<Kabuor.Erp.Integrations.WebhookWorker>();
+builder.Services.AddHttpClient("webhooks", c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddHttpClient("daraja", c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<Kabuor.Erp.Crm.CrmService>();
 builder.Services.AddScoped<Kabuor.Erp.Production.ProductionService>();
 builder.Services.AddScoped<Kabuor.Erp.Marketing.MarketingService>();
@@ -46,7 +56,10 @@ builder.Services.AddScoped<Kabuor.Erp.Agents.AgentService>();
 builder.Services.AddSingleton<Kabuor.Erp.Agents.AgentScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Kabuor.Erp.Agents.AgentScheduler>());
 builder.Services.AddSingleton<Kabuor.Erp.Marketing.ISmsSender, Kabuor.Erp.Marketing.AfricasTalkingSms>();
-builder.Services.AddSingleton<IEtimsClient, SandboxEtimsClient>();
+builder.Services.AddScoped<IEtimsClient, OscuEtimsClient>();
+builder.Services.AddSingleton<OscuApi>();
+builder.Services.AddScoped<EtimsService>();
+builder.Services.AddHttpClient("kra-etims", c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddSingleton<TokenIssuer>();
 builder.Services.AddHttpClient("anthropic", c =>
 {
@@ -167,6 +180,20 @@ app.Use(async (http, next) =>
             http.Response.StatusCode = 401;
             await http.Response.WriteAsJsonAsync(new { error = "Your session has ended. Please sign in again." });
             return;
+        }
+        // Trial over and nothing paid: everything stays readable and downloadable; adding and changing waits for a plan.
+        var method = http.Request.Method;
+        var path = http.Request.Path.Value ?? "";
+        if (method is not ("GET" or "HEAD" or "OPTIONS") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth") && !path.StartsWith("/api/me"))
+        {
+            var company = await db.Companies.Where(c => c.Id == cid).Select(c => new { c.CreatedAt, c.TrialEndsAt, c.PaidUntil }).SingleAsync();
+            var probe = new Company { Name = "", CreatedAt = company.CreatedAt, TrialEndsAt = company.TrialEndsAt, PaidUntil = company.PaidUntil };
+            if (Kabuor.Erp.Billing.Plans.Locked(probe, DateTimeOffset.UtcNow))
+            {
+                http.Response.StatusCode = 402;
+                await http.Response.WriteAsJsonAsync(new { error = "Your free trial has ended. Choose a plan (Settings → Plan) to keep adding and changing records. Everything you have is still here." });
+                return;
+            }
         }
     }
     await next();

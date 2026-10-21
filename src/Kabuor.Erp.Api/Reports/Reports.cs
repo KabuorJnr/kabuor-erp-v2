@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Reports;
 
-public sealed class ReportService(ErpDb db, RequestContext ctx)
+public sealed partial class ReportService(ErpDb db, RequestContext ctx)
 {
     static readonly SalesDocStatus[] Open = [SalesDocStatus.Sent, SalesDocStatus.PartPaid];
 
@@ -105,7 +105,7 @@ public sealed class ReportService(ErpDb db, RequestContext ctx)
         var monthStart = new DateOnly(today.Year, today.Month, 1);
         var lastStart = monthStart.AddMonths(-1);
         var lastSameDay = lastStart.AddDays(Math.Min(today.Day, DateTime.DaysInMonth(lastStart.Year, lastStart.Month)) - 1);
-        var sales = await db.SalesDocs.Where(d => d.Kind == SalesDocKind.Invoice && d.Status != SalesDocStatus.Draft && d.Status != SalesDocStatus.Void && d.IssueDate >= lastStart)
+        var sales = await db.SalesDocs.Where(d => d.Kind == SalesDocKind.Invoice && !d.Opening && d.Status != SalesDocStatus.Draft && d.Status != SalesDocStatus.Void && d.IssueDate >= lastStart)
             .Select(d => new { d.IssueDate, d.Net }).ToListAsync();
         long now = sales.Where(x => x.IssueDate >= monthStart).Sum(x => x.Net), before = sales.Where(x => x.IssueDate <= lastSameDay && x.IssueDate < monthStart).Sum(x => x.Net);
         var best = await db.SalesLines.Join(db.SalesDocs, l => l.SalesDocId, d => d.Id, (l, d) => new { l, d })
@@ -207,17 +207,18 @@ public sealed class ReportService(ErpDb db, RequestContext ctx)
     public async Task<object> Vat(DateOnly from, DateOnly to)
     {
         var lines = await db.SalesLines.Join(db.SalesDocs, l => l.SalesDocId, d => d.Id, (l, d) => new { l, d })
-            .Where(x => x.d.Kind == SalesDocKind.Invoice && x.d.Status != SalesDocStatus.Draft && x.d.Status != SalesDocStatus.Void && x.d.IssueDate >= from && x.d.IssueDate <= to)
+            .Where(x => x.d.Kind == SalesDocKind.Invoice && !x.d.Opening && x.d.Status != SalesDocStatus.Draft && x.d.Status != SalesDocStatus.Void && x.d.IssueDate >= from && x.d.IssueDate <= to)
             .Select(x => new { x.l.TaxType, x.l.Net, x.l.Tax, x.l.Total }).ToListAsync();
         var byType = lines.GroupBy(l => l.TaxType).Select(g => new { type = g.Key.ToString(), label = Tax.Label(g.Key), net = g.Sum(x => x.Net), tax = g.Sum(x => x.Tax), total = g.Sum(x => x.Total) }).OrderBy(x => x.type);
         // VAT paid on purchases in the period: claimable only with the supplier's invoice number (and their eTIMS invoice).
         var bought = await db.PurchaseLines.Join(db.PurchaseDocs, l => l.PurchaseDocId, d => d.Id, (l, d) => new { l, d })
-            .Where(x => x.d.Kind == PurchaseKind.Bill && x.d.Status != PurchaseStatus.Draft && x.d.Status != PurchaseStatus.Void && x.d.IssueDate >= from && x.d.IssueDate <= to)
+            .Where(x => x.d.Kind == PurchaseKind.Bill && !x.d.Opening && x.d.Status != PurchaseStatus.Draft && x.d.Status != PurchaseStatus.Void && x.d.IssueDate >= from && x.d.IssueDate <= to)
             .Select(x => new { x.l.TaxType, x.l.Net, x.l.Tax, x.l.Total, x.d.SupplierRef, x.d.Number }).ToListAsync();
         var purchases = bought.GroupBy(l => l.TaxType).Select(g => new { type = g.Key.ToString(), label = Tax.Label(g.Key), net = g.Sum(x => x.Net), tax = g.Sum(x => x.Tax), total = g.Sum(x => x.Total) }).OrderBy(x => x.type);
         var output = lines.Sum(l => l.Tax);
         var input = bought.Sum(l => l.Tax);
         var missingRefs = bought.Where(b => b.Tax > 0 && b.SupplierRef.Length == 0).Select(b => b.Number).Distinct().ToList();
-        return new { from, to, byType, purchases, totalTax = output, totalSales = lines.Sum(l => l.Total), inputTax = input, payable = output - input, billsMissingSupplierInvoiceNo = missingRefs };
+        var withheld = await db.WithholdingCertificates.Where(w => w.Kind == WithholdingKind.Vat && w.Date >= from && w.Date <= to).SumAsync(w => (long?)w.Amount) ?? 0;
+        return new { from, to, byType, purchases, totalTax = output, totalSales = lines.Sum(l => l.Total), inputTax = input, vatWithheld = withheld, payable = output - input - withheld, billsMissingSupplierInvoiceNo = missingRefs };
     }
 }

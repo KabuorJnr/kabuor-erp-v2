@@ -5,6 +5,7 @@ import { api, can, useApi, useSession } from '../lib/api';
 import { dateTime, day, ksh, msisdn, prettyPhone } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { DocStatus } from './Invoices';
+import { CustomerTerms } from '../components/Trade';
 import { ActivityList, LogActivity } from './Pipeline';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, Stat } from '../components/ui';
 
@@ -221,6 +222,8 @@ export function CustomerView() {
             <p className="p-4 text-sm text-muted">No invoices yet.</p>
           )}
         </section>
+        <div className="space-y-5">
+        <CustomerTerms customer={c} owes={data.owes} onChange={reload} />
         <section className="card h-fit p-4">
           <h2 className="text-sm font-semibold text-muted">Payments</h2>
           {data.payments.length ? (
@@ -242,6 +245,7 @@ export function CustomerView() {
             <p className="mt-2 text-sm text-muted">No payments yet.</p>
           )}
         </section>
+        </div>
       </div>
       {can(session, 'crm') && (
       <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_20rem]">

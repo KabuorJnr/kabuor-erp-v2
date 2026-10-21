@@ -19,6 +19,8 @@ public sealed class AgentSetup : ICompanyOwned
     public string Settings { get; set; } = "{}";
     public DateTimeOffset? LastRunAt { get; set; }
     public string LastRunSummary { get; set; } = "";
+    /// <summary>A business event asked for a run (a payment arrived, stock was sold); the scheduler picks it up within a minute.</summary>
+    public DateTimeOffset? KickedAt { get; set; }
 }
 
 public enum AgentTaskStatus
@@ -50,6 +52,10 @@ public sealed class AgentTask : ICompanyOwned
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DecidedAt { get; set; }
     public string DecidedBy { get; set; } = "";
+    /// <summary>Done by the agent alone, under its review policy (not approved by a person).</summary>
+    public bool ByItself { get; set; }
+    /// <summary>A person changed the agent's draft before approving it.</summary>
+    public bool Edited { get; set; }
     public List<AgentStep> Steps { get; set; } = [];
 }
 

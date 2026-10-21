@@ -6,8 +6,22 @@
 - **Database:** Railway Postgres. The schema comes from EF migrations (`src/Kabuor.Erp.Api/Data/Migrations`), applied
   on start. A database made before migrations existed is adopted automatically (`Data/SchemaSync.cs`).
 - **Settings:** `DATABASE_URL` (reference to the Postgres service), `JWT__KEY` (random, 32+ characters; changing it
-  signs everyone out and makes two-step sign-in secrets unreadable, so don't). Optional `ANTHROPIC__APIKEY`,
-  Africa's Talking keys.
+  signs everyone out and makes every sealed secret unreadable: two-step sign-in, KRA eTIMS keys and businesses'
+  M-Pesa prompt keys, so don't). Optional `ANTHROPIC__APIKEY`, Africa's Talking keys.
+- **Subscriptions** (Settings → Plan & billing): prices are `BILLING__PLANS__STARTER__MONTHLY` (and `BUSINESS`,
+  `GROWTH`), in shillings; defaults 1,500 / 4,500 / 9,500. New businesses get 30 days free, then 7 days' grace,
+  then read-only until they pay. Without M-Pesa keys every payment is a marked *test* payment (no money moves).
+  For real collection set `BILLING__MPESA__CONSUMERKEY`, `__CONSUMERSECRET`, `__PASSKEY`, `__SHORTCODE`,
+  `__ENVIRONMENT=production`, `__CALLBACKSECRET` (random), and for a till `__TYPE=CustomerBuyGoodsOnline` with
+  `__PARTYB=<till>`. Safaricom calls back to `/api/billing/mpesa/<CALLBACKSECRET>`.
+- **Legal pages** (`/privacy`, `/terms`): `LEGAL__EMAIL` (the privacy contact) and `LEGAL__HOSTINGREGION` (where
+  Railway runs the database). Until they're set the pages point people to the company website.
+- **Webhooks** are sent by a background worker every 10 seconds; `WEBHOOKS__DISABLED=true` stops it.
+
+## Each business's own connections
+- **M-Pesa prompts from invoices:** the business enters its own Daraja app (Settings → Business & M-Pesa).
+  Safaricom calls `/api/mpesa/stk/<company key>`; payments land on the invoice and are deduplicated by receipt.
+- **Public API and webhooks:** Settings → Connections. See `docs/API.md`.
 
 ## Changing the data model
 1. Change the entities.

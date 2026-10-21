@@ -86,7 +86,7 @@ public static class PeopleEndpoints
             {
                 run = r,
                 payslips = r.Payslips.OrderBy(p => p.EmployeeName),
-                statutory = PeopleService.RemitKinds.Select(k => new { kind = k, amount = PeopleService.Owed(r, k), paid = remitted.Contains(k), due }),
+                statutory = PeopleService.KindsFor(r).Select(k => new { kind = k, label = k.StartsWith("TO:") ? k[3..] : k, amount = PeopleService.Owed(r, k), paid = remitted.Contains(k), due }),
                 totals = new
                 {
                     gross = r.Payslips.Sum(p => p.Gross), net = r.Payslips.Sum(p => p.Net), paye = r.Payslips.Sum(p => p.Paye),
@@ -114,5 +114,11 @@ public static class PeopleEndpoints
             return Results.File(System.Text.Encoding.UTF8.GetBytes(await svc.P10Csv(id)), "text/csv", $"PAYE-{r.Period:yyyy-MM}.csv");
         });
         people.MapGet("/employees/{id:guid}/p9", (Guid id, int? year, PeopleService svc) => svc.P9(id, year ?? Clock.Today.Year));
+
+        // ---------- agreed deductions (HELB, SACCO, loans…) ----------
+        people.MapGet("/employees/{id:guid}/deductions", (Guid id, DeductionService s) => s.ForEmployee(id));
+        people.MapPost("/employees/{id:guid}/deductions", async (Guid id, DeductionInput input, DeductionService s) => Results.Created("", await s.Save(id, null, input)));
+        people.MapPut("/employees/{id:guid}/deductions/{did:guid}", (Guid id, Guid did, DeductionInput input, DeductionService s) => s.Save(id, did, input));
+        people.MapPost("/employees/{id:guid}/deductions/{did:guid}/stop", (Guid id, Guid did, DeductionService s) => s.Stop(id, did));
     }
 }

@@ -46,6 +46,20 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return data as T;
 }
 
+/** Downloads a file from the API (CSV exports) with the sign-in token, under the server's file name. */
+export async function download(path: string, fallbackName: string) {
+  const s = getSession();
+  const res = await fetch(`/api${path}`, { headers: s ? { Authorization: `Bearer ${s.token}` } : {} });
+  if (!res.ok) throw new ApiError(res.status, 'Couldn’t download that file.');
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** Loads `path` and reloads when it changes. `reload()` fetches again (after a save). */
 export function useApi<T = any>(path: string | null) {
   const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: Boolean(path) });

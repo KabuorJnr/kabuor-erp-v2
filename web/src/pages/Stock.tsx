@@ -1,3 +1,4 @@
+import { Expiring } from '../components/Trade';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ArrowLeftRight, ClipboardCheck, History, Loader2 } from 'lucide-react';
@@ -371,7 +372,7 @@ export default function Stock() {
   const session = useSession();
   const { t } = useLang();
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState<'all' | 'low' | 'out'>(() => (['low', 'out'].includes(params.get('filter') ?? '') ? (params.get('filter') as 'low' | 'out') : 'all'));
+  const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'expiring'>(() => (['low', 'out', 'expiring'].includes(params.get('filter') ?? '') ? (params.get('filter') as 'low' | 'out' | 'expiring') : 'all'));
   const [q, setQ] = useState(params.get('q') ?? '');
   const [query, setQuery] = useState(params.get('q') ?? '');
 
@@ -385,7 +386,7 @@ export default function Stock() {
   }, [q]);
 
   const { data, error, loading, reload } = useApi<StockOverviewData>(
-    `/stock?filter=${filter}&q=${encodeURIComponent(query)}`,
+    `/stock?filter=${filter === 'expiring' ? 'all' : filter}&q=${encodeURIComponent(query)}`,
   );
 
   const items = data?.items ?? [];
@@ -427,13 +428,16 @@ export default function Stock() {
             ['all', t('All'), data?.counts.all],
             ['low', t('Low stock'), data?.counts.low],
             ['out', t('Out of stock'), data?.counts.out],
+            ['expiring', 'Expiring'],
           ]}
         />
         <SearchBox value={q} onChange={setQ} placeholder="Search product name or SKU" />
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
-      {loading && !data ? (
+      {filter === 'expiring' ? (
+        <Expiring />
+      ) : loading && !data ? (
         <Loading />
       ) : items.length === 0 ? (
         <Empty

@@ -5,7 +5,7 @@ import { api, useApi } from '../lib/api';
 import { ksh, prettyPhone, toCents, todayIso } from '../lib/format';
 import { ErrorNote, Field, PageHeader } from '../components/ui';
 
-type Item = { id: string; name: string; sku: string; price: number; taxType: string; unit: string; trackStock: boolean };
+type Item = { id: string; name: string; sku: string; price: number; taxType: string; unit: string; trackStock: boolean; trackBatches?: boolean };
 type ExpenseAccount = { id: string; code: string; name: string };
 type Supplier = { id: string; number: string; name: string; phone: string; kraPin: string; weOwe?: number };
 type Location = { id: string; name: string; isDefault: boolean };
@@ -19,6 +19,9 @@ type Line = {
   quantity: string;
   unitCost: string; // in KSh string
   taxType: string;
+  unit?: string;
+  batchNo?: string;
+  expiry?: string;
 };
 
 const TAX: [string, string, number][] = [
@@ -179,6 +182,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
 
   const { data: existing } = useApi<{ document: any }>(id ? `/purchases/${id}` : null);
   const { data: items } = useApi<Item[]>('/items');
+  const { data: units } = useApi<{ itemId: string; name: string; factor: number }[]>('/items/units');
   const { data: expenseAccounts } = useApi<ExpenseAccount[]>('/expense-accounts');
   const { data: locations } = useApi<Location[]>('/locations');
 
@@ -217,6 +221,9 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
             quantity: l.quantity.toString(),
             unitCost: (l.unitCost / 100).toString(),
             taxType: l.taxType,
+            unit: l.unit || undefined,
+            batchNo: l.batchNo || undefined,
+            expiry: l.expiry || undefined,
           })),
         );
       }
@@ -276,6 +283,9 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
         quantity: parseFloat(l.quantity) || 1,
         unitCost: toCents(l.unitCost),
         taxType: l.taxType,
+        unit: l.type === 'item' ? l.unit : undefined,
+        batchNo: l.type === 'item' ? l.batchNo : undefined,
+        expiry: l.type === 'item' && l.expiry ? l.expiry : undefined,
       })),
     };
 
@@ -511,6 +521,38 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                     </b>
                   </div>
                 </div>
+                {(() => {
+                  const it = l.type === 'item' ? items?.find((x) => x.id === l.itemId) : undefined;
+                  const its = units?.filter((u) => u.itemId === l.itemId) ?? [];
+                  if (!it || (!its.length && !it.trackBatches)) return null;
+                  const u = its.find((x) => x.name === l.unit);
+                  return (
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-12 items-end">
+                      {its.length > 0 && (
+                        <div className="sm:col-span-3">
+                          <label className="text-[11px] font-semibold text-muted block mb-1">Bought by the</label>
+                          <select className="field text-sm" value={l.unit ?? ''} onChange={(e) => updateLine(l.key, { unit: e.target.value || undefined })}>
+                            <option value="">{it.unit}</option>
+                            {its.map((x) => <option key={x.name} value={x.name}>{x.name} ({x.factor} {it.unit})</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {it.trackBatches && (
+                        <>
+                          <div className="sm:col-span-4">
+                            <label className="text-[11px] font-semibold text-muted block mb-1">Batch / lot number</label>
+                            <input className="field text-sm" required value={l.batchNo ?? ''} onChange={(e) => updateLine(l.key, { batchNo: e.target.value })} placeholder="From the packaging" />
+                          </div>
+                          <div className="sm:col-span-3">
+                            <label className="text-[11px] font-semibold text-muted block mb-1">Expiry</label>
+                            <input className="field text-sm" type="date" value={l.expiry ?? ''} onChange={(e) => updateLine(l.key, { expiry: e.target.value })} />
+                          </div>
+                        </>
+                      )}
+                      {u && <p className="col-span-3 text-xs text-muted sm:col-span-12">{(parseFloat(l.quantity) || 0) * u.factor} {it.unit} go into stock.</p>}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

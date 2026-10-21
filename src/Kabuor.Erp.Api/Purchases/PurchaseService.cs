@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Purchases;
 
-public sealed record PurchaseLineInput(Guid? ItemId, Guid? AccountId, string? Description, decimal Quantity, long? UnitCost, TaxType? TaxType);
+public sealed record PurchaseLineInput(Guid? ItemId, Guid? AccountId, string? Description, decimal Quantity, long? UnitCost, TaxType? TaxType, string? Unit = null, string? BatchNo = null, DateOnly? Expiry = null);
 public sealed record PurchaseInput(PurchaseKind Kind, Guid SupplierId, DateOnly? IssueDate, int? DueInDays, string? SupplierRef, Guid? LocationId, string? Notes, List<PurchaseLineInput> Lines);
 public sealed record SupplierPaymentInput(PaymentMethod Method, long Amount, string? Reference, DateTimeOffset? PaidAt);
 
@@ -66,6 +66,7 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
         var vat = (await Company()).VatRegistered;
         var ids = lines.Where(l => l.ItemId is not null).Select(l => l.ItemId!.Value).ToList();
         var items = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+        var units = await db.ItemUnits.Where(u => ids.Contains(u.ItemId)).ToListAsync();
         var accountIds = lines.Where(l => l.AccountId is not null).Select(l => l.AccountId!.Value).ToList();
         var accounts = await db.Accounts.Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id);
         doc.Lines.Clear();
@@ -79,13 +80,22 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
                     throw new AppException($"“{a.Name}” can’t be used for a purchase line. Choose an expense.");
             }
             if (l.Quantity <= 0 || l.Quantity > 1_000_000) throw new AppException("Quantities must be more than 0.");
+            var (unitName, factor) = ("", 1m);
+            if (item is not null && !string.IsNullOrWhiteSpace(l.Unit) && !l.Unit.Trim().Equals(item.Unit, StringComparison.OrdinalIgnoreCase))
+            {
+                var u = units.FirstOrDefault(x => x.ItemId == item.Id && x.Name.Equals(l.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
+                    ?? throw new AppException($"{item.Name} has no “{l.Unit.Trim()}” unit. Add it to the product first.");
+                (unitName, factor) = (u.Name, u.Factor);
+            }
+            var batch = item?.TrackBatches == true ? (l.BatchNo ?? "").Trim() : "";
+            if (item?.TrackBatches == true && batch.Length == 0) throw new AppException($"{item.Name} is kept by batch: enter the batch number and expiry from the packaging.");
             var cost = l.UnitCost ?? throw new AppException("Give each line a cost.");
             if (cost < 0) throw new AppException("Costs can't be negative.");
             var type = l.TaxType ?? item?.TaxType ?? TaxType.B_Standard16;
             var (net, tax, total) = Tax.Line(l.Quantity, cost, type, vat);
             var description = (l.Description ?? item?.Name ?? "").Trim();
             if (description.Length == 0) throw new AppException("Describe each line.");
-            doc.Lines.Add(new PurchaseLine { ItemId = item?.Id, AccountId = item?.TrackStock == true ? null : l.AccountId, Description = description, Quantity = l.Quantity, UnitCost = cost, TaxType = type, Net = net, Tax = tax, Total = total });
+            doc.Lines.Add(new PurchaseLine { ItemId = item?.Id, AccountId = item?.TrackStock == true ? null : l.AccountId, Description = description, Quantity = l.Quantity, UnitCost = cost, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor, BatchNo = batch, Expiry = batch.Length > 0 ? l.Expiry : null });
         }
         doc.Net = doc.Lines.Sum(l => l.Net);
         doc.Tax = doc.Lines.Sum(l => l.Tax);
@@ -113,7 +123,8 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
             if (item?.TrackStock == true)
             {
                 l.AccountId = stockAccount;
-                await stock.Receive(item, location.Id, l.Quantity, (decimal)l.Net / l.Quantity, StockMoveKind.Received, "Bill", doc.Id, doc.Number);
+                var qty = l.Quantity * l.UnitFactor;
+                await stock.Receive(item, location.Id, qty, (decimal)l.Net / qty, StockMoveKind.Received, "Bill", doc.Id, doc.Number, l.BatchNo, l.Expiry);
             }
         }
         await ledger.PostBill(doc);
@@ -129,7 +140,7 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
         if (o.Kind != PurchaseKind.Order) throw new AppException("Only purchase orders can be received.");
         if (o.Status is PurchaseStatus.Received or PurchaseStatus.Void) throw new AppException("This order has already been received or voided.");
         var bill = await Create(new PurchaseInput(PurchaseKind.Bill, o.SupplierId, Clock.Today, o.DueDate.DayNumber - o.IssueDate.DayNumber, "", o.LocationId, o.Notes,
-            o.Lines.Select(l => new PurchaseLineInput(l.ItemId, l.AccountId, l.Description, l.Quantity, l.UnitCost, l.TaxType)).ToList()));
+            o.Lines.Select(l => new PurchaseLineInput(l.ItemId, l.AccountId, l.Description, l.Quantity, l.UnitCost, l.TaxType, l.Unit)).ToList()));
         bill.FromOrderId = o.Id;
         o.Status = PurchaseStatus.Received;
         await db.SaveChangesAsync();
@@ -163,7 +174,7 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
             var location = await stock.LocationOrDefault(doc.LocationId);
             foreach (var l in doc.Lines)
                 if (l.ItemId is { } iid && items.GetValueOrDefault(iid) is { TrackStock: true } item)
-                    await stock.Unreceive(item, location.Id, l.Quantity, (decimal)l.Net / l.Quantity, "BillVoid", doc.Id, doc.Number);
+                    await stock.Unreceive(item, location.Id, l.Quantity * l.UnitFactor, (decimal)l.Net / (l.Quantity * l.UnitFactor), "BillVoid", doc.Id, doc.Number, l.BatchNo);
             await ledger.PostBill(doc, reverse: true);
         }
         doc.Status = PurchaseStatus.Void;

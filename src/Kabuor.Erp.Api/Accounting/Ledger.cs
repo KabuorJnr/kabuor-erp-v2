@@ -40,6 +40,10 @@ public static class SystemAccounts
     public const string NitaPayable = "NITA";
     public const string NetPayPayable = "NET_PAY";
     public const string StaffAdvances = "STAFF_ADV";
+    public const string DeductionsPayable = "DEDUCTIONS_PAYABLE";
+    public const string VatWithheld = "VAT_WITHHELD";
+    public const string TaxWithheld = "TAX_WITHHELD";
+    public const string BankCharges = "BANK_CHARGES";
     public const string ProductionAbsorbed = "PROD_ABSORBED";
 
     /// <summary>A starter chart of accounts in plain words. Owners can add their own beside these.</summary>
@@ -52,6 +56,8 @@ public static class SystemAccounts
         new() { CompanyId = companyId, Code = "1200", Name = "Stock", Type = AccountType.Asset, SystemKey = Stock },
         new() { CompanyId = companyId, Code = "1300", Name = "VAT paid on purchases (claimable)", Type = AccountType.Asset, SystemKey = VatInput },
         new() { CompanyId = companyId, Code = "1400", Name = "Money staff owe us (advances, loans)", Type = AccountType.Asset, SystemKey = StaffAdvances },
+        new() { CompanyId = companyId, Code = "1310", Name = "VAT withheld by customers (claimable)", Type = AccountType.Asset, SystemKey = VatWithheld },
+        new() { CompanyId = companyId, Code = "1320", Name = "Income tax withheld by customers (claimable)", Type = AccountType.Asset, SystemKey = TaxWithheld },
         new() { CompanyId = companyId, Code = "2000", Name = "Money we owe suppliers", Type = AccountType.Liability, SystemKey = Payable },
         new() { CompanyId = companyId, Code = "2100", Name = "VAT collected (owed to KRA)", Type = AccountType.Liability, SystemKey = VatOutput },
         new() { CompanyId = companyId, Code = "2200", Name = "Payments not yet matched", Type = AccountType.Liability, SystemKey = Unapplied },
@@ -61,6 +67,7 @@ public static class SystemAccounts
         new() { CompanyId = companyId, Code = "2330", Name = "Housing Levy owed", Type = AccountType.Liability, SystemKey = HousingLevyPayable },
         new() { CompanyId = companyId, Code = "2340", Name = "NITA owed", Type = AccountType.Liability, SystemKey = NitaPayable },
         new() { CompanyId = companyId, Code = "2350", Name = "Salaries to pay", Type = AccountType.Liability, SystemKey = NetPayPayable },
+        new() { CompanyId = companyId, Code = "2360", Name = "Deductions to pay over (HELB, SACCOs, insurance)", Type = AccountType.Liability, SystemKey = DeductionsPayable },
         new() { CompanyId = companyId, Code = "3000", Name = "Owner's equity", Type = AccountType.Equity, SystemKey = Equity },
         new() { CompanyId = companyId, Code = "4000", Name = "Sales", Type = AccountType.Income, SystemKey = Sales },
         new() { CompanyId = companyId, Code = "5000", Name = "Cost of goods sold", Type = AccountType.Expense, SystemKey = CostOfSales },
@@ -73,6 +80,7 @@ public static class SystemAccounts
         new() { CompanyId = companyId, Code = "6300", Name = "Airtime and internet", Type = AccountType.Expense },
         new() { CompanyId = companyId, Code = "6400", Name = "Packaging and supplies", Type = AccountType.Expense },
         new() { CompanyId = companyId, Code = "6500", Name = "Electricity and water", Type = AccountType.Expense },
+        new() { CompanyId = companyId, Code = "6600", Name = "Bank and M-Pesa charges", Type = AccountType.Expense, SystemKey = BankCharges },
         new() { CompanyId = companyId, Code = "6900", Name = "Other expenses", Type = AccountType.Expense, SystemKey = OtherExpenses },
     ];
 

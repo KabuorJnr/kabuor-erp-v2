@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Download, Loader2, MessageCircle, Plus, Trash2 } from
 import { api, can, getSession, useApi, useSession } from '../lib/api';
 import { cn, dayYear, ksh, msisdn, toCents, todayIso } from '../lib/format';
 import { Empty, ErrorNote, Field, Loading, PageHeader, Sheet, Stat, Status } from '../components/ui';
+import { parseLines } from '../components/Deductions';
 
 const monthName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 const KIND_LABEL: Record<string, string> = { PAYE: 'PAYE (KRA)', NSSF: 'NSSF', SHIF: 'SHIF (SHA)', AHL: 'Housing Levy (KRA)', NITA: 'NITA' };
@@ -102,10 +103,16 @@ function PayslipSheet({ slip, run, company, open, onClose, onSaved }: { slip: an
       sub: slip.payeBeforeRelief > 0 ? `Tax ${ksh(slip.payeBeforeRelief)} less personal relief ${ksh(slip.personalRelief)}` : undefined,
     },
     { label: 'Untaxed allowances', amount: slip.nonTaxableAllowances },
-    { label: 'Advances & other deductions', amount: -slip.otherDeductions },
+    ...parseLines(slip)
+      .filter((l) => l.amount > 0)
+      .map((l) => ({
+        label: `${l.name}${l.payTo ? ` (${l.payTo})` : ''}${l.kind === 'Pension' ? ', before tax' : ''}`,
+        amount: -l.amount,
+        sub: l.wanted != null ? `Cut from ${ksh(l.wanted)} so they keep a third of their pay (Employment Act s.19)` : undefined,
+      })),
   ];
   const wa = msisdn(employee.data?.employee.phone);
-  const text = `Payslip, ${company}, ${monthName(run.period)}\n${slip.employeeName}\nGross: ${ksh(slip.gross)}\nNSSF: ${ksh(slip.nssfEmployee)}\nSHIF: ${ksh(slip.shif)}\nHousing Levy: ${ksh(slip.housingLevyEmployee)}\nPAYE: ${ksh(slip.paye)}${slip.otherDeductions ? `\nOther deductions: ${ksh(slip.otherDeductions)}` : ''}\nTake-home: ${ksh(slip.net)}`;
+  const text = `Payslip, ${company}, ${monthName(run.period)}\n${slip.employeeName}\nGross: ${ksh(slip.gross)}\nNSSF: ${ksh(slip.nssfEmployee)}\nSHIF: ${ksh(slip.shif)}\nHousing Levy: ${ksh(slip.housingLevyEmployee)}\nPAYE: ${ksh(slip.paye)}${parseLines(slip).filter((l) => l.amount > 0).map((l) => `\n${l.name}: ${ksh(l.amount)}`).join('')}\nTake-home: ${ksh(slip.net)}`;
   return (
     <Sheet open={open} onClose={onClose} title={`${slip.employeeName} · ${monthName(run.period)}`} wide>
       <dl className="card divide-y divide-line/60 p-4 text-sm">
@@ -146,8 +153,8 @@ function PayslipSheet({ slip, run, company, open, onClose, onSaved }: { slip: an
             <Field label="Overtime / bonus (KSh)" hint={`Now ${ksh(slip.extraEarnings)}`}>
               <input className="field num" inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={String(slip.extraEarnings / 100)} />
             </Field>
-            <Field label="Advance / loan off pay (KSh)" hint={`Now ${ksh(slip.otherDeductions)}`}>
-              <input className="field num" inputMode="decimal" value={deduct} onChange={(e) => setDeduct(e.target.value)} placeholder={String(slip.otherDeductions / 100)} />
+            <Field label="One-off deduction (KSh)" hint="Agreed deductions (HELB, SACCO, loans) are added automatically from the employee’s page.">
+              <input className="field num" inputMode="decimal" value={deduct} onChange={(e) => setDeduct(e.target.value)} placeholder={String((parseLines(slip).find((l) => !l.deductionId)?.amount ?? 0) / 100)} />
             </Field>
           </div>
           <Field label="Note on the payslip">
@@ -326,7 +333,7 @@ export function PayrollRun() {
             {data.statutory.map((s: any) => (
               <li key={s.kind} className="flex items-center justify-between gap-3 pt-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
-                  <b className="block truncate text-ink">{KIND_LABEL[s.kind]}</b>
+                  <b className="block truncate text-ink">{KIND_LABEL[s.kind] ?? `${s.label} (deductions)`}</b>
                   <span className="num text-muted text-xs block">{ksh(s.amount)}</span>
                 </span>
                 <span className="shrink-0">
@@ -350,7 +357,7 @@ export function PayrollRun() {
       <PaySheet
         open={Boolean(paying)}
         onClose={() => setPaying(null)}
-        title={paying?.kind === 'NET' ? `Salaries for ${monthName(run.period)}` : `${KIND_LABEL[paying?.kind ?? ''] ?? ''} for ${monthName(run.period)}`}
+        title={paying?.kind === 'NET' ? `Salaries for ${monthName(run.period)}` : `${KIND_LABEL[paying?.kind ?? ''] ?? paying?.kind?.replace('TO:', '') ?? ''} for ${monthName(run.period)}`}
         text={paying?.kind === 'NET' ? `Record that ${ksh(paying.amount)} take-home pay has been sent (M-Pesa bulk payment, bank transfer or cash).` : `Record that ${ksh(paying?.amount ?? 0)} has been paid.`}
         onConfirm={async (method, reference) => {
           if (paying?.kind === 'NET') await api(`/payroll/runs/${run.id}/pay`, { body: { method, reference } });

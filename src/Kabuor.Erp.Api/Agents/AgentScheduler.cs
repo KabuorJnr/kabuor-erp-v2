@@ -10,7 +10,7 @@ public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration c
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
         if (config.GetValue("Agents:Disabled", false)) return; // tests and one-off tools
-        var tick = TimeSpan.FromMinutes(config.GetValue("Agents:TickMinutes", 5));
+        var tick = TimeSpan.FromMinutes(config.GetValue("Agents:TickMinutes", 1));
         await Task.Delay(TimeSpan.FromSeconds(30), stop);
         while (!stop.IsCancellationRequested)
         {
@@ -18,6 +18,13 @@ public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration c
             catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "Agent scheduler tick failed"); }
             await Task.Delay(tick, stop);
         }
+    }
+
+    static TimeSpan Every(Kabuor.Erp.Domain.AgentSetup s)
+    {
+        if (!s.Key.StartsWith("custom:")) return AgentService.Info(s.Key).Every;
+        var every = System.Text.Json.Nodes.JsonNode.Parse(s.Settings)?["every"]?.GetValue<string>();
+        return every switch { "hourly" => TimeSpan.FromHours(1), "weekly" => TimeSpan.FromDays(7), _ => TimeSpan.FromHours(24) };
     }
 
     public async Task RunDue(CancellationToken stop = default)
@@ -28,7 +35,9 @@ public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration c
             var db = scope.ServiceProvider.GetRequiredService<ErpDb>();
             var now = DateTimeOffset.UtcNow;
             var on = await db.AgentSetups.IgnoreQueryFilters().Where(s => s.Enabled).ToListAsync(stop);
-            due = on.Where(s => s.LastRunAt is null || now - s.LastRunAt >= AgentService.Info(s.Key).Every - TimeSpan.FromMinutes(1))
+            // Due by its schedule, or woken by a business event since its last run (at most once a minute).
+            due = on.Where(s => s.LastRunAt is null || now - s.LastRunAt >= Every(s) - TimeSpan.FromMinutes(1)
+                    || (s.KickedAt > s.LastRunAt && now - s.LastRunAt >= TimeSpan.FromMinutes(1)))
                 .Select(s => (s.Id, s.CompanyId, s.Key)).ToList();
         }
         foreach (var (id, company, key) in due)

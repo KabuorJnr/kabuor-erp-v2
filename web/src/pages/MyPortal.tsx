@@ -13,6 +13,8 @@ import { ErrorNote, Field, Loading, Sheet, Status } from '../components/ui';
 
 const monthName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
+import { MyDeductions, parseLines } from '../components/Deductions';
+
 export default function MyPortal() {
   const { data, error, reload } = useApi<any>('/me');
   const [tab, setTab] = useState<'overview' | 'payslips' | 'leave' | 'p9' | 'security'>('overview');
@@ -171,6 +173,7 @@ export default function MyPortal() {
       {/* Tab: Overview */}
       {tab === 'overview' && (
         <div className="space-y-6">
+          <MyDeductions deductions={data.deductions ?? []} onChange={reload} />
           {/* Quick Metrics */}
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="card p-4">
@@ -506,7 +509,7 @@ export default function MyPortal() {
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-muted min-w-0 flex-1">Basic Salary:</span>
-                    <span className="num shrink-0 text-right font-semibold whitespace-nowrap">{ksh(payslipDetail.slip?.basicSalary ?? 0)}</span>
+                    <span className="num shrink-0 text-right font-semibold whitespace-nowrap">{ksh(payslipDetail.slip?.basic ?? 0)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-muted min-w-0 flex-1">Taxable Allowances:</span>
@@ -524,7 +527,7 @@ export default function MyPortal() {
               </div>
 
               <div className="rounded-lg border border-line bg-white p-4">
-                <span className="text-xs font-bold uppercase text-faint tracking-wider mb-2 block">Deductions (Statutory)</span>
+                <span className="text-xs font-bold uppercase text-faint tracking-wider mb-2 block">Deductions</span>
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-muted min-w-0 flex-1">PAYE Income Tax:</span>
@@ -536,20 +539,31 @@ export default function MyPortal() {
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-muted min-w-0 flex-1">Housing Levy (AHL 1.5%):</span>
-                    <span className="num shrink-0 text-right font-semibold text-bad whitespace-nowrap">{ksh(payslipDetail.slip?.housingLevy ?? 0)}</span>
+                    <span className="num shrink-0 text-right font-semibold text-bad whitespace-nowrap">{ksh(payslipDetail.slip?.housingLevyEmployee ?? 0)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-muted min-w-0 flex-1">NSSF Pension:</span>
                     <span className="num shrink-0 text-right font-semibold text-bad whitespace-nowrap">{ksh(payslipDetail.slip?.nssfEmployee ?? 0)}</span>
                   </div>
+                  {parseLines(payslipDetail.slip).filter((l) => l.amount > 0).map((l, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-3">
+                      <span className="text-muted min-w-0 flex-1">
+                        {l.name}{l.payTo ? ` (${l.payTo})` : ''}:
+                        {l.wanted != null && <span className="block text-xs text-warn">Cut from {ksh(l.wanted)}: you always keep a third of your pay</span>}
+                      </span>
+                      <span className="num shrink-0 text-right font-semibold text-bad whitespace-nowrap">{ksh(l.amount)}</span>
+                    </div>
+                  ))}
                   <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2 font-bold text-ink">
                     <span className="min-w-0 flex-1">Total Deductions:</span>
                     <span className="num shrink-0 text-right text-bad whitespace-nowrap">
                       {ksh(
                         (payslipDetail.slip?.paye ?? 0) +
                         (payslipDetail.slip?.shif ?? 0) +
-                        (payslipDetail.slip?.housingLevy ?? 0) +
-                        (payslipDetail.slip?.nssfEmployee ?? 0)
+                        (payslipDetail.slip?.housingLevyEmployee ?? 0) +
+                        (payslipDetail.slip?.nssfEmployee ?? 0) +
+                        (payslipDetail.slip?.otherDeductions ?? 0) +
+                        (payslipDetail.slip?.pension ?? 0)
                       )}
                     </span>
                   </div>

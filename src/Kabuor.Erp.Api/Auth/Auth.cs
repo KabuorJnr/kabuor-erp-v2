@@ -126,7 +126,7 @@ public sealed record PasswordInput(string Current, string New);
 public sealed record AccessGrant(string Phone, string Password, bool Reset);
 public sealed record Session(string Token, object User, object Company);
 
-public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens, SecretBox box)
+public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens, SecretBox box, IConfiguration config)
 {
     static readonly PasswordHasher<User> Hasher = new();
 
@@ -287,6 +287,10 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         if ((name ?? "").Trim().Length < 2 || !email.Contains('@')) throw new AppException("Enter their name and email.");
         CheckPassword(password);
         if (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email)) throw new AppException("That email already has an account.", 409);
+        var company = await db.Companies.SingleAsync(c => c.Id == db.CompanyId);
+        var plan = Billing.Plans.All(config).FirstOrDefault(p => p.Id == company.Plan);
+        if (plan is not null && await db.Users.CountAsync(x => x.Active && x.Role != Role.Employee) >= plan.Users)
+            throw new AppException($"The {plan.Name} plan has room for {plan.Users} users. Choose a bigger plan in Settings → Plan to add more.");
         var u = new User { Name = name!.Trim(), Email = email, Phone = Phones.ToMsisdn(phone) ?? "", Role = role };
         u.PasswordHash = Hasher.HashPassword(u, password);
         db.Users.Add(u);

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
-import { useApi } from '../lib/api';
+import { download, useApi } from '../lib/api';
+import { Download } from 'lucide-react';
 import { cn, dayYear, ksh, todayIso } from '../lib/format';
 import { Chips, ErrorNote, Loading, PageHeader } from '../components/ui';
 
@@ -179,7 +180,25 @@ function Vat({ period }: { period: string }) {
       <aside className="card h-fit p-5">
         <p className="text-sm text-muted">VAT on sales, {label}</p>
         <p className="num mt-1 font-display text-3xl font-bold">{ksh(data.totalTax)}</p>
-        <p className="mt-2 text-xs text-muted">Output VAT for your return. Input VAT from purchases comes with the purchasing module. VAT returns are due by the 20th of the following month.</p>
+        <dl className="mt-3 space-y-1.5 text-sm">
+          <div className="flex justify-between"><dt className="text-muted">VAT on purchases (claimable)</dt><dd className="num">−{ksh(data.inputTax)}</dd></div>
+          {data.vatWithheld > 0 && <div className="flex justify-between"><dt className="text-muted">Withheld by customers (certificates)</dt><dd className="num">−{ksh(data.vatWithheld)}</dd></div>}
+          <div className="flex justify-between border-t border-line pt-1.5 font-semibold"><dt>{data.payable >= 0 ? 'To pay KRA' : 'Credit to carry forward'}</dt><dd className="num">{ksh(Math.abs(data.payable))}</dd></div>
+        </dl>
+        {data.billsMissingSupplierInvoiceNo?.length > 0 && <p className="mt-2 text-xs text-warn">{data.billsMissingSupplierInvoiceNo.length} bill(s) have no supplier invoice number, so their VAT can’t be claimed: {data.billsMissingSupplierInvoiceNo.join(', ')}.</p>}
+        <p className="mt-3 text-xs font-semibold text-muted">For the iTax VAT3 return</p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {[
+            [`/reports/itax/sales.csv?from=${from}&to=${to}`, 'Sales 16%'],
+            [`/reports/itax/sales.csv?from=${from}&to=${to}&rate=8`, 'Sales 8%'],
+            [`/reports/itax/purchases.csv?from=${from}&to=${to}`, 'Purchases'],
+          ].map(([path, name]) => (
+            <button key={path} onClick={() => download(path, `${name}.csv`)} className="btn btn-ghost py-1 text-xs">
+              <Download className="h-3.5 w-3.5" /> {name}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">Columns follow KRA’s VAT3 template: paste each into its sheet. Returns are due by the 20th of the following month.</p>
       </aside>
     </div>
   );
@@ -226,6 +245,66 @@ function TrialBalance() {
   );
 }
 
+function BalanceSheet() {
+  const { data, error } = useApi<any>('/reports/balance-sheet');
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data) return <Loading />;
+  const block = (title: string, lines: any[], total: number, extra?: [string, number]) => (
+    <section className="card p-4 sm:p-5">
+      <h2 className="text-sm font-semibold text-muted">{title}</h2>
+      <ul className="mt-2 divide-y divide-line text-sm">
+        {lines.map((l: any) => (
+          <li key={l.code} className="flex justify-between gap-3 py-1.5"><span className="min-w-0 truncate">{l.name}</span><span className="num shrink-0">{ksh(l.amount)}</span></li>
+        ))}
+        {extra && <li className="flex justify-between gap-3 py-1.5"><span>{extra[0]}</span><span className="num">{ksh(extra[1])}</span></li>}
+      </ul>
+      <p className="mt-2 flex justify-between border-t border-line pt-2 font-semibold"><span>Total</span><span className="num">{ksh(total)}</span></p>
+    </section>
+  );
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">As at {new Date(`${data.at}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. {data.balanced ? 'What you own equals what you owe plus what’s yours.' : <b className="text-bad">Doesn’t balance: tell support.</b>}</p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {block('What the business owns', data.assets.lines, data.assets.total)}
+        <div className="space-y-4">
+          {block('What it owes', data.liabilities.lines, data.liabilities.total)}
+          {block('What’s yours (equity)', data.equity.lines, data.equity.total, ['Profit so far', data.equity.profitSoFar])}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CashFlow({ period }: { period: string }) {
+  const [from, to, label] = periodOf(period);
+  const { data, error } = useApi<any>(`/reports/cash-flow?from=${from}&to=${to}`);
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data) return <Loading />;
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+      <section className="card overflow-x-auto p-4 sm:p-5">
+        <table className="w-full min-w-[26rem] text-sm">
+          <thead className="text-left text-xs text-muted">
+            <tr><th className="pb-2 font-semibold">Money {label}</th><th className="pb-2 text-right font-semibold">In</th><th className="pb-2 text-right font-semibold">Out</th></tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {data.rows.length ? data.rows.map((r: any) => (
+              <tr key={r.category}><td className="py-2">{r.category}</td><td className="num py-2 text-right">{r.moneyIn ? ksh(r.moneyIn) : ''}</td><td className="num py-2 text-right">{r.moneyOut ? ksh(r.moneyOut) : ''}</td></tr>
+            )) : <tr><td colSpan={3} className="py-3 text-muted">No money moved {label}.</td></tr>}
+          </tbody>
+        </table>
+      </section>
+      <aside className="card h-fit space-y-1.5 p-5 text-sm">
+        <p className="flex justify-between"><span className="text-muted">At the start</span><span className="num">{ksh(data.opening)}</span></p>
+        <p className="flex justify-between"><span className="text-muted">Came in</span><span className="num text-good">+{ksh(data.moneyIn)}</span></p>
+        <p className="flex justify-between"><span className="text-muted">Went out</span><span className="num text-bad">−{ksh(data.moneyOut)}</span></p>
+        <p className="flex justify-between border-t border-line pt-1.5 font-semibold"><span>At the end</span><span className="num">{ksh(data.closing)}</span></p>
+        <p className="pt-1 text-xs text-muted">M-Pesa, bank and cash together.</p>
+      </aside>
+    </div>
+  );
+}
+
 export default function Reports() {
   const [tab, setTab] = useState('pnl');
   const [period, setPeriod] = useState('month');
@@ -233,13 +312,15 @@ export default function Reports() {
     <>
       <PageHeader title="Reports" subtitle="Numbers come straight from your invoices and payments, so they’re always up to date." />
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <Chips label="Report" value={tab} onChange={setTab} options={[['pnl', 'Profit & loss'], ['aging', 'Who owes you'], ['vat', 'VAT'], ['tb', 'Trial balance']]} />
-        {(tab === 'pnl' || tab === 'vat') && <Chips label="Period" value={period} onChange={setPeriod} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />}
+        <Chips label="Report" value={tab} onChange={setTab} options={[['pnl', 'Profit & loss'], ['bs', 'Balance sheet'], ['cf', 'Cash flow'], ['aging', 'Who owes you'], ['vat', 'VAT'], ['tb', 'Trial balance']]} />
+        {(tab === 'pnl' || tab === 'vat' || tab === 'cf') && <Chips label="Period" value={period} onChange={setPeriod} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />}
       </div>
       {tab === 'pnl' && <ProfitAndLoss period={period} />}
       {tab === 'aging' && <Aging />}
       {tab === 'vat' && <Vat period={period} />}
       {tab === 'tb' && <TrialBalance />}
+      {tab === 'bs' && <BalanceSheet />}
+      {tab === 'cf' && <CashFlow period={period} />}
     </>
   );
 }

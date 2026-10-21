@@ -49,8 +49,11 @@ public static class SelfEndpoints
                 leave,
                 upcoming = leave.Where(l => l.Status is LeaveStatus.Approved or LeaveStatus.Pending && l.To >= today).OrderBy(l => l.From),
                 payslips,
+                deductions = await db.EmployeeDeductions.Where(d => d.EmployeeId == e.Id && d.Status != DeductionStatus.Declined).OrderBy(d => d.Status).ThenBy(d => d.CreatedAt).ToListAsync(),
             };
         });
+        me.MapPost("/deductions/{id:guid}/agree", async (Guid id, ErpDb db, RequestContext ctx, DeductionService s) => await s.Decide((await Me(db, ctx)).Id, id, true, null));
+        me.MapPost("/deductions/{id:guid}/decline", async (Guid id, DeclineInput input, ErpDb db, RequestContext ctx, DeductionService s) => await s.Decide((await Me(db, ctx)).Id, id, false, input.Reason));
         me.MapPost("/leave", async (MyLeaveInput input, ErpDb db, RequestContext ctx, PeopleService people) =>
         {
             var e = await Me(db, ctx);

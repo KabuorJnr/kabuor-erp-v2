@@ -21,7 +21,70 @@ public sealed class Company
     public string MpesaShortcode { get; set; } = "";
     /// <summary>Secret part of this company's M-Pesa confirmation URL (Safaricom doesn't sign callbacks).</summary>
     public string MpesaCallbackKey { get; set; } = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+    /// <summary>M-Pesa prompts (STK push) from invoices: the company's own Daraja app. Secrets are sealed.</summary>
+    public string StkEnvironment { get; set; } = "sandbox";
+    public string StkShortcode { get; set; } = "";
+    /// <summary>For a Buy Goods till: the till number (StkShortcode is then the store number).</summary>
+    public string StkTill { get; set; } = "";
+    public string StkConsumerKey { get; set; } = "";
+    public string StkConsumerSecret { get; set; } = "";
+    public string StkPasskey { get; set; } = "";
+    /// <summary>Subscription: "" while on the free trial, then starter | business | growth.</summary>
+    public string Plan { get; set; } = "";
+    public DateTimeOffset? TrialEndsAt { get; set; }
+    public DateTimeOffset? PaidUntil { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public enum MpesaRequestStatus
+{
+    Pending,
+    Paid,
+    Failed,
+    Cancelled,
+}
+
+/// <summary>An M-Pesa prompt sent to a customer's phone to pay an invoice.</summary>
+public sealed class MpesaRequest : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid SalesDocId { get; set; }
+    public string Phone { get; set; } = "";
+    public long Amount { get; set; }
+    public string CheckoutId { get; set; } = "";
+    public MpesaRequestStatus Status { get; set; } = MpesaRequestStatus.Pending;
+    public string Receipt { get; set; } = "";
+    public string Note { get; set; } = "";
+    public string RequestedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? PaidAt { get; set; }
+}
+
+public enum BillingStatus
+{
+    Pending,
+    Paid,
+    Failed,
+}
+
+/// <summary>A subscription payment to Kabuor Builds, by M-Pesa prompt.</summary>
+public sealed class BillingPayment : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public string Plan { get; set; } = "";
+    public int Months { get; set; }
+    public long Amount { get; set; }
+    public string Phone { get; set; } = "";
+    public BillingStatus Status { get; set; } = BillingStatus.Pending;
+    public string CheckoutId { get; set; } = "";
+    public string Receipt { get; set; } = "";
+    public bool Test { get; set; }
+    public string Note { get; set; } = "";
+    public string RequestedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? PaidAt { get; set; }
 }
 
 public enum Role
@@ -75,6 +138,8 @@ public sealed class Customer : ICompanyOwned
     public string KraPin { get; set; } = "";
     public string Address { get; set; } = "";
     public long CreditLimit { get; set; }
+    /// <summary>Wholesale, a distributor's own prices…: their invoices start from this list instead of the shelf price.</summary>
+    public Guid? PriceListId { get; set; }
     public string Notes { get; set; } = "";
     /// <summary>Asked not to get marketing messages (Data Protection Act): never included in campaigns.</summary>
     public bool MarketingOptOut { get; set; }
@@ -113,6 +178,11 @@ public sealed class Item : ICompanyOwned
     public bool TrackStock { get; set; }
     /// <summary>Warn when the total on hand falls to this or below.</summary>
     public decimal ReorderLevel { get; set; }
+    /// <summary>Kept by batch with an expiry date (food, medicine, agro-chemicals): sold first-to-expire first.</summary>
+    public bool TrackBatches { get; set; }
+    /// <summary>KRA eTIMS: the item's registered code (set when first registered) and its KRA classification.</summary>
+    public string EtimsItemCode { get; set; } = "";
+    public string EtimsClassCode { get; set; } = "";
     /// <summary>Average cost of one unit before VAT, in cents (kept as a decimal so repeated averaging doesn't drift).</summary>
     public decimal AverageCost { get; set; }
 }
@@ -164,6 +234,12 @@ public sealed class SalesDoc : ICompanyOwned
     public EtimsStatus EtimsStatus { get; set; } = EtimsStatus.NotRequired;
     public string EtimsInvoiceNo { get; set; } = "";
     public string EtimsControlCode { get; set; } = "";
+    /// <summary>A balance brought in when the business moved to Kabuor (not a sale this year).</summary>
+    public bool Opening { get; set; }
+    /// <summary>Set by an offline till: the device's key for the sale, so syncing it twice keeps it once.</summary>
+    public string ClientRef { get; set; } = "";
+    /// <summary>The sequence number this invoice was sent to KRA under (needed for its credit note).</summary>
+    public long EtimsInvcNo { get; set; }
     public string EtimsQrUrl { get; set; } = "";
     public string EtimsError { get; set; } = "";
     public List<SalesLine> Lines { get; set; } = [];
@@ -187,6 +263,9 @@ public sealed class SalesLine : ICompanyOwned
     public long Total { get; set; }
     /// <summary>Cost of sales for this line (stocked items), fixed when the invoice is issued, in cents.</summary>
     public long Cost { get; set; }
+    /// <summary>Sold in a bigger unit ("carton" of 24): Quantity is in that unit; stock moves Quantity × UnitFactor.</summary>
+    public string Unit { get; set; } = "";
+    public decimal UnitFactor { get; set; } = 1;
 }
 
 public enum PaymentMethod
@@ -381,6 +460,8 @@ public sealed class PurchaseDoc : ICompanyOwned
     public long Paid { get; set; }
     public string Notes { get; set; } = "";
     public Guid? FromOrderId { get; set; }
+    /// <summary>A balance brought in when the business moved to Kabuor.</summary>
+    public bool Opening { get; set; }
     public List<PurchaseLine> Lines { get; set; } = [];
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Balance => Total - Paid;
@@ -402,6 +483,56 @@ public sealed class PurchaseLine : ICompanyOwned
     public long Net { get; set; }
     public long Tax { get; set; }
     public long Total { get; set; }
+    public string Unit { get; set; } = "";
+    public decimal UnitFactor { get; set; } = 1;
+    /// <summary>For items kept by batch: the supplier's batch (lot) number and its expiry.</summary>
+    public string BatchNo { get; set; } = "";
+    public DateOnly? Expiry { get; set; }
+}
+
+/// <summary>A named set of prices (Wholesale, Hotels, Distributor A). Items not on the list sell at their own price.</summary>
+public sealed class PriceList : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public required string Name { get; set; }
+    public List<PriceListItem> Items { get; set; } = [];
+}
+
+public sealed class PriceListItem : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid PriceListId { get; set; }
+    public Guid ItemId { get; set; }
+    /// <summary>VAT-inclusive price of one base unit, in cents.</summary>
+    public long Price { get; set; }
+}
+
+/// <summary>Another unit an item is bought or sold in: a carton of 24, a 50 kg bag, a crate.</summary>
+public sealed class ItemUnit : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid ItemId { get; set; }
+    public required string Name { get; set; }
+    /// <summary>How many base units are in one of these.</summary>
+    public decimal Factor { get; set; }
+    /// <summary>Its own price (a carton is often cheaper than 24 singles); 0 means base price × factor.</summary>
+    public long Price { get; set; }
+}
+
+/// <summary>Stock of one batch at one place.</summary>
+public sealed class StockBatch : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid ItemId { get; set; }
+    public Guid LocationId { get; set; }
+    public required string BatchNo { get; set; }
+    public DateOnly? Expiry { get; set; }
+    public decimal Quantity { get; set; }
+    public DateOnly ReceivedOn { get; set; }
 }
 
 /// <summary>Money out to a supplier against a bill.</summary>
@@ -467,6 +598,7 @@ public sealed class StockMove : ICompanyOwned
     public string SourceType { get; set; } = "";
     public Guid? SourceId { get; set; }
     public string Reference { get; set; } = ""; // INV-0003, BILL-0002, "Count 20 Oct"
+    public string BatchNo { get; set; } = "";
     public string Note { get; set; } = "";
     public string Actor { get; set; } = "";
     public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;

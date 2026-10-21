@@ -124,6 +124,62 @@ public sealed class Payslip : ICompanyOwned
     public long Nita { get; set; }
     /// <summary>After-tax deductions: salary advance, loan repayment, SACCO.</summary>
     public long OtherDeductions { get; set; }
+    /// <summary>The agreed deductions taken this month, as JSON lines: what, to whom, how much (and any that were capped).</summary>
+    public string DeductionLines { get; set; } = "[]";
+    /// <summary>Pension contributions taken before tax (part of the agreed deductions).</summary>
+    public long Pension { get; set; }
     public string Note { get; set; } = "";
     public long Net { get; set; }
 }
+
+// ---------- deductions an employee has agreed to ----------
+
+public enum DeductionKind
+{
+    Helb,      // Higher Education Loans Board repayment
+    Sacco,     // savings or shares in a SACCO
+    Loan,      // a loan from the business, repaid from pay
+    Advance,   // a salary advance, repaid from pay
+    Insurance, // medical or life cover paid for the employee
+    Union,     // trade union dues
+    Pension,   // voluntary pension: taken before tax (within KRA's limit)
+    Other,
+}
+
+public enum DeductionStatus
+{
+    AwaitingEmployee, // HR set it up; the employee hasn't agreed yet
+    Active,
+    Declined,
+    Stopped,
+    Completed,        // a loan or advance fully repaid
+}
+
+/// <summary>A deduction from pay the employee agreed to (in the app, on a signed form, or a HELB notice).
+/// Payroll takes it each month while it's active. Loans and advances carry the total to recover and stop by
+/// themselves when it's repaid.</summary>
+public sealed class EmployeeDeduction : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public DeductionKind Kind { get; set; }
+    public required string Name { get; set; }   // "HELB loan", "Stima Sacco shares"
+    public string PayTo { get; set; } = "";      // who receives it (HELB, the SACCO); empty for the business's own loans
+    public string Reference { get; set; } = "";  // HELB account / member / policy / loan number
+    public long MonthlyAmount { get; set; }
+    /// <summary>For loans and advances: the total to recover. Null means it runs until stopped or its end month.</summary>
+    public long? Total { get; set; }
+    public long Recovered { get; set; }
+    public DateOnly StartMonth { get; set; }
+    public DateOnly? EndMonth { get; set; }
+    public DeductionStatus Status { get; set; } = DeductionStatus.AwaitingEmployee;
+    /// <summary>How the employee agreed: "In the app", "Signed form (recorded by …)", "HELB notice (recorded by …)".</summary>
+    public string Consent { get; set; } = "";
+    public DateTimeOffset? ConsentAt { get; set; }
+    public string Note { get; set; } = "";
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public long Remaining => Total is { } t ? Math.Max(0, t - Recovered) : long.MaxValue;
+}
+

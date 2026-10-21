@@ -22,11 +22,12 @@ public sealed record StatutoryRates(
     int HousingLevyRateBps,
     long NitaPerEmployee);
 
-public sealed record PayInput(long Basic, long TaxableAllowances, long ExtraEarnings, long NonTaxableAllowances, long OtherDeductions);
+/// <summary>OtherDeductions are taken after tax; Pension (voluntary contributions) before tax, within KRA's limit.</summary>
+public sealed record PayInput(long Basic, long TaxableAllowances, long ExtraEarnings, long NonTaxableAllowances, long OtherDeductions, long Pension = 0);
 
 public sealed record PayResult(
     long Gross, long NssfEmployee, long NssfEmployer, long Shif, long HousingLevyEmployee, long HousingLevyEmployer,
-    long Taxable, long PayeBeforeRelief, long PersonalRelief, long Paye, long Nita, long OtherDeductions, long NonTaxable, long Net)
+    long Taxable, long PayeBeforeRelief, long PersonalRelief, long Paye, long Nita, long OtherDeductions, long NonTaxable, long Net, long Pension = 0)
 {
     /// <summary>What the employer pays on top of gross pay.</summary>
     public long EmployerCost => NssfEmployer + HousingLevyEmployer + Nita;
@@ -77,18 +78,22 @@ public static class Statutory
         return tax;
     }
 
+    public const long PensionReliefLimit = 30_000_00;
+
     public static PayResult Calculate(PayInput p, StatutoryRates r)
     {
         var gross = p.Basic + p.TaxableAllowances + p.ExtraEarnings;
-        if (gross <= 0) return new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, p.OtherDeductions, p.NonTaxableAllowances, p.NonTaxableAllowances - p.OtherDeductions);
+        if (gross <= 0) return new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, p.OtherDeductions, p.NonTaxableAllowances, p.NonTaxableAllowances - p.OtherDeductions - p.Pension, p.Pension);
         var nssf = Nssf(gross, r);
         var shif = Math.Max(Pct(gross, r.ShifRateBps), r.ShifMinimum);
         var ahl = Pct(gross, r.HousingLevyRateBps);
-        var taxable = Math.Max(0, gross - nssf - shif - ahl);
+        // Pension contributions (NSSF included) reduce taxable pay up to KSh 30,000 a month (Tax Laws (Amendment) Act 2024).
+        var pensionRelief = Math.Min(p.Pension, Math.Max(0, PensionReliefLimit - nssf));
+        var taxable = Math.Max(0, gross - nssf - shif - ahl - pensionRelief);
         var before = TaxByBand(taxable, r.PayeBands);
         var relief = Math.Min(before, r.PersonalRelief);
         var paye = before - relief;
-        var net = gross - nssf - shif - ahl - paye - p.OtherDeductions + p.NonTaxableAllowances;
-        return new(gross, nssf, nssf, shif, ahl, ahl, taxable, before, relief, paye, r.NitaPerEmployee, p.OtherDeductions, p.NonTaxableAllowances, net);
+        var net = gross - nssf - shif - ahl - paye - p.OtherDeductions - p.Pension + p.NonTaxableAllowances;
+        return new(gross, nssf, nssf, shif, ahl, ahl, taxable, before, relief, paye, r.NitaPerEmployee, p.OtherDeductions, p.NonTaxableAllowances, net, p.Pension);
     }
 }

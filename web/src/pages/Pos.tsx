@@ -4,9 +4,10 @@
 // leaves the screen. M-Pesa payments Safaricom already sent are listed to tap, so nobody types a code twice.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Banknote, CheckCircle2, ChevronRight, Clock, CreditCard, LayoutGrid, List, Lock, MapPin, Minus, Plus, Printer, Search, Share2, ShoppingCart, Smartphone, Trash2, Unlock, User, X,
+  Banknote, CheckCircle2, CloudOff, RefreshCw, ChevronRight, Clock, CreditCard, LayoutGrid, List, Lock, MapPin, Minus, Plus, Printer, Search, Share2, ShoppingCart, Smartphone, Trash2, Unlock, User, X,
 } from 'lucide-react';
 import { api, useApi, useSession } from '../lib/api';
+import { enqueue, lastCatalogue, newRef, queued, saveCatalogue, sync, unreachable, discard, type Queued } from '../lib/offline';
 import { cn, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
 import { ErrorNote, Loading, Sheet } from '../components/ui';
 
@@ -68,7 +69,32 @@ function loadTicket(): { lines: Line[]; customer: Customer } {
 export default function Pos() {
   const session = useSession();
   const [locationId, setLocationId] = useState('');
-  const { data, error, reload } = useApi<any>(locationId ? `/pos/data?locationId=${locationId}` : '/pos/data');
+  const live = useApi<any>(locationId ? `/pos/data?locationId=${locationId}` : '/pos/data');
+  // Offline: keep selling from the last catalogue this device saw.
+  useEffect(() => {
+    if (live.data) saveCatalogue(live.data);
+  }, [live.data]);
+  const cached = live.error && !live.data ? lastCatalogue() : null;
+  const data = live.data ?? cached?.data ?? null;
+  const error = data ? null : live.error;
+  const reload = live.reload;
+  const offline = Boolean(cached);
+  const [waiting, setWaiting] = useState<Queued[]>(queued);
+  const [syncing, setSyncing] = useState(false);
+  const flush = useCallback(async () => {
+    if (!queued().length) return;
+    setSyncing(true);
+    const r = await sync().finally(() => setSyncing(false));
+    if (r.sent) (reload(), setNotice(`${r.sent} offline sale${r.sent === 1 ? '' : 's'} sent.`));
+  }, [reload]);
+  useEffect(() => {
+    const onQueue = () => setWaiting(queued());
+    window.addEventListener('kerp-pos-queue', onQueue);
+    window.addEventListener('online', flush);
+    const t = setInterval(flush, 30000);
+    flush();
+    return () => (window.removeEventListener('kerp-pos-queue', onQueue), window.removeEventListener('online', flush), clearInterval(t));
+  }, [flush]);
   const shift = useApi<Shift>('/pos/shift');
   const [ticket, setTicket] = useState(loadTicket);
   const [q, setQ] = useState('');
@@ -190,6 +216,18 @@ export default function Pos() {
   return (
     <>
     <div className="-mx-4 -mt-5 -mb-28 flex h-[calc(100svh-61px-3.6rem)] flex-col sm:-mx-6 lg:-mx-8 lg:-mt-6 lg:-mb-12 lg:h-[calc(100svh-3.5rem)] print:hidden">
+      {(offline || waiting.length > 0) && (
+        <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm sm:px-6', offline ? 'bg-warn-soft text-warn' : 'bg-brand-soft text-brand')} role="status">
+          {offline && <><CloudOff className="h-4 w-4" /><b>No internet.</b> Selling from the price list saved {ago(lastCatalogue()?.at ?? new Date().toISOString())}; sales are kept on this device.</>}
+          {waiting.filter((w) => !w.error).length > 0 && <span>{waiting.filter((w) => !w.error).length} sale{waiting.filter((w) => !w.error).length === 1 ? '' : 's'} ({ksh(waiting.filter((w) => !w.error).reduce((a, w) => a + w.total, 0))}) waiting to send.</span>}
+          {waiting.some((w) => w.error) && <span className="text-bad">{waiting.filter((w) => w.error).length} offline sale{waiting.filter((w) => w.error).length === 1 ? ' was' : 's were'} refused: {waiting.find((w) => w.error)!.error} <button className="underline" onClick={() => discard(waiting.find((w) => w.error)!.clientRef)}>Dismiss</button></span>}
+          {waiting.length > 0 && (
+            <button className="ml-auto inline-flex items-center gap-1 font-semibold underline" disabled={syncing} onClick={flush}>
+              <RefreshCw className={cn('h-3.5 w-3.5', syncing && 'animate-spin')} /> Send now
+            </button>
+          )}
+        </div>
+      )}
       {/* Till bar: which store, is the drawer open, how the shift is going */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-white px-4 py-2.5 sm:px-6">
         <label className="flex items-center gap-1.5 text-sm font-semibold">
@@ -516,11 +554,11 @@ function PayForm({ total, lines, customer, locationId, shortcode, onDone }: { to
   const codeOk = /^[A-Z0-9]{10}$/.test(code);
   const blocked = method === 'Cash' ? (givenCents < total ? `${ksh(total - givenCents)} more needed` : '') : method === 'Mpesa' && !codeOk ? 'Choose the payment, or type its 10-character code' : '';
 
+  const session = useSession();
   const submit = async () => {
     setState({ busy: true, error: '' });
-    try {
-      const r = await api<Receipt>('/pos/checkout', {
-        body: {
+    const clientRef = newRef();
+    const body = {
           customerId: customer.id,
           customerName: customer.id ? undefined : customer.name === WALK_IN.name ? undefined : customer.name,
           customerPhone: customer.phone || undefined,
@@ -530,11 +568,23 @@ function PayForm({ total, lines, customer, locationId, shortcode, onDone }: { to
           changeGiven: method === 'Cash' ? Math.max(0, change) : 0,
           reference: method === 'Mpesa' ? code : ref,
           lines: lines.map((l) => ({ itemId: l.item.id, description: l.item.name, quantity: l.quantity, unitPrice: l.item.price, taxType: l.item.taxType })),
-        },
-      });
-      onDone(r);
+    };
+    try {
+      onDone(await api<Receipt>('/pos/checkout', { body: { ...body, clientRef } }));
     } catch (e) {
-      setState({ busy: false, error: (e as Error).message });
+      if (!unreachable(e)) return setState({ busy: false, error: (e as Error).message });
+      // No connection: keep the sale here and give the customer a receipt now; it's sent when the internet is back.
+      const at = new Date();
+      enqueue({ clientRef, body, at: at.toISOString(), total });
+      const kenya = new Date(at.getTime() + 3 * 3600e3).toISOString();
+      onDone({
+        invoiceId: '', receiptNumber: `OFF-${clientRef.slice(-6).toUpperCase()}`, date: kenya.slice(0, 10), time: kenya.slice(11, 16), cashier: session?.user.name ?? '',
+        company: { name: session?.company.name ?? '', kraPin: session?.company.kraPin ?? '', phone: '', address: '' },
+        customer: { name: customer.name, phone: customer.phone },
+        lines: lines.map((l) => ({ description: l.item.name, quantity: l.quantity, unitPrice: l.item.price, total: l.quantity * l.item.price })),
+        net: total - (session?.company.vatRegistered ? vatIn(lines) : 0), tax: session?.company.vatRegistered ? vatIn(lines) : 0, total, amountPaid: body.amountPaid, changeGiven: body.changeGiven, paymentMethod: method, reference: body.reference ?? '',
+        etims: { status: 'Offline', invoiceNo: '', controlCode: '' },
+      });
     }
   };
 
@@ -784,12 +834,23 @@ function CloseTill({ till, shift, onDone }: { till: Till; shift: Shift; onDone: 
 function ReceiptView({ receipt: r, cashier, onNext }: { receipt: Receipt; cashier: string; onNext: () => void }) {
   const wa = msisdn(r.customer.phone);
   const walkIn = /^walk-in customer$/i.test(r.customer.name);
-  const etims = r.etims?.status === 'Signed' ? `Signed with KRA eTIMS${r.etims.controlCode ? ` · ${r.etims.controlCode}` : ''}` : r.etims?.status === 'NotRequired' ? '' : 'Waiting for KRA eTIMS; it signs automatically once KRA replies.';
+  const etims = r.etims?.status === 'Offline' ? 'Sold offline: kept on this till and sent to your books and KRA eTIMS when the internet is back.' : r.etims?.status === 'Signed' ? `Signed with KRA eTIMS${r.etims.controlCode ? ` · ${r.etims.controlCode}` : ''}` : r.etims?.status === 'NotRequired' ? '' : 'Waiting for KRA eTIMS; it signs automatically once KRA replies.';
   useEffect(() => {
     const on = (e: KeyboardEvent) => e.key === 'Enter' && onNext();
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, [onNext]);
+  // Thermal printers: the paper width is a property of this till's printer, so it's remembered on the device.
+  const [paper, setPaper] = useState<'58' | '80' | 'a4'>(() => {
+    try { return (localStorage.getItem('kerp-receipt-paper') as '58' | '80' | 'a4') ?? '80'; } catch { return '80'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('kerp-receipt-paper', paper); } catch {}
+    const style = document.createElement('style');
+    style.textContent = paper === 'a4' ? '' : `@page { size: ${paper}mm auto; margin: 0 } @media print { .receipt-paper { width: ${paper === '58' ? 48 : 72}mm; font-size: ${paper === '58' ? 10 : 11}px; padding: 2mm 0 6mm; color: #000 } }`;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [paper]);
   const text = `Hello ${walkIn ? '' : r.customer.name}, thank you for shopping at ${r.company.name}. Receipt ${r.receiptNumber}: ${ksh(r.total)} paid by ${METHOD_LABEL[r.paymentMethod] ?? r.paymentMethod}.`;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4 print:static print:block print:bg-transparent print:p-0">
@@ -799,7 +860,7 @@ function ReceiptView({ receipt: r, cashier, onNext }: { receipt: Receipt; cashie
           <p className="mt-1 font-display text-lg font-bold text-good">Paid · {ksh(r.total)}</p>
           {r.changeGiven > 0 && <p className="num font-display text-2xl font-bold text-ink">Give change: {ksh(r.changeGiven)}</p>}
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 font-mono text-[12px] leading-relaxed">
+        <div className="receipt-paper flex-1 overflow-y-auto px-5 py-4 font-mono text-[12px] leading-relaxed print:mx-auto print:overflow-visible print:px-0">
           <div className="text-center">
             <b className="block text-sm">{r.company.name}</b>
             {r.company.kraPin && <p>PIN {r.company.kraPin}</p>}
@@ -827,9 +888,16 @@ function ReceiptView({ receipt: r, cashier, onNext }: { receipt: Receipt; cashie
           <p className="mt-2 text-center">Asante! Karibu tena.</p>
         </div>
         <div className="flex gap-2 border-t border-line bg-paper p-3 print:hidden">
-          <button onClick={() => window.print()} className="btn btn-ghost flex-1">
-            <Printer className="h-4 w-4" /> Print
-          </button>
+          <div className="flex flex-1">
+            <button onClick={() => window.print()} className="btn btn-ghost flex-1 rounded-r-none">
+              <Printer className="h-4 w-4" /> Print
+            </button>
+            <select value={paper} onChange={(e) => setPaper(e.target.value as '58' | '80' | 'a4')} className="rounded-r-md bg-white px-1 text-xs ring-1 ring-line" aria-label="Receipt paper" title="Receipt paper width">
+              <option value="80">80 mm</option>
+              <option value="58">58 mm</option>
+              <option value="a4">A4</option>
+            </select>
+          </div>
           {wa && (
             <a href={`https://wa.me/${wa}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" className="btn btn-mpesa flex-1">
               <Share2 className="h-4 w-4" /> WhatsApp

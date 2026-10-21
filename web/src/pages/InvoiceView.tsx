@@ -1,12 +1,56 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Ban, FileCheck2, Loader2, MessageCircle, Pencil, Printer, RefreshCw, Send, Wallet } from 'lucide-react';
+import { ArrowLeft, Ban, Smartphone, FileCheck2, Loader2, MessageCircle, Pencil, Printer, RefreshCw, Send, Wallet } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
 import { dateTime, dayYear, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
 import { DocStatus } from './Invoices';
+import { RequestPayment } from '../components/MpesaPrompt';
 import { ErrorNote, Field, Loading, Sheet, Status } from '../components/ui';
 
 const TAX_LABEL: Record<string, string> = { B_Standard16: '16%', E_Reduced8: '8%', C_ZeroRated: '0%', A_Exempt: 'Exempt', D_NonVat: 'Non-VAT' };
+
+/** A withholding agent paid less and gave a certificate: record it so the invoice closes and the tax is claimable. */
+function Withheld({ doc, onDone }: { doc: any; onDone: () => void }) {
+  const taxable16 = (doc.lines ?? []).filter((l: any) => l.taxType === 'B_Standard16').reduce((s: number, l: any) => s + l.net, 0);
+  const [kind, setKind] = useState<'Vat' | 'IncomeTax'>('Vat');
+  const suggested = kind === 'Vat' ? Math.round(taxable16 * 0.02) : 0;
+  const [amount, setAmount] = useState(suggested ? String(suggested / 100) : '');
+  const [certificate, setCertificate] = useState('');
+  const [state, setState] = useState({ busy: false, error: '' });
+  const balance = doc.total - doc.paid;
+  const save = async () => {
+    setState({ busy: true, error: '' });
+    try {
+      await api(`/sales/${doc.id}/withheld`, { body: { kind, amount: toCents(amount), certificate } });
+      onDone();
+    } catch (e) {
+      setState({ busy: false, error: (e as Error).message });
+    }
+  };
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-muted">Use this when the customer is a withholding agent: they pay less and give you a certificate from iTax. The invoice closes by that amount and the tax counts against what you owe KRA.</p>
+      <div className="grid grid-cols-2 gap-2">
+        {([['Vat', 'Withholding VAT', 'Usually 2% of the taxable value'], ['IncomeTax', 'Withholding tax', 'e.g. 5% on professional fees']] as const).map(([id, label, sub]) => (
+          <button key={id} onClick={() => (setKind(id), setAmount(id === 'Vat' && taxable16 ? String(Math.round(taxable16 * 0.02) / 100) : ''))} className={`rounded-md p-3 text-left ring-1 ${kind === id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-white ring-line'}`}>
+            <b className="block">{label}</b>
+            <span className="text-xs text-muted">{sub}</span>
+          </button>
+        ))}
+      </div>
+      <Field label="Amount withheld (KSh)" hint={kind === 'Vat' && suggested ? `2% of ${ksh(taxable16)} is ${ksh(suggested)}` : `Left to pay on this invoice: ${ksh(balance)}`}>
+        <input className="field num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </Field>
+      <Field label="Certificate number">
+        <input className="field uppercase" value={certificate} onChange={(e) => setCertificate(e.target.value)} placeholder="From the customer’s iTax certificate" />
+      </Field>
+      {state.error && <ErrorNote>{state.error}</ErrorNote>}
+      <button className="btn btn-primary w-full" disabled={state.busy || !amount || certificate.trim().length < 4} onClick={save}>
+        {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Record certificate
+      </button>
+    </div>
+  );
+}
 
 function RecordPayment({ doc, open, onClose, onDone }: { doc: any; open: boolean; onClose: () => void; onDone: () => void }) {
   const [f, setF] = useState({ method: 'Mpesa', amount: String((doc.total - doc.paid) / 100), reference: '', receivedAt: '' });
@@ -58,8 +102,10 @@ export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const session = useSession();
-  const { data, error, reload } = useApi<{ document: any; payments: any[]; payTo: { paybill: string; account: string } }>(`/sales/${id}`);
+  const { data, error, reload } = useApi<{ document: any; payments: any[]; payTo: { paybill: string; account: string; prompt?: boolean } }>(`/sales/${id}`);
+  const [withholding, setWithholding] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [prompting, setPrompting] = useState(false);
   const [state, setState] = useState({ busy: '', error: '' });
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return <Loading />;
@@ -124,6 +170,11 @@ export default function InvoiceView() {
               <MessageCircle className="h-4 w-4" /> Send on WhatsApp
             </a>
           )}
+          {invoice && issued && balance > 0 && can(session, 'sell') && data.payTo.prompt && (
+            <button className="btn btn-mpesa" onClick={() => setPrompting(true)}>
+              <Smartphone className="h-4 w-4" /> Ask for M-Pesa
+            </button>
+          )}
           {invoice && issued && balance > 0 && can(session, 'sell') && (
             <button className="btn btn-ghost" onClick={() => setPaying(true)}>
               <Wallet className="h-4 w-4" /> Record payment
@@ -134,8 +185,16 @@ export default function InvoiceView() {
           </button>
         </div>
       </header>
+      {invoice && issued && <RequestPayment open={prompting} onClose={() => setPrompting(false)} invoiceId={d.id} number={d.number} balance={balance} phone={prettyPhone(d.customer?.phone) || ''} onPaid={reload} />}
 
-      {state.error && <div className="mb-4 print:hidden"><ErrorNote>{state.error}</ErrorNote></div>}
+      {state.error && (
+        <div className="mb-4 space-y-2 print:hidden">
+          <ErrorNote>{state.error}</ErrorNote>
+          {state.error.includes('credit limit') && d.status === 'Draft' && can(session, 'finance') && (
+            <button className="btn btn-ghost" disabled={Boolean(state.busy)} onClick={() => act('issue', `/sales/${d.id}/issue?overLimit=true`)}>Issue anyway, over the limit</button>
+          )}
+        </div>
+      )}
       {invoice && issued && d.etimsStatus !== 'Signed' && d.etimsStatus !== 'NotRequired' && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-warn-soft px-4 py-3 text-sm text-warn print:hidden">
           <span>
@@ -277,6 +336,11 @@ export default function InvoiceView() {
               {d.etimsControlCode.startsWith('TEST-') && <p className="mt-2 text-xs text-muted">Test signature (eTIMS sandbox). Live signing starts after KRA certifies the integration.</p>}
             </section>
           )}
+          {invoice && (d.status === 'Sent' || d.status === 'PartPaid') && can(session, 'finance') && (
+            <button className="btn btn-ghost w-full" onClick={() => setWithholding(true)}>
+              <FileCheck2 className="h-4 w-4" /> Customer withheld tax
+            </button>
+          )}
           {d.status !== 'Void' && d.paid === 0 && can(session, 'finance') && (
             <button className="btn btn-ghost w-full text-bad" disabled={Boolean(state.busy)} onClick={() => confirm(`Void ${d.number}? This can’t be undone.`) && act('void', `/sales/${d.id}/void`)}>
               <Ban className="h-4 w-4" /> Void {invoice ? 'invoice' : 'quote'}
@@ -285,6 +349,9 @@ export default function InvoiceView() {
         </aside>
       </div>
       {paying && <RecordPayment doc={d} open={paying} onClose={() => setPaying(false)} onDone={reload} />}
+      <Sheet open={withholding} onClose={() => setWithholding(false)} title={`Tax withheld on ${d.number}`}>
+        {withholding && <Withheld doc={d} onDone={() => (setWithholding(false), reload())} />}
+      </Sheet>
     </>
   );
 }

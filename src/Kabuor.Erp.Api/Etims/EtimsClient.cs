@@ -13,6 +13,8 @@ public sealed record EtimsReceipt(string InvoiceNo, string ControlCode, string Q
 public interface IEtimsClient
 {
     Task<EtimsReceipt> Sign(Company company, SalesDoc invoice);
+    /// <summary>Tells KRA a signed invoice is cancelled (a credit note); null when there's nothing to send.</summary>
+    Task<EtimsReceipt?> CreditNote(Company company, SalesDoc invoice) => Task.FromResult<EtimsReceipt?>(null);
 }
 
 public sealed class SandboxEtimsClient : IEtimsClient

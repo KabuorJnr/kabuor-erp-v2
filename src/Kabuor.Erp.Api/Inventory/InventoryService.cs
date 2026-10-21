@@ -1,6 +1,8 @@
 // Stock: how many of each item are where, and what they cost. Every change is a StockMove (the history) plus
 // an update to StockLevel (the current count) in the same save. Cost is the moving average across all
 // locations: buying at a new price blends into it; selling, losing or moving stock doesn't change it.
+// Items kept by batch also hold a StockBatch per batch number and place: a bill brings a batch in with its expiry,
+// a sale takes the batch that expires first, and expired stock is never sold (it has to be written off).
 using Kabuor.Erp.Accounting;
 using Kabuor.Erp.Common;
 using Kabuor.Erp.Data;
@@ -47,26 +49,90 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         return local.Sum(l => l.Quantity) + saved.Where(s => local.All(l => l.LocationId != s.LocationId)).Sum(s => s.Quantity);
     }
 
-    async Task Move(Item item, Guid locationId, decimal qty, StockMoveKind kind, decimal unitCost, string sourceType, Guid? sourceId, string reference, string note = "")
+    async Task Move(Item item, Guid locationId, decimal qty, StockMoveKind kind, decimal unitCost, string sourceType, Guid? sourceId, string reference, string note = "", string batchNo = "")
     {
         var level = await Level(item.Id, locationId);
         level.Quantity += qty;
-        db.StockMoves.Add(new StockMove { ItemId = item.Id, LocationId = locationId, Kind = kind, Quantity = qty, UnitCost = unitCost, SourceType = sourceType, SourceId = sourceId, Reference = reference, Note = note, Actor = ctx.Actor });
+        db.StockMoves.Add(new StockMove { ItemId = item.Id, LocationId = locationId, Kind = kind, Quantity = qty, UnitCost = unitCost, SourceType = sourceType, SourceId = sourceId, Reference = reference, Note = note, Actor = ctx.Actor, BatchNo = batchNo });
     }
 
-    /// <summary>Stock coming in at a cost (before VAT): blends into the average cost.</summary>
-    public async Task Receive(Item item, Guid locationId, decimal qty, decimal unitCost, StockMoveKind kind, string sourceType, Guid? sourceId, string reference)
+    /// <summary>The item's batches at a place, including ones added in this save.</summary>
+    async Task<List<StockBatch>> Batches(Guid itemId, Guid locationId)
+    {
+        var saved = await db.StockBatches.Where(b => b.ItemId == itemId && b.LocationId == locationId).ToListAsync();
+        return saved.Concat(db.StockBatches.Local.Where(b => b.ItemId == itemId && b.LocationId == locationId && !saved.Contains(b))).ToList();
+    }
+
+    async Task AddToBatch(Item item, Guid locationId, string batchNo, DateOnly? expiry, decimal qty)
+    {
+        var batch = (await Batches(item.Id, locationId)).FirstOrDefault(b => b.BatchNo == batchNo);
+        if (batch is null) db.StockBatches.Add(batch = new StockBatch { ItemId = item.Id, LocationId = locationId, BatchNo = batchNo, Expiry = expiry, ReceivedOn = Clock.Today, CompanyId = db.CompanyId });
+        batch.Expiry ??= expiry;
+        batch.Quantity += qty;
+    }
+
+    /// <summary>Stock coming in at a cost (before VAT): blends into the average cost. A batch number (items kept by
+    /// batch) puts it in that batch.</summary>
+    public async Task Receive(Item item, Guid locationId, decimal qty, decimal unitCost, StockMoveKind kind, string sourceType, Guid? sourceId, string reference, string batchNo = "", DateOnly? expiry = null)
     {
         var before = await OnHand(item.Id);
         item.AverageCost = before <= 0 ? unitCost : (before * item.AverageCost + qty * unitCost) / (before + qty);
-        await Move(item, locationId, qty, kind, unitCost, sourceType, sourceId, reference);
+        batchNo = item.TrackBatches ? batchNo.Trim() : "";
+        if (batchNo.Length > 0) await AddToBatch(item, locationId, batchNo, expiry, qty);
+        await Move(item, locationId, qty, kind, unitCost, sourceType, sourceId, reference, batchNo: batchNo);
     }
 
-    /// <summary>Stock going out (sold): returns its cost at the current average, in cents.</summary>
+    /// <summary>Stock going out (sold): returns its cost at the current average, in cents. Items kept by batch go
+    /// first-to-expire first; stock with no batch is used after the batches; expired stock is refused.</summary>
     public async Task<long> Issue(Item item, Guid locationId, decimal qty, string sourceType, Guid? sourceId, string reference)
     {
-        await Move(item, locationId, -qty, StockMoveKind.Sold, item.AverageCost, sourceType, sourceId, reference);
-        return (long)Math.Round(qty * item.AverageCost, MidpointRounding.AwayFromZero);
+        var cost = (long)Math.Round(qty * item.AverageCost, MidpointRounding.AwayFromZero);
+        if (!item.TrackBatches)
+        {
+            await Move(item, locationId, -qty, StockMoveKind.Sold, item.AverageCost, sourceType, sourceId, reference);
+            return cost;
+        }
+        var batches = await Batches(item.Id, locationId);
+        var level = await Level(item.Id, locationId);
+        var unbatched = Math.Max(0, level.Quantity - batches.Where(b => b.Quantity > 0).Sum(b => b.Quantity));
+        var left = qty;
+        foreach (var b in batches.Where(b => b.Quantity > 0 && !(b.Expiry < Clock.Today)).OrderBy(b => b.Expiry ?? DateOnly.MaxValue).ThenBy(b => b.ReceivedOn))
+        {
+            var take = Math.Min(left, b.Quantity);
+            b.Quantity -= take;
+            left -= take;
+            await Move(item, locationId, -take, StockMoveKind.Sold, item.AverageCost, sourceType, sourceId, reference, batchNo: b.BatchNo);
+            if (left == 0) return cost;
+        }
+        var plain = Math.Min(left, unbatched);
+        left -= plain;
+        var expired = batches.Where(b => b.Quantity > 0 && b.Expiry < Clock.Today).OrderBy(b => b.Expiry).FirstOrDefault();
+        if (left > 0 && expired is not null)
+            throw new AppException($"Only expired {item.Name} is left (batch {expired.BatchNo}, expired {expired.Expiry:d MMM yyyy}). Write it off in Stock instead of selling it.");
+        await Move(item, locationId, -(plain + left), StockMoveKind.Sold, item.AverageCost, sourceType, sourceId, reference);
+        return cost;
+    }
+
+    /// <summary>Puts sold stock back where it came from (a voided invoice), batch by batch.</summary>
+    public async Task Return(Item item, StockMove sold, string sourceType, Guid? sourceId, string reference)
+        => await Receive(item, sold.LocationId, -sold.Quantity, sold.UnitCost, StockMoveKind.Returned, sourceType, sourceId, reference, sold.BatchNo);
+
+    /// <summary>Batches with stock, soonest expiry first: what to sell or return before it's lost.</summary>
+    public async Task<object> Expiring(int days)
+    {
+        var today = Clock.Today;
+        var until = today.AddDays(Math.Clamp(days, 1, 730));
+        var batches = await db.StockBatches.Where(b => b.Quantity > 0 && b.Expiry != null && b.Expiry <= until).ToListAsync();
+        var ids = batches.Select(b => b.ItemId).Distinct().ToList();
+        var items = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+        var places = await db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name);
+        var rows = batches.OrderBy(b => b.Expiry).Select(b => new
+        {
+            b.Id, b.BatchNo, b.Expiry, b.Quantity, itemId = b.ItemId, item = items[b.ItemId].Name, unit = items[b.ItemId].Unit,
+            location = places.GetValueOrDefault(b.LocationId, ""), daysLeft = b.Expiry!.Value.DayNumber - today.DayNumber,
+            value = (long)Math.Round(b.Quantity * items[b.ItemId].AverageCost),
+        }).ToList();
+        return new { expired = rows.Count(r => r.daysLeft < 0), expiredValue = rows.Where(r => r.daysLeft < 0).Sum(r => r.value), soonValue = rows.Where(r => r.daysLeft >= 0).Sum(r => r.value), rows };
     }
 
     /// <summary>Ingredients used in production: returns their cost at the current average, in cents.</summary>
@@ -77,8 +143,9 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
     }
 
     /// <summary>A bill voided: what it brought in goes back out at the price it came in at.</summary>
-    public async Task Unreceive(Item item, Guid locationId, decimal qty, decimal unitCost, string sourceType, Guid? sourceId, string reference)
+    public async Task Unreceive(Item item, Guid locationId, decimal qty, decimal unitCost, string sourceType, Guid? sourceId, string reference, string batchNo = "")
     {
+        if (item.TrackBatches && batchNo.Length > 0) await AddToBatch(item, locationId, batchNo, null, -qty);
         var before = await OnHand(item.Id);
         var after = before - qty;
         if (after > 0) item.AverageCost = Math.Max(0, (before * item.AverageCost - qty * unitCost) / after);
@@ -111,6 +178,23 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         await ledger.PostStockAdjustment(reference, sourceId, value);
         await db.SaveChangesAsync();
         return changes;
+    }
+
+    /// <summary>Throws away what's left of a batch (expired, damaged, recalled): it leaves stock and the loss is booked.</summary>
+    public async Task<object> WriteOff(Guid batchId, string note)
+    {
+        var batch = await db.StockBatches.SingleOrDefaultAsync(b => b.Id == batchId) ?? throw new AppException("Not found.", 404);
+        if (batch.Quantity <= 0) throw new AppException("Nothing is left in that batch.");
+        var item = await db.Items.SingleAsync(i => i.Id == batch.ItemId);
+        var qty = batch.Quantity;
+        var sourceId = Guid.NewGuid();
+        var reference = $"Write-off {batch.BatchNo}";
+        batch.Quantity = 0;
+        await Move(item, batch.LocationId, -qty, StockMoveKind.Adjusted, item.AverageCost, "WriteOff", sourceId, reference, note.Length > 0 ? note : batch.Expiry < Clock.Today ? "Expired" : "Written off", batch.BatchNo);
+        var value = -(long)Math.Round(qty * item.AverageCost, MidpointRounding.AwayFromZero);
+        await ledger.PostStockAdjustment(reference, sourceId, value);
+        await db.SaveChangesAsync();
+        return new { item = item.Name, batch.BatchNo, quantity = qty, value = -value };
     }
 
     /// <summary>Stock already on the shelf when the business starts using the system, at what it cost.</summary>

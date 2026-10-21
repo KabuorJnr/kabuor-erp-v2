@@ -22,7 +22,10 @@ public sealed record PosCheckoutInput(
     long AmountPaid,
     long ChangeGiven,
     string? Reference,
-    List<PosCheckoutLine> Lines
+    List<PosCheckoutLine> Lines,
+    // Offline tills: a key made on the device (so a sale sent twice is kept once) and when it really happened.
+    string? ClientRef = null,
+    DateTimeOffset? SoldAt = null
 );
 
 public static class PosEndpoints
@@ -134,6 +137,13 @@ public static class PosEndpoints
         pos.MapPost("/checkout", async (PosCheckoutInput input, ErpDb db, SalesService sales, PaymentService payments, Numbers numbers, RequestContext ctx) =>
         {
             if (input.Lines is not { Count: > 0 }) throw new AppException("Add at least one item to checkout.");
+            var clientRef = (input.ClientRef ?? "").Trim();
+            if (clientRef.Length > 64) throw new AppException("That sale reference is too long.");
+            if (clientRef.Length > 0 && await db.SalesDocs.Where(d => d.ClientRef == clientRef).Select(d => new { d.Id, d.Number }).FirstOrDefaultAsync() is { } already)
+                return Results.Ok(new { invoiceId = already.Id, receiptNumber = already.Number, alreadyRecorded = true });
+            // A sale made offline keeps its own day (up to a week back), so the day's takings stay right.
+            var soldAt = input.SoldAt is { } at && at <= DateTimeOffset.UtcNow.AddMinutes(5) && at >= DateTimeOffset.UtcNow.AddDays(-7) ? at : DateTimeOffset.UtcNow;
+            var soldOn = DateOnly.FromDateTime(soldAt.ToOffset(TimeSpan.FromHours(3)).DateTime);
             // The till must be open, so every shilling lands in a drawer count at closing.
             var session = await db.PosSessions
                 .Where(s => s.Status == PosSessionStatus.Open && (s.CashierId == ctx.UserId || s.CashierId == Guid.Empty))
@@ -181,16 +191,17 @@ public static class PosEndpoints
             var docInput = new SalesDocInput(
                 Kind: SalesDocKind.Invoice,
                 CustomerId: customer.Id,
-                IssueDate: Clock.Today,
+                IssueDate: soldOn,
                 DueInDays: 0,
                 Notes: $"POS sale by {ctx.Actor}",
                 Lines: lines,
                 LocationId: input.LocationId
             );
             var doc = await sales.Create(docInput);
+            doc.ClientRef = clientRef;
 
             // 3. Issue Invoice (posts ledger journal entry, deducts store stock, signs with eTIMS)
-            doc = await sales.Issue(doc.Id);
+            doc = await sales.Issue(doc.Id, overLimit: true); // paid at the till, so it adds no debt
 
             if (input.PaymentMethod == PaymentMethod.Cash && input.AmountPaid > 0 && input.AmountPaid < doc.Total)
                 throw new AppException($"The customer gave {input.AmountPaid / 100m:N0}; the sale is {doc.Total / 100m:N0}.");

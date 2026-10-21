@@ -57,11 +57,13 @@ public static partial class SchemaSync
     static async Task SyncSqlite(ErpDb db)
     {
         await db.Database.EnsureCreatedAsync();
+        // Tables first, then missing columns, then indexes (a new index can be on a column added just now).
+        var indexes = new List<string>();
         foreach (var raw in db.Database.GenerateCreateScript().Split(";", StringSplitOptions.RemoveEmptyEntries))
         {
             var sql = raw.Trim();
             if (sql.StartsWith("CREATE TABLE ", StringComparison.Ordinal)) sql = "CREATE TABLE IF NOT EXISTS " + sql["CREATE TABLE ".Length..];
-            else if (Index().IsMatch(sql)) sql = Index().Replace(sql, "$1 IF NOT EXISTS ", 1);
+            else if (Index().IsMatch(sql)) { indexes.Add(Index().Replace(sql, "$1 IF NOT EXISTS ", 1)); continue; }
             else continue;
             await db.Database.ExecuteSqlRawAsync(sql.Replace("{", "{{").Replace("}", "}}"));
         }
@@ -89,7 +91,8 @@ public static partial class SchemaSync
                     if (column is null || have.Contains(column)) continue;
                     var type = p.GetColumnType();
                     var notNull = !p.IsNullable;
-                    var fallback = type.Contains("TEXT", StringComparison.OrdinalIgnoreCase) ? "''" : "0";
+                    var fallback = p.Name == "UnitFactor" ? "'1.0'" // lines from before units: one base unit each
+                        : type.Contains("TEXT", StringComparison.OrdinalIgnoreCase) ? "''" : "0";
                     await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {type}{(notNull ? $" NOT NULL DEFAULT {fallback}" : "")}");
                 }
             }
@@ -98,6 +101,7 @@ public static partial class SchemaSync
         {
             await db.Database.CloseConnectionAsync();
         }
+        foreach (var sql in indexes) await db.Database.ExecuteSqlRawAsync(sql.Replace("{", "{{").Replace("}", "}}"));
     }
 
     [GeneratedRegex(@"^(CREATE (?:UNIQUE )?INDEX) ")]

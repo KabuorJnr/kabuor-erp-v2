@@ -12,7 +12,7 @@ public sealed record AllocationInput(Guid InvoiceId, long Amount);
 /// <summary>Safaricom's C2B confirmation body (what a Paybill/Till payment looks like when it arrives).</summary>
 public sealed record MpesaC2B(string TransID, string TransAmount, string? TransTime, string BusinessShortCode, string? BillRefNumber, string? MSISDN, string? FirstName, string? MiddleName, string? LastName);
 
-public sealed class PaymentService(ErpDb db, Ledger ledger)
+public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrations.WebhookService hooks)
 {
     /// <summary>Records money in and posts it. Then pays the chosen invoice, or tries to match it automatically.</summary>
     public async Task<Payment> Record(PaymentInput input, string actor)
@@ -35,6 +35,7 @@ public sealed class PaymentService(ErpDb db, Ledger ledger)
         db.Payments.Add(p);
         await ledger.PostReceipt(p);
         await db.SaveChangesAsync();
+        await hooks.Raise("payment.received", new { p.Id, method = p.Method.ToString(), p.Amount, p.Reference, p.PayerPhone, p.PayerName, p.AccountRef, p.ReceivedAt });
 
         if (input.InvoiceId is { } invoiceId)
         {
@@ -42,6 +43,8 @@ public sealed class PaymentService(ErpDb db, Ledger ledger)
             await Allocate(p.Id, [new AllocationInput(inv.Id, Math.Min(p.Amount, inv.Balance))], $"user: {actor}");
         }
         else await AutoMatch(p);
+        // Money nobody could place: the matching agent looks at it within a minute instead of at its next hour.
+        if (p.Status != PaymentStatus.Matched) await Agents.AgentKick.Kick(db, "matching");
         return p;
     }
 
@@ -120,6 +123,8 @@ public sealed class PaymentService(ErpDb db, Ledger ledger)
         }
         p.Status = p.Unallocated == 0 ? PaymentStatus.Matched : PaymentStatus.PartlyMatched;
         await db.SaveChangesAsync();
+        foreach (var inv in invoices.Values.Where(i => i.Status == SalesDocStatus.Paid))
+            await hooks.Raise("invoice.paid", new { inv.Id, inv.Number, inv.Total, inv.Paid, externalRef = inv.ClientRef.StartsWith("api:") ? inv.ClientRef[4..] : null, payment = p.Reference });
         return p;
     }
 }

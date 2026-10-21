@@ -168,6 +168,9 @@ export function SignUp() {
         <button className="btn btn-primary w-full py-3" disabled={state.busy}>
           {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Open my account
         </button>
+        <p className="text-center text-xs text-muted">
+          30 days free, no payment details needed. By opening an account you agree to the <Link className="underline" to="/terms">terms</Link> and <Link className="underline" to="/privacy">privacy notice</Link>.
+        </p>
       </form>
       <p className="mt-6 text-center text-sm text-muted">
         Already have one?{' '}

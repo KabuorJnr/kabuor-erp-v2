@@ -21,8 +21,10 @@ public sealed class Numbers(ErpDb db)
     /// <summary>The next number in a series for this company: Next("INV") → "INV-0001".</summary>
     public async Task<string> Next(string key)
     {
-        var seq = await db.Sequences.SingleOrDefaultAsync(s => s.Key == key);
-        if (seq is null) db.Sequences.Add(seq = new Sequence { Key = key });
+        // A series started earlier in this same save isn't in the database yet: use that one, not a second.
+        var seq = db.Sequences.Local.FirstOrDefault(s => s.Key == key && s.CompanyId == db.CompanyId)
+            ?? await db.Sequences.SingleOrDefaultAsync(s => s.Key == key);
+        if (seq is null) db.Sequences.Add(seq = new Sequence { Key = key, CompanyId = db.CompanyId });
         var n = seq.Next++;
         return $"{key}-{n:0000}";
     }
@@ -45,4 +47,10 @@ public sealed record Page<T>(IReadOnlyList<T> Items, int Total, int Skip, int Ta
 public static class Paging
 {
     public static (int Skip, int Take) Of(int? skip, int? take) => (Math.Max(0, skip ?? 0), Math.Clamp(take ?? 50, 1, 200));
+}
+
+public static class Money
+{
+    /// <summary>"KSh 12,500" (whole shillings), for messages people read.</summary>
+    public static string Ksh(long cents) => "KSh " + (cents / 100m).ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 }

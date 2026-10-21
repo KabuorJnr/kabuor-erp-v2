@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, Loader2, Plus } from 'lucide-react';
 import { api, useApi } from '../lib/api';
+import MoveIn from '../components/MoveIn';
+import PlanSettings from '../components/Plan';
+import Connections from '../components/Connections';
+import { PromptSetup } from '../components/MpesaPrompt';
+import { PriceLists, UnitsEditor, unitsBody, type UnitRow } from '../components/Trade';
+import { useSearchParams } from 'react-router';
 import { ksh, toCents } from '../lib/format';
 import { Chips, ErrorNote, Field, Loading, PageHeader, Sheet, Status } from '../components/ui';
 
@@ -180,7 +186,13 @@ const TAX: [string, string][] = [
 
 function Items() {
   const { data, error, reload } = useApi<any[]>('/items?all=true');
+  const units = useApi<any[]>('/items/units');
   const [edit, setEdit] = useState<any>(null);
+  const [unitRows, setUnitRows] = useState<UnitRow[]>([]);
+  const open = (item: any) => {
+    setEdit(item);
+    setUnitRows((units.data ?? []).filter((u) => u.itemId === item.id).map((u) => ({ name: u.name, factor: String(u.factor), price: u.price ? String(u.price / 100) : '' })));
+  };
   const [state, setState] = useState({ busy: false, error: '' });
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,9 +201,12 @@ function Items() {
       const body = { ...edit, price: toCents(edit.priceText), reorderLevel: Number(edit.reorderText) || 0 };
       const saved = edit.id ? await api(`/items/${edit.id}`, { method: 'PUT', body }) : await api('/items', { body });
       // Stock already on the shelf when they start, at what it cost (so stock value and margins are right).
+      const had = (units.data ?? []).some((u) => u.itemId === saved.id);
+      if (edit.kind === 'Product' && (unitRows.length > 0 || had)) await api(`/items/${saved.id}/units`, { method: 'PUT', body: unitsBody(unitRows) });
       if (body.trackStock && Number(edit.openingQty) > 0) await api('/stock/opening', { body: { itemId: saved.id, quantity: Number(edit.openingQty), unitCost: toCents(edit.openingCost) } });
       setEdit(null);
       reload();
+      units.reload();
       setState({ busy: false, error: '' });
     } catch (err) {
       setState({ busy: false, error: (err as Error).message });
@@ -202,7 +217,7 @@ function Items() {
   return (
     <>
       <div className="mb-3 flex justify-end">
-        <button className="btn btn-primary" onClick={() => setEdit({ name: '', sku: '', kind: 'Product', unit: 'pc', priceText: '', taxType: 'B_Standard16', active: true, trackStock: true, reorderText: '', openingQty: '', openingCost: '' })}>
+        <button className="btn btn-primary" onClick={() => open({ name: '', sku: '', kind: 'Product', unit: 'pc', priceText: '', taxType: 'B_Standard16', active: true, trackStock: true, reorderText: '', openingQty: '', openingCost: '' })}>
           <Plus className="h-4 w-4" /> Add product or service
         </button>
       </div>
@@ -210,7 +225,7 @@ function Items() {
         <ul className="card divide-y divide-line">
           {data.map((i) => (
             <li key={i.id}>
-              <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-paper" onClick={() => setEdit({ ...i, priceText: String(i.price / 100), reorderText: i.reorderLevel ? String(i.reorderLevel) : '', openingQty: '', openingCost: '' })}>
+              <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-paper" onClick={() => open({ ...i, priceText: String(i.price / 100), reorderText: i.reorderLevel ? String(i.reorderLevel) : '', openingQty: '', openingCost: '' })}>
                 <span className="min-w-0 flex-1">
                   <b className="block truncate">{i.name}</b>
                   <span className="text-sm text-muted">
@@ -253,6 +268,9 @@ function Items() {
               <Field label="Unit">
                 <input className="field" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value })} placeholder="pc, kg, hour…" />
               </Field>
+              <Field label="KRA item classification" hint={<>For eTIMS: the 8–10 digit code from KRA’s item classification list (e.g. 50192100 for sauces).{edit.etimsItemCode ? ` Registered as ${edit.etimsItemCode}.` : ''}</>}>
+                <input className="field num" inputMode="numeric" value={edit.etimsClassCode ?? ''} onChange={(e) => setEdit({ ...edit, etimsClassCode: e.target.value.replace(/\D/g, '') })} placeholder="Leave blank to use the default" />
+              </Field>
             </div>
             <label className="flex items-center gap-2.5 text-sm">
               <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand)]" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} />
@@ -268,6 +286,15 @@ function Items() {
                   </span>
                 </label>
                 {edit.trackStock && (
+                  <label className="flex items-start gap-2.5 text-sm">
+                    <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]" checked={Boolean(edit.trackBatches)} onChange={(e) => setEdit({ ...edit, trackBatches: e.target.checked })} />
+                    <span>
+                      <b className="block">Kept by batch, with expiry dates</b>
+                      <span className="text-xs text-muted">For food, medicine, seed and agro-chemicals. Bills ask for the batch and expiry; sales take the batch that expires first and never sell expired stock.</span>
+                    </span>
+                  </label>
+                )}
+                {edit.trackStock && (
                   <div className="grid grid-cols-3 gap-3">
                     <Field label="Warn below" hint="Reorder level">
                       <input className="field num" inputMode="decimal" value={edit.reorderText} onChange={(e) => setEdit({ ...edit, reorderText: e.target.value })} />
@@ -282,6 +309,7 @@ function Items() {
                 )}
               </div>
             )}
+            {edit.kind === 'Product' && <UnitsEditor base={edit.unit || 'pc'} basePrice={toCents(edit.priceText)} rows={unitRows} onChange={setUnitRows} />}
             {state.error && <ErrorNote>{state.error}</ErrorNote>}
             <button className="btn btn-primary w-full py-3" disabled={state.busy}>
               {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Save
@@ -293,17 +321,105 @@ function Items() {
   );
 }
 
+/** The company's KRA eTIMS connection. The owner is deciding "are my invoices really reaching KRA?", so it leads with
+ * that answer, then the three things KRA's OSCU needs (mode, the device serial KRA issued, a default classification). */
+function EtimsSetup() {
+  const { data, error, reload } = useApi<any>('/etims');
+  const [f, setF] = useState<any>(null);
+  const [state, setState] = useState({ busy: '', error: '', note: '' });
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data) return <Loading />;
+  const form = f ?? { mode: data.mode, branchId: data.branchId ?? '00', deviceSerial: data.deviceSerial ?? '', defaultClassCode: data.defaultClassCode ?? '' };
+  const run = async (what: string, fn: () => Promise<any>) => {
+    setState({ busy: what, error: '', note: '' });
+    try {
+      const r = await fn();
+      setState({ busy: '', error: '', note: what === 'retry' ? `${r.signed} of ${r.tried} signed.` : what === 'save' ? 'Saved.' : '' });
+      setF(null);
+      reload();
+    } catch (e) {
+      setState({ busy: '', error: (e as Error).message, note: '' });
+    }
+  };
+  const live = data.mode !== 'Test' && data.connected;
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+      <section className="card space-y-4 p-5">
+        <div className={live ? 'rounded-md bg-good-soft p-3 text-sm text-good' : 'rounded-md bg-warn-soft p-3 text-sm text-warn'}>
+          {live ? (
+            <><b>Connected to KRA {data.mode === 'Live' ? 'eTIMS' : 'eTIMS sandbox'}</b> as {data.taxpayerName || 'your PIN'}{data.branchName ? `, ${data.branchName}` : ''}. Every invoice is signed by KRA as it’s issued.</>
+          ) : (
+            <><b>Test signatures only.</b> Invoices get clearly marked test codes. To sign with KRA, apply for an OSCU on the eTIMS portal; KRA gives you a device serial number to enter here.</>
+          )}
+        </div>
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-semibold">Mode</legend>
+          <div className="grid grid-cols-3 gap-2">
+            {[['Test', 'Test', 'No KRA connection'], ['Sandbox', 'KRA sandbox', 'For certification'], ['Live', 'Live', 'Real KRA signatures']].map(([id, label, sub]) => (
+              <button key={id} type="button" onClick={() => setF({ ...form, mode: id })} className={`rounded-md p-3 text-left ring-1 ${form.mode === id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-white ring-line'}`}>
+                <b className="block text-sm">{label}</b>
+                <span className="text-xs text-muted">{sub}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        {form.mode !== 'Test' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Device serial number" hint="From KRA’s approval of your OSCU application.">
+              <input className="field font-mono" value={form.deviceSerial} onChange={(e) => setF({ ...form, deviceSerial: e.target.value })} />
+            </Field>
+            <Field label="Branch ID" hint="00 is the head office.">
+              <input className="field font-mono" value={form.branchId} onChange={(e) => setF({ ...form, branchId: e.target.value })} />
+            </Field>
+          </div>
+        )}
+        <Field label="Default item classification" hint="Used for products without their own code and for lines typed into invoices (e.g. a service).">
+          <input className="field num" inputMode="numeric" value={form.defaultClassCode} onChange={(e) => setF({ ...form, defaultClassCode: e.target.value.replace(/\D/g, '') })} />
+        </Field>
+        {state.error && <ErrorNote>{state.error}</ErrorNote>}
+        {state.note && <p className="text-sm font-medium text-good">{state.note}</p>}
+        <button className="btn btn-primary" disabled={Boolean(state.busy)} onClick={() => run('save', () => api('/etims', { method: 'PUT', body: form }))}>
+          {state.busy === 'save' && <Loader2 className="h-4 w-4 animate-spin" />} {form.mode === 'Test' ? 'Save' : data.connected && form.deviceSerial === data.deviceSerial && form.mode === data.mode ? 'Save' : 'Connect to KRA'}
+        </button>
+      </section>
+      <aside className="card h-fit space-y-3 p-5 text-sm">
+        <p className="flex justify-between"><span className="text-muted">Invoices waiting to be signed</span><b className="num">{data.invoicesUnsigned}</b></p>
+        {data.invoicesUnsigned > 0 && (
+          <button className="btn btn-ghost w-full" disabled={Boolean(state.busy)} onClick={() => run('retry', () => api('/etims/retry', { body: {} }))}>
+            {state.busy === 'retry' && <Loader2 className="h-4 w-4 animate-spin" />} Send them to KRA again
+          </button>
+        )}
+        <p className="flex justify-between"><span className="text-muted">Products without a KRA classification</span><b className="num">{data.productsWithoutClass}</b></p>
+        <p className="flex justify-between"><span className="text-muted">Supplier invoices to review</span><b className="num">{data.purchasesWaiting}</b></p>
+        {data.lastError && <p className="text-xs text-bad">Last error: {data.lastError}</p>}
+      </aside>
+    </div>
+  );
+}
+
 export default function Settings() {
-  const [tab, setTab] = useState('company');
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') ?? 'company';
+  const setTab = (t: string) => setParams({ tab: t }, { replace: true });
   return (
     <>
       <PageHeader title="Settings" />
       <div className="mb-4">
-        <Chips label="Settings" value={tab} onChange={setTab} options={[['company', 'Business & M-Pesa'], ['items', 'Products & services'], ['team', 'Team']]} />
+        <Chips label="Settings" value={tab} onChange={setTab} options={[['company', 'Business & M-Pesa'], ['etims', 'KRA eTIMS'], ['items', 'Products & services'], ['prices', 'Price lists'], ['team', 'Team'], ['move', 'Move in (import)'], ['connections', 'Connections'], ['plan', 'Plan & billing']]} />
       </div>
-      {tab === 'company' && <Company />}
+      {tab === 'company' && (
+        <div className="space-y-5">
+          <Company />
+          <PromptSetup />
+        </div>
+      )}
       {tab === 'items' && <Items />}
       {tab === 'team' && <Team />}
+      {tab === 'etims' && <EtimsSetup />}
+      {tab === 'move' && <MoveIn />}
+      {tab === 'plan' && <PlanSettings />}
+      {tab === 'connections' && <Connections />}
+      {tab === 'prices' && <PriceLists />}
     </>
   );
 }

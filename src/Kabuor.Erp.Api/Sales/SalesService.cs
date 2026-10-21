@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Sales;
 
-public sealed record LineInput(Guid? ItemId, string? Description, decimal Quantity, long? UnitPrice, TaxType? TaxType);
+public sealed record LineInput(Guid? ItemId, string? Description, decimal Quantity, long? UnitPrice, TaxType? TaxType, string? Unit = null);
 public sealed record SalesDocInput(SalesDocKind Kind, Guid CustomerId, DateOnly? IssueDate, int? DueInDays, string? Notes, List<LineInput> Lines, Guid? LocationId = null);
 
 public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtimsClient etims, InventoryService stock)
@@ -33,28 +33,40 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
             Notes = (input.Notes ?? "").Trim(),
             LocationId = input.LocationId is null ? null : (await stock.LocationOrDefault(input.LocationId)).Id,
         };
-        await SetLines(doc, input.Lines, company.VatRegistered);
+        await SetLines(doc, input.Lines, company.VatRegistered, customer.PriceListId);
         db.SalesDocs.Add(doc);
         await db.SaveChangesAsync();
         return doc;
     }
 
-    async Task SetLines(SalesDoc doc, List<LineInput> lines, bool vat)
+    /// <summary>Lines with their prices: what the user typed, else the customer's price list, else the item's
+    /// own price; a bigger unit (a carton) uses its own price, or the base price times how many it holds.</summary>
+    async Task SetLines(SalesDoc doc, List<LineInput> lines, bool vat, Guid? priceListId)
     {
         var ids = lines.Where(l => l.ItemId is not null).Select(l => l.ItemId!.Value).ToList();
         var items = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+        var units = await db.ItemUnits.Where(u => ids.Contains(u.ItemId)).ToListAsync();
+        var listed = priceListId is null ? [] : await db.PriceListItems.Where(p => p.PriceListId == priceListId && ids.Contains(p.ItemId)).ToDictionaryAsync(p => p.ItemId, p => p.Price);
         doc.Lines.Clear();
         foreach (var l in lines)
         {
             Item? item = l.ItemId is { } id ? items.GetValueOrDefault(id) ?? throw new AppException("One of the items no longer exists.") : null;
             if (l.Quantity <= 0 || l.Quantity > 1_000_000) throw new AppException("Quantities must be more than 0.");
-            var price = l.UnitPrice ?? item?.Price ?? throw new AppException("Give each line a price.");
+            var (unitName, factor, unitPrice) = ("", 1m, (long?)null);
+            if (item is not null && !string.IsNullOrWhiteSpace(l.Unit) && !l.Unit.Trim().Equals(item.Unit, StringComparison.OrdinalIgnoreCase))
+            {
+                var u = units.FirstOrDefault(x => x.ItemId == item.Id && x.Name.Equals(l.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
+                    ?? throw new AppException($"{item.Name} isn't sold by the {l.Unit.Trim()}. Add that unit to the product first.");
+                (unitName, factor, unitPrice) = (u.Name, u.Factor, u.Price > 0 && !listed.ContainsKey(item.Id) ? u.Price : null);
+            }
+            var basePrice = item is null ? (long?)null : listed.TryGetValue(item.Id, out var lp) ? lp : item.Price;
+            var price = l.UnitPrice ?? unitPrice ?? (basePrice is { } bp ? (long)Math.Round(bp * factor, MidpointRounding.AwayFromZero) : (long?)null) ?? throw new AppException("Give each line a price.");
             if (price < 0) throw new AppException("Prices can't be negative.");
             var type = l.TaxType ?? item?.TaxType ?? TaxType.B_Standard16;
             var (net, tax, total) = Tax.Line(l.Quantity, price, type, vat);
             var description = (l.Description ?? item?.Name ?? "").Trim();
             if (description.Length == 0) throw new AppException("Describe each line.");
-            doc.Lines.Add(new SalesLine { ItemId = item?.Id, Description = description, Quantity = l.Quantity, UnitPrice = price, TaxType = type, Net = net, Tax = tax, Total = total });
+            doc.Lines.Add(new SalesLine { ItemId = item?.Id, Description = description, Quantity = l.Quantity, UnitPrice = price, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor });
         }
         doc.Net = doc.Lines.Sum(l => l.Net);
         doc.Tax = doc.Lines.Sum(l => l.Tax);
@@ -75,17 +87,23 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         doc.DueDate = doc.IssueDate.AddDays(Math.Clamp(input.DueInDays ?? doc.DueDate.DayNumber - doc.IssueDate.DayNumber, 0, 365));
         doc.Notes = (input.Notes ?? "").Trim();
         db.SalesLines.RemoveRange(doc.Lines);
-        await SetLines(doc, input.Lines ?? [], (await Company()).VatRegistered);
+        await SetLines(doc, input.Lines ?? [], (await Company()).VatRegistered, customer.PriceListId);
         await db.SaveChangesAsync();
         return doc;
     }
 
     /// <summary>Issues an invoice: posts it to the books, signs it with eTIMS, and applies any unmatched money
     /// the customer already sent. A quote is just marked sent.</summary>
-    public async Task<SalesDoc> Issue(Guid id)
+    public async Task<SalesDoc> Issue(Guid id, bool overLimit = false)
     {
         var doc = await Get(id);
         if (doc.Status != SalesDocStatus.Draft) throw new AppException("This has already been sent.");
+        if (doc.Kind == SalesDocKind.Invoice && doc.Customer!.CreditLimit > 0 && !overLimit)
+        {
+            var owes = await db.SalesDocs.Where(d => d.CustomerId == doc.CustomerId && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid)).SumAsync(d => d.Total - d.Paid);
+            if (owes + doc.Total > doc.Customer.CreditLimit)
+                throw new AppException($"{doc.Customer.Name} already owes {Money.Ksh(owes)}; this invoice takes them to {Money.Ksh(owes + doc.Total)}, over their {Money.Ksh(doc.Customer.CreditLimit)} limit. Take a payment first, or ask the owner or accountant to allow it.", 409);
+        }
         doc.Status = SalesDocStatus.Sent;
         if (doc.Kind == SalesDocKind.Invoice)
         {
@@ -109,8 +127,9 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         doc.LocationId = location.Id;
         foreach (var l in doc.Lines)
             if (l.ItemId is { } iid && items.GetValueOrDefault(iid) is { } item)
-                l.Cost = await stock.Issue(item, location.Id, l.Quantity, "Invoice", doc.Id, doc.Number);
+                l.Cost = await stock.Issue(item, location.Id, l.Quantity * l.UnitFactor, "Invoice", doc.Id, doc.Number);
         await ledger.PostCostOfSales(doc.IssueDate, doc.Number, doc.Id, doc.Lines.Sum(l => l.Cost));
+        await Agents.AgentKick.Kick(db, "restock"); // stock went down: the restock agent checks within a minute
     }
 
     /// <summary>A voided invoice: exactly what left the store goes back, at the cost it left with.</summary>
@@ -121,7 +140,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         var ids = moves.Select(m => m.ItemId).Distinct().ToList();
         var items = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
         foreach (var m in moves)
-            await stock.Receive(items[m.ItemId], m.LocationId, -m.Quantity, m.UnitCost, StockMoveKind.Returned, "InvoiceVoid", doc.Id, doc.Number);
+            await stock.Return(items[m.ItemId], m, "InvoiceVoid", doc.Id, doc.Number);
         await ledger.PostCostOfSales(Clock.Today, doc.Number, doc.Id, doc.Lines.Sum(l => l.Cost), reverse: true);
     }
 
@@ -148,6 +167,9 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         if (doc.Paid > 0) throw new AppException("This invoice has payments on it. Move the payments to another invoice first.");
         if (doc.Kind == SalesDocKind.Invoice && doc.Status != SalesDocStatus.Draft)
         {
+            // A signed invoice can only be cancelled at KRA with a credit note; if KRA refuses, nothing is voided.
+            try { await etims.CreditNote(await Company(), doc); }
+            catch (Exception e) { throw new AppException($"KRA eTIMS didn't accept the credit note, so {doc.Number} isn't voided yet: {e.Message}"); }
             await ledger.ReverseInvoice(doc, Clock.Today);
             await PutBackInStock(doc);
         }
@@ -163,7 +185,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         if (q.Kind != SalesDocKind.Quote) throw new AppException("Only quotes can become invoices.");
         if (q.Status is SalesDocStatus.Accepted or SalesDocStatus.Void) throw new AppException("This quote has already been used or voided.");
         var inv = await Create(new SalesDocInput(SalesDocKind.Invoice, q.CustomerId, Clock.Today, null, q.Notes,
-            q.Lines.Select(l => new LineInput(l.ItemId, l.Description, l.Quantity, l.UnitPrice, l.TaxType)).ToList()));
+            q.Lines.Select(l => new LineInput(l.ItemId, l.Description, l.Quantity, l.UnitPrice, l.TaxType, l.Unit)).ToList()));
         inv.FromQuoteId = q.Id;
         q.Status = SalesDocStatus.Accepted;
         await db.SaveChangesAsync();

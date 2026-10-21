@@ -304,6 +304,8 @@ You'll choose your own password the first time.`;
   );
 }
 
+import { DeductionsCard } from '../components/Deductions';
+
 export function EmployeeView() {
   const { id } = useParams();
   const { data, error, reload } = useApi<any>(`/employees/${id}`);
@@ -372,6 +374,7 @@ export function EmployeeView() {
         </section>
         <aside className="space-y-4">
           <AppAccess employee={e} />
+          <DeductionsCard employee={e} />
           <PayBreakdown p={data.monthlyPay} />
           <section className="card p-4">
             <h2 className="text-sm font-semibold text-muted">Leave</h2>

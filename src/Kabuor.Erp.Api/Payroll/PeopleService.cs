@@ -1,7 +1,8 @@
 // Employees, leave and payroll.
 //   Approving a payroll posts:  Dr Salaries and wages (gross)            Dr Employer NSSF/Housing Levy/NITA
 //                               Cr PAYE, NSSF, SHIF, Housing Levy, NITA owed     Cr Salaries to pay (net)
-//   After-tax deductions:       Dr Salaries to pay     Cr Money staff owe us (the advance or loan being repaid)
+//   Agreed deductions:          Dr Salaries to pay     Cr Money staff owe us (loans, advances being repaid)
+//                                                      Cr Deductions to pay over (HELB, SACCO, insurance, pension)
 //   Paying salaries:            Dr Salaries to pay     Cr M-Pesa / Bank / Cash
 //   Paying KRA/NSSF/SHA:        Dr the amount owed     Cr M-Pesa / Bank
 using System.Text;
@@ -101,10 +102,19 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
     // ---------- payroll ----------
     static Payslip Fill(Payslip s, StatutoryRates rates)
     {
-        var r = Statutory.Calculate(new PayInput(s.Basic, s.TaxableAllowances, s.ExtraEarnings, s.NonTaxableAllowances, s.OtherDeductions), rates);
+        var r = Statutory.Calculate(new PayInput(s.Basic, s.TaxableAllowances, s.ExtraEarnings, s.NonTaxableAllowances, s.OtherDeductions, s.Pension), rates);
         (s.Gross, s.NssfEmployee, s.NssfEmployer, s.Shif, s.HousingLevyEmployee, s.HousingLevyEmployer) = (r.Gross, r.NssfEmployee, r.NssfEmployer, r.Shif, r.HousingLevyEmployee, r.HousingLevyEmployer);
         (s.Taxable, s.PayeBeforeRelief, s.PersonalRelief, s.Paye, s.Nita, s.Net) = (r.Taxable, r.PayeBeforeRelief, r.PersonalRelief, r.Paye, r.Nita, r.Net);
         return s;
+    }
+
+    /// <summary>Puts the month's deductions on the payslip: pension before tax, the rest after.</summary>
+    static void SetLines(Payslip s, List<DeductionLine> lines, StatutoryRates rates)
+    {
+        s.DeductionLines = DeductionService.Write(lines);
+        s.Pension = lines.Where(l => l.Kind == DeductionKind.Pension).Sum(l => l.Amount);
+        s.OtherDeductions = lines.Where(l => l.Kind != DeductionKind.Pension).Sum(l => l.Amount);
+        Fill(s, rates);
     }
 
     public async Task<PayrollRun> GetRun(Guid id) =>
@@ -121,8 +131,14 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
         var staff = await db.Employees.Where(e => e.StartDate <= end && (e.EndDate == null || e.EndDate >= period)).OrderBy(e => e.Name).ToListAsync();
         if (staff.Count == 0) throw new AppException("Add your employees first.");
         var run = new PayrollRun { Period = period };
+        var ids = staff.Select(e => e.Id).ToList();
+        var agreed = (await db.EmployeeDeductions.Where(d => ids.Contains(d.EmployeeId) && d.Status == DeductionStatus.Active).ToListAsync()).ToLookup(d => d.EmployeeId);
         foreach (var e in staff)
-            run.Payslips.Add(Fill(new Payslip { EmployeeId = e.Id, EmployeeName = e.Name, Basic = e.BasicSalary, TaxableAllowances = e.TaxableAllowances, NonTaxableAllowances = e.NonTaxableAllowances }, rates));
+        {
+            var s = Fill(new Payslip { EmployeeId = e.Id, EmployeeName = e.Name, Basic = e.BasicSalary, TaxableAllowances = e.TaxableAllowances, NonTaxableAllowances = e.NonTaxableAllowances }, rates);
+            SetLines(s, DeductionService.Plan(agreed[e.Id], period, s.Net, s.Gross), rates);
+            run.Payslips.Add(s);
+        }
         db.PayrollRuns.Add(run);
         await db.SaveChangesAsync();
         return run;
@@ -135,10 +151,15 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
         var s = run.Payslips.SingleOrDefault(p => p.Id == payslipId) ?? throw new AppException("Not found.", 404);
         if (edit.ExtraEarnings < 0 || edit.OtherDeductions < 0) throw new AppException("Amounts can't be negative.");
         s.ExtraEarnings = edit.ExtraEarnings ?? s.ExtraEarnings;
-        s.OtherDeductions = edit.OtherDeductions ?? s.OtherDeductions;
         s.Note = (edit.Note ?? s.Note).Trim();
-        Fill(s, Statutory.For(run.Period));
+        var rates = Statutory.For(run.Period);
+        var lines = DeductionService.Lines(s);
+        var oneOff = edit.OtherDeductions ?? lines.Where(l => l.DeductionId is null).Sum(l => l.Amount);
+        lines.RemoveAll(l => l.DeductionId is null);
+        if (oneOff > 0) lines.Add(new DeductionLine(null, DeductionKind.Advance, "One-off deduction (advance repaid)", "", oneOff, null));
+        SetLines(s, lines, rates);
         if (s.Net < 0) throw new AppException($"Deductions are more than {s.EmployeeName}'s pay this month.");
+        if (oneOff > 0 && s.Net < (s.Gross + 2) / 3) throw new AppException($"That would leave {s.EmployeeName} less than a third of their pay, which the Employment Act (s.19) doesn't allow. Take less this month.");
         await db.SaveChangesAsync();
         return run;
     }
@@ -169,12 +190,21 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
             (SystemAccounts.ShifPayable, 0, p.Sum(x => x.Shif)),
             (SystemAccounts.HousingLevyPayable, 0, p.Sum(x => x.HousingLevyEmployee + x.HousingLevyEmployer)),
             (SystemAccounts.NitaPayable, 0, p.Sum(x => x.Nita)),
-            (SystemAccounts.NetPayPayable, 0, p.Sum(x => x.Net + x.OtherDeductions)));
-        // After-tax deductions repay advances and loans staff already received: less is sent now, and they owe less.
-        var other = p.Sum(x => x.OtherDeductions);
-        if (other > 0)
+            (SystemAccounts.NetPayPayable, 0, p.Sum(x => x.Net + x.OtherDeductions + x.Pension)));
+        // Deductions: loans and advances staff already received are repaid to the business; the rest (HELB, SACCO,
+        // insurance, union, pension) is held for whoever it's owed to until it's paid over.
+        var lines = p.SelectMany(DeductionService.Lines).ToList();
+        long toBusiness = lines.Where(l => l.ToBusiness).Sum(l => l.Amount), toOthers = lines.Where(l => !l.ToBusiness).Sum(l => l.Amount);
+        if (toBusiness + toOthers > 0)
             await ledger.Post(date, $"Deductions from pay {run.Period:MMMM yyyy}", "PayrollDeductions", run.Id,
-                (SystemAccounts.NetPayPayable, other, 0), (SystemAccounts.StaffAdvances, 0, other));
+                (SystemAccounts.NetPayPayable, toBusiness + toOthers, 0), (SystemAccounts.StaffAdvances, 0, toBusiness), (SystemAccounts.DeductionsPayable, 0, toOthers));
+        // Count what was repaid; a loan or advance fully repaid stops by itself.
+        var taken = lines.Where(l => l.DeductionId is not null && l.Amount > 0).GroupBy(l => l.DeductionId!.Value).ToDictionary(g => g.Key, g => g.Sum(l => l.Amount));
+        foreach (var d in await db.EmployeeDeductions.Where(d => taken.Keys.Contains(d.Id)).ToListAsync())
+        {
+            d.Recovered += taken[d.Id];
+            if (d.Total is { } total && d.Recovered >= total) d.Status = DeductionStatus.Completed;
+        }
         (run.Status, run.ApprovedBy) = (PayrollStatus.Approved, ctx.Actor);
         await db.SaveChangesAsync();
         return run;
@@ -195,8 +225,15 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
     }
 
     public static readonly string[] RemitKinds = ["PAYE", "NSSF", "SHIF", "AHL", "NITA"];
+    const string To = "TO:";
 
-    public static long Owed(PayrollRun run, string kind) => kind switch
+    /// <summary>Everything to pay over for the month: the statutory five, then each payee of agreed deductions ("TO:HELB").</summary>
+    public static List<string> KindsFor(PayrollRun run) =>
+        [.. RemitKinds, .. run.Payslips.SelectMany(DeductionService.Lines).Where(l => !l.ToBusiness && l.Amount > 0).Select(l => To + l.PayTo).Distinct().OrderBy(k => k)];
+
+    public static long Owed(PayrollRun run, string kind) => kind.StartsWith(To)
+        ? run.Payslips.SelectMany(DeductionService.Lines).Where(l => !l.ToBusiness && To + l.PayTo == kind).Sum(l => l.Amount)
+        : kind switch
     {
         "PAYE" => run.Payslips.Sum(x => x.Paye),
         "NSSF" => run.Payslips.Sum(x => x.NssfEmployee + x.NssfEmployer),
@@ -211,16 +248,16 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
     {
         var run = await GetRun(runId);
         var kind = (input.Kind ?? "").ToUpperInvariant();
-        if (!RemitKinds.Contains(kind)) throw new AppException("Choose PAYE, NSSF, SHIF, Housing Levy or NITA.");
+        if (!KindsFor(run).Contains(kind)) throw new AppException("Choose PAYE, NSSF, SHIF, Housing Levy, NITA or one of this month's deduction payees.");
         if (run.Status == PayrollStatus.Draft) throw new AppException("Approve the payroll first.");
         var done = run.Remitted.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         if (done.Contains(kind)) throw new AppException($"{kind} for {run.Period:MMMM yyyy} is already recorded as paid.");
         var amount = Owed(run, kind);
-        var key = kind switch { "PAYE" => SystemAccounts.PayePayable, "NSSF" => SystemAccounts.NssfPayable, "SHIF" => SystemAccounts.ShifPayable, "AHL" => SystemAccounts.HousingLevyPayable, _ => SystemAccounts.NitaPayable };
+        var key = kind.StartsWith(To) ? SystemAccounts.DeductionsPayable : kind switch { "PAYE" => SystemAccounts.PayePayable, "NSSF" => SystemAccounts.NssfPayable, "SHIF" => SystemAccounts.ShifPayable, "AHL" => SystemAccounts.HousingLevyPayable, _ => SystemAccounts.NitaPayable };
         if (amount > 0)
             await ledger.Post(Clock.Today, $"{kind} paid for {run.Period:MMMM yyyy} {input.Reference}".Trim(), "Remittance", run.Id, (key, amount, 0), (SystemAccounts.ForMethod(input.Method), 0, amount));
         done.Add(kind);
-        run.Remitted = string.Join(',', RemitKinds.Where(done.Contains));
+        run.Remitted = string.Join(',', KindsFor(run).Where(done.Contains));
         await db.SaveChangesAsync();
         return run;
     }

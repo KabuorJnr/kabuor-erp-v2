@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router';
 import './index.css';
+import { registerShell } from './lib/offline';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
@@ -26,9 +27,12 @@ import Production from './pages/Production';
 import { CampaignEditor, CampaignList, CampaignView } from './pages/Campaigns';
 
 import Pos from './pages/Pos';
+import { Privacy, Terms } from './pages/Legal';
 import MyPortal from './pages/MyPortal';
 import Agents from './pages/Agents';
 import Security from './pages/Security';
+import Reconcile from './pages/Reconcile';
+import EtimsInbox from './pages/EtimsInbox';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -48,12 +52,16 @@ function App() {
     return (
       <Routes>
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<SignIn />} />
       </Routes>
     );
   if (session.user.mustChangePassword) return <ChooseOwnPassword session={session} />;
   return (
     <Routes>
+      <Route path="privacy" element={<Privacy />} />
+      <Route path="terms" element={<Terms />} />
       <Route element={<Shell session={session} />}>
         <Route
           index
@@ -99,6 +107,8 @@ function App() {
         <Route path="reports" element={<Need p="reports"><Reports /></Need>} />
         <Route path="agents" element={<Agents />} />
         <Route path="security" element={<Security />} />
+        <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />
+        <Route path="reconcile" element={<Need p="finance"><Reconcile /></Need>} />
         <Route path="settings" element={<Need p="admin"><Settings /></Need>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
@@ -106,6 +116,7 @@ function App() {
   );
 }
 
+registerShell();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
