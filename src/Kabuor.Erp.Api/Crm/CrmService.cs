@@ -61,6 +61,11 @@ public sealed class CrmService(ErpDb db, Numbers numbers, RequestContext ctx)
             customer = new Customer { Number = await numbers.Next("C"), Name = lead.Business.Length > 0 ? lead.Business : lead.Name, Phone = lead.Phone, Email = lead.Email, Notes = lead.Business.Length > 0 ? $"Contact: {lead.Name}" : "" };
             db.Customers.Add(customer);
         }
+        // First touch travels with them: the link, channel and person that brought the lead now get credit for the customer.
+        customer.FirstLinkId ??= lead.LinkId;
+        customer.AcquisitionChannel ??= lead.Channel;
+        customer.AcquiredByUserId ??= lead.OwnerUserId;
+        foreach (var i in await db.Inquiries.Where(i => i.LeadId == lead.Id && i.CustomerId == null).ToListAsync()) i.CustomerId = customer.Id;
         // Their conversation history moves with them.
         foreach (var a in await db.Activities.Where(a => a.LeadId == lead.Id).ToListAsync()) a.CustomerId = customer.Id;
         db.Activities.Add(new Activity { LeadId = lead.Id, CustomerId = customer.Id, Kind = ActivityKind.Note, Text = "Won: now a customer", Actor = ctx.Actor, ActorId = ctx.UserId });

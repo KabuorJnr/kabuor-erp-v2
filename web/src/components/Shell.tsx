@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BarChart3, Bot, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  BarChart3, Bot, Brain, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -50,6 +50,7 @@ export default function Shell({ session }: { session: Session }) {
           title: '',
           links: [
             { to: '/', label: t('Today'), icon: Home, end: true },
+            can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
             (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
           ],
         },
@@ -60,8 +61,10 @@ export default function Shell({ session }: { session: Session }) {
             can(session, 'sales.view') && { to: '/invoices', label: t('Invoices'), icon: FileText },
             can(session, 'sales.view') && { to: '/quotes', label: t('Quotes'), icon: Quote },
             can(session, 'sales.view') && { to: '/customers', label: t('Customers'), icon: Users },
+            can(session, 'sales.view') && { to: '/inquiries', label: 'Inquiries', icon: MessageCircleQuestion },
             can(session, 'crm') && { to: '/pipeline', label: 'Pipeline', icon: Kanban },
             can(session, 'crm') && { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
+            can(session, 'crm') && { to: '/links', label: 'Tracking links', icon: Link2 },
           ],
         },
         {

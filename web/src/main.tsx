@@ -28,6 +28,10 @@ import Production from './pages/Production';
 import { CampaignEditor, CampaignList, CampaignView } from './pages/Campaigns';
 
 import Pos from './pages/Pos';
+import Intelligence from './pages/Intelligence';
+import Inquiries from './pages/Inquiries';
+import Links from './pages/Links';
+import Shop from './pages/Shop';
 import { Privacy, Terms } from './pages/Legal';
 import MyPortal from './pages/MyPortal';
 import Agents from './pages/Agents';
@@ -54,6 +58,7 @@ function App() {
       <Routes>
         <Route path="/signup" element={<SignUp />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/s/:slug" element={<Shop />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<SignIn />} />
       </Routes>
@@ -62,6 +67,7 @@ function App() {
   return (
     <Routes>
       <Route path="privacy" element={<Privacy />} />
+      <Route path="s/:slug" element={<Shop />} />
       <Route path="terms" element={<Terms />} />
       <Route element={<Shell session={session} />}>
         <Route
@@ -102,6 +108,9 @@ function App() {
         <Route path="pipeline/:id" element={<Need p="crm"><LeadView /></Need>} />
         <Route path="production" element={<Need p="make"><Production /></Need>} />
         <Route path="campaigns" element={<Need p="crm"><CampaignList /></Need>} />
+        <Route path="intelligence" element={<Need p="reports"><Intelligence /></Need>} />
+        <Route path="inquiries" element={<Need p="sales.view"><Inquiries /></Need>} />
+        <Route path="links" element={<Need p="crm"><Links /></Need>} />
         <Route path="campaigns/new" element={<Need p="crm"><CampaignEditor /></Need>} />
         <Route path="campaigns/:id" element={<Need p="crm"><CampaignView /></Need>} />
         <Route path="money-in" element={<Need p="sales.view"><Payments /></Need>} />

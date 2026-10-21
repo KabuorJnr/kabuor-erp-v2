@@ -115,3 +115,20 @@ public sealed class PortalCode : ICompanyOwned
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
+
+/// <summary>One line of a stock count: what the system expected and what was on the shelf, kept even when they
+/// agree, so stock accuracy can be measured (system stock must match the warehouse).</summary>
+public sealed class StockCountLine : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid CountId { get; set; }
+    public Guid ItemId { get; set; }
+    public Guid LocationId { get; set; }
+    public decimal Expected { get; set; }
+    public decimal Counted { get; set; }
+    /// <summary>Cost of one unit at the time, in cents.</summary>
+    public decimal UnitCost { get; set; }
+    public string CountedBy { get; set; } = "";
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
+}

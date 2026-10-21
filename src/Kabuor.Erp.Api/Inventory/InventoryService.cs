@@ -176,6 +176,7 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
             var item = items.GetValueOrDefault(c.ItemId) ?? throw new AppException("One of those items isn't tracked in stock.");
             var level = await Level(item.Id, loc.Id);
             var diff = c.Counted - level.Quantity;
+            db.StockCountLines.Add(new StockCountLine { CountId = sourceId, ItemId = item.Id, LocationId = loc.Id, Expected = level.Quantity, Counted = c.Counted, UnitCost = item.AverageCost, CountedBy = ctx.Actor });
             if (diff == 0) continue;
             await Move(item, loc.Id, diff, StockMoveKind.Adjusted, item.AverageCost, "Count", sourceId, reference, note);
             var v = (long)Math.Round(diff * item.AverageCost, MidpointRounding.AwayFromZero);

@@ -23,7 +23,7 @@ public sealed record ChatTurn(string Role, string Text);
 
 sealed record Tool(string Name, string Description, JsonObject Schema, string Policy, Func<JsonObject, Task<object>> Run);
 
-public sealed class AssistantService(ErpDb db, RequestContext ctx, ReportService reports, PaymentService payments, IHttpClientFactory http, IConfiguration config, ILogger<AssistantService> log)
+public sealed class AssistantService(ErpDb db, RequestContext ctx, ReportService reports, PaymentService payments, Intelligence.InsightsService insights, IHttpClientFactory http, IConfiguration config, ILogger<AssistantService> log)
 {
     const int MaxSteps = 8;
 
@@ -40,6 +40,7 @@ public sealed class AssistantService(ErpDb db, RequestContext ctx, ReportService
     }
 
     static string Str(JsonObject a, string k) => a[k]?.GetValue<string>() ?? "";
+    static DateOnly? Day(JsonObject a, string k) => DateOnly.TryParse(Str(a, k), out var d) ? d : null;
     static long Cents(JsonObject a, string k) => a[k] is { } n ? (long)Math.Round(n.GetValue<decimal>() * 100) : 0;
 
     List<Tool> Tools() =>
@@ -166,6 +167,26 @@ public sealed class AssistantService(ErpDb db, RequestContext ctx, ReportService
                 if (Str(a, "filter") == "low") list = list.Where(x => x.isLow);
                 return list.OrderBy(x => x.onHand).Take(30).ToList();
             }),
+
+        // ---------- Kabuor Intelligence: answers worked out from the business's own data ----------
+        new("insight_overview", "The headline answers: best seller, stock stuck on the shelf, what to buy now, best customer, inquiry conversion and the top reason inquiries are lost, best channel, salesperson of the year, stock accuracy. Start here for 'how is the business doing'.",
+            Schema(), Policies.Reports, async _ => await insights.Overview()),
+        new("insight_best_sellers", "What sells most in a date range (YYYY-MM-DD; default the last 90 days): quantity, revenue, margin, share, how many customers. Cents.",
+            Schema(("from", "string", "Start date", false), ("to", "string", "End date", false)), Policies.Reports, async a => await insights.Selling(Day(a, "from") ?? Clock.Today.AddDays(-89), Day(a, "to") ?? Clock.Today)),
+        new("insight_slow_stock", "What sits on the shelf: dead stock (no sale in 90 days), slow stock (over 120 days of cover), the money tied up, and the fastest movers.",
+            Schema(), Policies.Reports, async _ => await insights.Shelf()),
+        new("insight_buy_more", "What to buy more of: daily demand over 60 days against stock on hand and on order, with suggested quantities, suppliers and costs, and products customers asked for while out of stock.",
+            Schema(), Policies.Reports, async _ => await insights.BuyMore()),
+        new("insight_customers", "Who buys: customers scored on recency, frequency and money over a year, segments (Champions, Loyal, At risk, Sleeping…), top customers, slow payers, how many never bought.",
+            Schema(), Policies.Reports, async _ => await insights.Customers()),
+        new("insight_inquiries", "Why people ask but don't buy: inquiry conversion, lost reasons, how answer speed affects buying, conversion by channel and by product, unanswered inquiries. Date range optional.",
+            Schema(("from", "string", "Start date", false), ("to", "string", "End date", false)), Policies.Reports, async a => await insights.Inquiries(Day(a, "from") ?? Clock.Today.AddDays(-89), Day(a, "to") ?? Clock.Today)),
+        new("insight_channels", "Which channels bring people and money (WhatsApp, TikTok, LinkedIn, Instagram, referrals…): link visits, inquiries, new customers, sales and revenue per channel. Date range optional.",
+            Schema(("from", "string", "Start date", false), ("to", "string", "End date", false)), Policies.Reports, async a => await insights.Channels(Day(a, "from") ?? Clock.Today.AddDays(-89), Day(a, "to") ?? Clock.Today)),
+        new("insight_salespeople", "Salesperson leaderboard for a year: sales made, customers brought in through their links, inquiries handled and converted, answer speed. Includes the salesperson of the year.",
+            Schema(("year", "number", "The year, e.g. 2026", false)), Policies.Read, async a => await insights.Salespeople(a["year"] is { } y ? (int)y.GetValue<decimal>() : Clock.Today.Year)),
+        new("insight_stock_accuracy", "Does the system match the warehouse: stock count accuracy, value of differences and what went missing, the items most often off, and what to count next.",
+            Schema(), Policies.Reports, async _ => await insights.StockAccuracy()),
     ];
 
     /// <summary>Set while an agent works: its proposals become agent tasks instead of chat proposals.</summary>

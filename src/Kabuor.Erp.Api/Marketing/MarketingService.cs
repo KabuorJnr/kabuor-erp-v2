@@ -47,7 +47,7 @@ public sealed class AfricasTalkingSms(IHttpClientFactory http, IConfiguration co
     }
 }
 
-public sealed class MarketingService(ErpDb db, ISmsSender sms, RequestContext ctx)
+public sealed class MarketingService(ErpDb db, ISmsSender sms, RequestContext ctx, Intelligence.LinkService links)
 {
     public static readonly string[] Audiences = ["all", "recent", "lapsed", "top", "owing", "never-bought", "leads"];
     const int MaxRecipients = 5000;
@@ -124,7 +124,7 @@ public sealed class MarketingService(ErpDb db, ISmsSender sms, RequestContext ct
     }
 
     /// <summary>Sends an SMS campaign now, or prepares a WhatsApp one (a ready message per person).</summary>
-    public async Task<Campaign> Send(Guid id)
+    public async Task<Campaign> Send(Guid id, string baseUrl = "")
     {
         var c = await db.Campaigns.Include(x => x.Recipients).SingleOrDefaultAsync(x => x.Id == id) ?? throw new AppException("Not found.", 404);
         if (c.Status != CampaignStatus.Draft) throw new AppException("Already sent.");
@@ -132,9 +132,16 @@ public sealed class MarketingService(ErpDb db, ISmsSender sms, RequestContext ct
         if (people.Count == 0) throw new AppException("Nobody in that group has a phone number (or they all opted out).");
         if (people.Count > MaxRecipients) throw new AppException($"That's {people.Count:N0} people; send to at most {MaxRecipients:N0} at a time.");
         var stop = c.Channel == CampaignChannel.Sms ? await StopLine() : "";
+        // {link}: a tracking link made for this campaign, so its clicks, inquiries and sales are measured.
+        var message = c.Message;
+        if (message.Contains("{link}"))
+        {
+            var link = await links.Create(new Intelligence.LinkInput($"Campaign: {c.Name}", c.Channel == CampaignChannel.Sms ? Channel.Sms : Channel.WhatsApp, null, c.Id, "shop"));
+            message = message.Replace("{link}", $"{baseUrl.TrimEnd('/')}/l/{link.Code}");
+        }
         foreach (var p in people)
         {
-            var r = new CampaignRecipient { CustomerId = p.CustomerId, LeadId = p.LeadId, Name = p.Name, Phone = p.Phone, Message = Fill(c.Message, p) + stop };
+            var r = new CampaignRecipient { CustomerId = p.CustomerId, LeadId = p.LeadId, Name = p.Name, Phone = p.Phone, Message = Fill(message, p) + stop };
             if (c.Channel == CampaignChannel.Sms)
             {
                 var (ok, error) = await sms.Send(p.Phone, r.Message);

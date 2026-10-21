@@ -494,8 +494,15 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("PortalEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("PreventNegativeStock")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("StkConsumerKey")
                         .IsRequired()
@@ -530,6 +537,8 @@ namespace Kabuor.Erp.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MpesaShortcode");
+
+                    b.HasIndex("Slug");
 
                     b.ToTable("Companies");
                 });
@@ -587,6 +596,9 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("PortalLastSeenAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("PriceListId")
                         .HasColumnType("uuid");
@@ -2415,6 +2427,46 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("StockBatches");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.StockCountLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Counted")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("CountedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Expected")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ItemId", "At");
+
+                    b.ToTable("StockCountLines");
                 });
 
             modelBuilder.Entity("Kabuor.Erp.Domain.StockLevel", b =>

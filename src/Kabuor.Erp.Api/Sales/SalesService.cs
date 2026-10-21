@@ -11,7 +11,7 @@ namespace Kabuor.Erp.Sales;
 public sealed record LineInput(Guid? ItemId, string? Description, decimal Quantity, long? UnitPrice, TaxType? TaxType, string? Unit = null);
 public sealed record SalesDocInput(SalesDocKind Kind, Guid CustomerId, DateOnly? IssueDate, int? DueInDays, string? Notes, List<LineInput> Lines, Guid? LocationId = null);
 
-public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtimsClient etims, InventoryService stock)
+public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtimsClient etims, InventoryService stock, RequestContext ctx)
 {
     async Task<Company> Company() => await db.Companies.SingleAsync(c => c.Id == db.CompanyId);
 
@@ -34,6 +34,8 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
             LocationId = input.LocationId is null ? null : (await stock.LocationOrDefault(input.LocationId)).Id,
         };
         await SetLines(doc, input.Lines, company.VatRegistered, customer.PriceListId);
+        // Credit for the sale: the person who made it, and the link that first brought this customer.
+        (doc.SalespersonUserId, doc.SalespersonName, doc.LinkId, doc.Channel) = (ctx.UserId, ctx.UserId is null ? "" : ctx.Actor, customer.FirstLinkId, customer.AcquisitionChannel);
         db.SalesDocs.Add(doc);
         await db.SaveChangesAsync();
         return doc;
@@ -109,6 +111,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         {
             await ledger.PostInvoice(doc);
             await TakeFromStock(doc);
+            await Intelligence.InquiryService.OnInvoiceIssued(db, doc); // the inquiry that led here is won
             var company = await Company();
             doc.EtimsStatus = company.VatRegistered ? EtimsStatus.Pending : EtimsStatus.NotRequired;
         }

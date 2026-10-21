@@ -6,6 +6,7 @@ import { dateTime, day, ksh, msisdn, prettyPhone } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { DocStatus } from './Invoices';
 import { CustomerTerms } from '../components/Trade';
+import { CustomerJourney, CustomerProfile } from '../components/CustomerIntel';
 import { ActivityList, LogActivity } from './Pipeline';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, Stat } from '../components/ui';
 
@@ -223,7 +224,9 @@ export function CustomerView() {
           )}
         </section>
         <div className="space-y-5">
+        <CustomerProfile id={c.id} />
         <CustomerTerms customer={c} owes={data.owes} onChange={reload} />
+        <CustomerJourney id={c.id} />
         <section className="card h-fit p-4">
           <h2 className="text-sm font-semibold text-muted">Payments</h2>
           {data.payments.length ? (

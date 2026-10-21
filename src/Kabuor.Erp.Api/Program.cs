@@ -61,6 +61,11 @@ builder.Services.AddScoped<StatementService>();
 builder.Services.AddScoped<Kabuor.Erp.Import.ImportService>();
 builder.Services.AddScoped<Kabuor.Erp.Billing.BillingService>();
 builder.Services.AddScoped<Kabuor.Erp.Payments.StkService>();
+builder.Services.AddScoped<Kabuor.Erp.Intelligence.LinkService>();
+builder.Services.AddScoped<Kabuor.Erp.Intelligence.InquiryService>();
+builder.Services.AddScoped<Kabuor.Erp.Intelligence.InsightsService>();
+builder.Services.AddScoped<Kabuor.Erp.Intelligence.PortalService>();
+builder.Services.AddSingleton<Kabuor.Erp.Intelligence.PortalTokens>();
 builder.Services.AddScoped<Kabuor.Erp.Integrations.WebhookService>();
 builder.Services.AddHostedService<Kabuor.Erp.Integrations.WebhookWorker>();
 builder.Services.AddHttpClient("webhooks", c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -218,6 +223,7 @@ app.Use(async (http, next) =>
 app.UseAuthorization();
 
 Endpoints.Map(app);
+IntelligenceEndpoints.Map(app);
 // The web app (built into wwwroot): any other path is a page in it.
 app.MapFallbackToFile("index.html");
 

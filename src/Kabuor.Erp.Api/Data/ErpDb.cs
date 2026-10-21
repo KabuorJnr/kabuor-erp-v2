@@ -81,6 +81,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
     public DbSet<InquiryMessage> InquiryMessages => Set<InquiryMessage>();
     public DbSet<PortalCode> PortalCodes => Set<PortalCode>();
+    public DbSet<StockCountLine> StockCountLines => Set<StockCountLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -170,6 +171,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<Inquiry>().HasMany(x => x.Messages).WithOne().HasForeignKey(x => x.InquiryId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<InquiryMessage>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
         b.Entity<PortalCode>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<StockCountLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<StockCountLine>().HasIndex(x => new { x.CompanyId, x.ItemId, x.At });
         b.Entity<PortalCode>().HasIndex(x => new { x.CompanyId, x.Phone, x.ExpiresAt });
 
         // Lookups the app does all the time, indexed with the company first.
@@ -180,6 +183,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Phone });
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.Name });
         b.Entity<Customer>().HasIndex(x => new { x.CompanyId, x.FirstLinkId });
+        b.Entity<Company>().HasIndex(x => x.Slug);
         b.Entity<Item>().HasIndex(x => new { x.CompanyId, x.Name });
         b.Entity<Lead>().HasIndex(x => new { x.CompanyId, x.LinkId });
         b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();

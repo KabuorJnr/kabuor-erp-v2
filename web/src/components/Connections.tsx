@@ -19,6 +19,38 @@ function CopyBox({ text }: { text: string }) {
   );
 }
 
+/** The business's shop and customer portal on the internet. */
+function PortalCard() {
+  const { data, reload } = useApi<any>('/settings/portal');
+  const [slug, setSlug] = useState<string | null>(null);
+  const [state, setState] = useState({ busy: false, error: '' });
+  if (!data) return null;
+  const save = async (enabled: boolean) => {
+    setState({ busy: true, error: '' });
+    try {
+      await api('/settings/portal', { method: 'PUT', body: { enabled, slug: slug ?? data.slug } });
+      setSlug(null);
+      reload();
+      setState({ busy: false, error: '' });
+    } catch (e) {
+      setState({ busy: false, error: (e as Error).message });
+    }
+  };
+  return (
+    <section className="card space-y-3 p-4 sm:p-5">
+      <h2 className="font-semibold">Online shop and customer portal</h2>
+      <p className="text-sm text-muted">Customers browse your products, ask questions, and, after signing in with their phone, see what they owe, pay by M-Pesa and order again. Everything lands in your inquiries, quotes and books. Sign-in codes go by SMS, so set up SMS for this to work for customers.</p>
+      {data.portalEnabled && data.url && <div className="flex items-center gap-2"><a className="font-semibold text-brand underline" href={data.url} target="_blank" rel="noreferrer">{data.url}</a><CopyBox text={data.url} /></div>}
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Address"><input className="field w-56" value={slug ?? data.slug ?? ''} onChange={(e) => setSlug(e.target.value)} placeholder="your-business" /></Field>
+        <button className="btn btn-primary" disabled={state.busy} onClick={() => save(true)}>{state.busy && <Loader2 className="h-4 w-4 animate-spin" />} {data.portalEnabled ? 'Save' : 'Open the shop'}</button>
+        {data.portalEnabled && <button className="btn btn-ghost" onClick={() => save(false)}>Close it</button>}
+      </div>
+      {state.error && <ErrorNote>{state.error}</ErrorNote>}
+    </section>
+  );
+}
+
 export default function Connections() {
   const keys = useApi<any[]>('/settings/api-keys');
   const hooks = useApi<any[]>('/settings/webhooks');
@@ -44,6 +76,7 @@ export default function Connections() {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
       <div className="space-y-5">
+        <PortalCard />
         <section className="card space-y-4 p-4 sm:p-5">
           <div className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-muted" /><h2 className="font-semibold">API keys</h2></div>
           <p className="text-sm text-muted">A key lets one system (your online shop, an app) read your products and send in orders. Make one key per system, so you can switch one off without touching the others.</p>

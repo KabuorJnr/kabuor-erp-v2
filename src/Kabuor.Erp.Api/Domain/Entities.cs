@@ -17,6 +17,9 @@ public sealed class Company
     public string Email { get; set; } = "";
     public string County { get; set; } = "";
     public bool VatRegistered { get; set; } = true;
+    /// <summary>The business's public address for its shop and customer portal (/s/{slug}); unique.</summary>
+    public string Slug { get; set; } = "";
+    public bool PortalEnabled { get; set; }
     /// <summary>Refuse a sale that would take stock below zero (Business Central's "prevent negative inventory").</summary>
     public bool PreventNegativeStock { get; set; }
     /// <summary>The Paybill/Till customers pay into; M-Pesa confirmations for it land in this company.</summary>
@@ -149,6 +152,8 @@ public sealed class Customer : ICompanyOwned
     public Guid? FirstLinkId { get; set; }
     public Channel? AcquisitionChannel { get; set; }
     public Guid? AcquiredByUserId { get; set; }
+    /// <summary>When they last opened their account on the customer portal.</summary>
+    public DateTimeOffset? PortalLastSeenAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
