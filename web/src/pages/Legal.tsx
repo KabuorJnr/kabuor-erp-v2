@@ -61,7 +61,7 @@ export function Privacy() {
 
       <h2>Who else sees it</h2>
       <ul>
-        <li><b>Hosting</b>: our servers and database run on Railway{info.hostingRegion ? `, in ${info.hostingRegion}` : ''}. This may mean data is stored outside Kenya; we rely on the safeguards in section 48 of the Act and the provider’s security commitments.</li>
+        <li><b>Hosting</b>: our application runs on Render and our database on Neon{info.hostingRegion ? `, in ${info.hostingRegion}` : ''}. This may mean data is stored outside Kenya; we rely on the safeguards in section 48 of the Act and the provider’s security commitments.</li>
         <li><b>KRA</b>: invoices are sent to eTIMS when your business is VAT-registered.</li>
         <li><b>Safaricom</b>: when you use M-Pesa features (payment notices, prompts, subscriptions).</li>
         <li><b>Msaidizi, the assistant</b>: when you ask it something, the question and the records it needs are sent to an AI provider (Anthropic) to produce the answer. It suggests; a person approves anything that changes your books.</li>

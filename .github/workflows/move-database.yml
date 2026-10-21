@@ -1,0 +1,59 @@
+# One-off: copy the live ERP database from the old host (Railway) to Neon, then check nothing was lost.
+# Run it once, by hand (Actions → Move database → Run workflow, type MOVE), BEFORE pointing Render at Neon.
+# Needs two repository secrets (Settings → Secrets and variables → Actions), set by the owner:
+#   OLD_DATABASE_URL  Railway → Postgres → Variables → DATABASE_PUBLIC_URL
+#   ERP_DATABASE_URL  Neon → Connect → the direct (not "pooled") connection string for an EMPTY database
+# The old database is only read. If the Neon database already has tables, the move stops without changing anything.
+name: Move database
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type MOVE to copy the old database into Neon"
+        required: true
+
+jobs:
+  move:
+    if: ${{ github.event.inputs.confirm == 'MOVE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OLD: ${{ secrets.OLD_DATABASE_URL }}
+      NEW: ${{ secrets.ERP_DATABASE_URL }}
+    steps:
+      - name: Check secrets
+        run: |
+          for v in OLD NEW; do
+            url="$(printf '%s' "${!v}" | tr -d '\r\n' | sed -E "s/^[\"' ]+//; s/[\"' ]+\$//")"
+            echo "::add-mask::$url"
+            case "$url" in postgres://*|postgresql://*) ;; *) echo "::error::$v must be a postgresql:// URL (see the top of this file)."; exit 1;; esac
+            echo "Host for $v: $(printf '%s' "$url" | sed -E 's#^[a-z]+://##; s#^[^@/]*@##; s#[/?].*$##')"
+            echo "${v}_URL=$url" >> "$GITHUB_ENV"
+          done
+      - name: Install PostgreSQL 18 tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+      - name: Make sure Neon is empty
+        run: |
+          n="$(psql "$NEW_URL" -tAc "select count(*) from information_schema.tables where table_schema='public'")"
+          if [ "$n" != "0" ]; then echo "::error::The Neon database already has $n tables. Use a new, empty database (or branch) and run again."; exit 1; fi
+      - name: Copy
+        run: |
+          pg_dump "$OLD_URL" --format=custom --no-owner --no-privileges --file erp.dump
+          test -s erp.dump
+          pg_restore --no-owner --no-privileges --exit-on-error --dbname "$NEW_URL" erp.dump
+      - name: Check every table arrived with every row
+        run: |
+          tables="$(psql "$OLD_URL" -tAc "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1")"
+          bad=0
+          for t in $tables; do
+            a="$(psql "$OLD_URL" -tAc "select count(*) from \"$t\"")"; b="$(psql "$NEW_URL" -tAc "select count(*) from \"$t\"")"
+            if [ "$a" != "$b" ]; then echo "::error::$t: $a rows before, $b after"; bad=1; else echo "$t: $a rows"; fi
+          done
+          [ "$bad" = 0 ] && echo "Everything arrived. Point Render's DATABASE_URL at Neon now."
+          exit $bad

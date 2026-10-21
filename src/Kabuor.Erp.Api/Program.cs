@@ -26,7 +26,7 @@ if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
     {
         o.Dsn = config["Sentry:Dsn"];
         o.Environment = config["Sentry:Environment"] ?? builder.Environment.EnvironmentName;
-        o.Release = config["RAILWAY_GIT_COMMIT_SHA"] is { Length: > 7 } sha ? sha[..7] : null;
+        o.Release = (config["RENDER_GIT_COMMIT"] ?? config["RAILWAY_GIT_COMMIT_SHA"]) is { Length: > 7 } sha ? sha[..7] : null;
         o.SendDefaultPii = false;
         o.MaxRequestBodySize = Sentry.Extensibility.RequestSize.None;
         o.MinimumEventLevel = LogLevel.Error;
@@ -265,7 +265,15 @@ public partial class Program
         if (!raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) && !raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)) return raw;
         var u = new Uri(raw);
         var (user, pass) = (u.UserInfo.Split(':', 2) is [var a, var b] ? (Uri.UnescapeDataString(a), Uri.UnescapeDataString(b)) : (Uri.UnescapeDataString(u.UserInfo), ""));
-        return $"Host={u.Host};Port={(u.Port > 0 ? u.Port : 5432)};Database={u.AbsolutePath.TrimStart('/')};Username={user};Password={pass};SSL Mode=Prefer;Trust Server Certificate=true";
+        var query = u.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
+            .ToDictionary(p => p[0].ToLowerInvariant(), p => Uri.UnescapeDataString(p[1]).ToLowerInvariant());
+        // Neon (and any URL asking for verify-full) gets an encrypted, certificate-checked connection; sslmode=require
+        // is encrypted; otherwise (a private network or a proxy with its own certificate) it prefers encryption.
+        var ssl = u.Host.EndsWith(".neon.tech", StringComparison.OrdinalIgnoreCase) || query.GetValueOrDefault("sslmode") == "verify-full" ? "SSL Mode=VerifyFull"
+            : query.GetValueOrDefault("sslmode") is "require" or "verify-ca" ? "SSL Mode=Require;Trust Server Certificate=true"
+            : "SSL Mode=Prefer;Trust Server Certificate=true";
+        var binding = query.GetValueOrDefault("channel_binding") == "require" ? ";Channel Binding=Require" : "";
+        return $"Host={u.Host};Port={(u.Port > 0 ? u.Port : 5432)};Database={u.AbsolutePath.TrimStart('/')};Username={user};Password={pass};{ssl}{binding}";
     }
 }
 

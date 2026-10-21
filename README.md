@@ -114,11 +114,13 @@ work itself, and turns anything that leaves the business or moves money into a t
 - **Payment matching**: hourly; applies certain matches, asks about likely ones, flags unknown payments.
 - **Restock**: daily; drafts purchase orders to each low item's last supplier at last cost; approve = sent.
 
-## Hosting (Railway)
+## Hosting (Render + Neon)
 
-`Dockerfile` builds the web app and the API into one container; `railway.json` sets the health check. Set
-`DATABASE_URL` (Railway Postgres; URLs are converted for Npgsql) and `JWT__KEY` (32+ characters). Optional:
-`ANTHROPIC__APIKEY`, Africa's Talking keys. The schema comes from EF migrations on PostgreSQL (`Data/Migrations`, applied on start; see docs/OPERATIONS.md).
+`Dockerfile` builds the web app and the API into one container; `render.yaml` is the Render blueprint (health check
+`/api/health/ready`). Set `DATABASE_URL` (Neon's direct connection string; URLs are converted for Npgsql, always
+encrypted and certificate-checked for Neon) and `JWT__KEY` (32+ characters; the app won't start without it).
+Optional: `SENTRY__DSN`, `ANTHROPIC__APIKEY`, Africa's Talking keys. The schema comes from EF migrations on
+PostgreSQL (`Data/Migrations`, applied on start). Moving from Railway and restoring backups: docs/OPERATIONS.md.
 
 ## Sign-in security
 

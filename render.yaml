@@ -1,0 +1,18 @@
+# Render blueprint for Kabuor ERP: one Docker web service; the database is on Neon (DATABASE_URL).
+# Render sets PORT and RENDER_GIT_COMMIT; it only switches traffic once /api/health/ready answers.
+services:
+  - type: web
+    name: kabuor-erp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter          # an always-on instance: free instances sleep, which stops agents, webhooks and M-Pesa callbacks
+    region: frankfurt
+    healthCheckPath: /api/health/ready
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL  # Neon connection string (Neon → Connect → the direct, non-pooled URL)
+        sync: false
+      - key: JWT__KEY      # copy the SAME value the old host used, or everyone is signed out and stored secrets can't be read
+        sync: false
+      - key: SENTRY__DSN
+        sync: false

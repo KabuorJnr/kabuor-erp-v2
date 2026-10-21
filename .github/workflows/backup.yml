@@ -1,6 +1,6 @@
 # Nightly backup of the live ERP database (01:00 Nairobi), encrypted, kept 30 days as a workflow artifact.
 # Needs two repository secrets (Settings → Secrets and variables → Actions), set by the owner:
-#   ERP_DATABASE_URL   Railway → Postgres → Variables → DATABASE_PUBLIC_URL (not DATABASE_URL: that one only works inside Railway)
+#   ERP_DATABASE_URL   Neon → Connect → the direct (not "pooled") connection string of the live database
 #   BACKUP_PASSPHRASE  a long passphrase, kept somewhere safe off GitHub (needed to restore)
 # Restoring is in docs/OPERATIONS.md.
 name: Backup
@@ -27,13 +27,12 @@ jobs:
           echo "::add-mask::$url"
           case "$url" in
             postgres://*|postgresql://*) ;;
-            *) echo "::error::ERP_DATABASE_URL must start with postgresql:// — copy the value of DATABASE_PUBLIC_URL from Railway."; exit 1;;
+            *) echo "::error::ERP_DATABASE_URL must start with postgresql:// — copy the connection string from Neon → Connect."; exit 1;;
           esac
-          if printf '%s' "$url" | grep -q '[$]{'; then echo "::error::ERP_DATABASE_URL still has placeholders in it: in Railway, reveal the variable and copy the value it shows."; exit 1; fi
+          if printf '%s' "$url" | grep -q '[$]{'; then echo "::error::ERP_DATABASE_URL still has placeholders in it: copy the full connection string."; exit 1; fi
           hostport="$(printf '%s' "$url" | sed -E 's#^[a-z]+://##; s#^[^@/]*@##; s#[/?].*$##')"
           echo "Database host: $hostport"
           case "$hostport" in
-            *.railway.internal*) echo "::error::That's Railway's internal address. Use DATABASE_PUBLIC_URL (its host ends in proxy.rlwy.net)."; exit 1;;
             ""|:*) echo "::error::ERP_DATABASE_URL has no host in it."; exit 1;;
           esac
           echo "DB_URL=$url" >> "$GITHUB_ENV"
