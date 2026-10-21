@@ -190,7 +190,8 @@ async function step() {
         if (lines.some(l => l.itemId === item.id)) continue;
         const qty = rnd(1, 5);
         lines.push({ itemId: item.id, quantity: qty });
-        selectedGoods.push(`${item.name} x${qty}`);
+        const brandTag = item.brand ? `[${item.brand}] ` : '';
+        selectedGoods.push(`${brandTag}${item.name} x${qty}`);
       }
 
       if (lines.length === 0) return;
@@ -250,7 +251,19 @@ async function step() {
       const agentKey = pick(['matching', 'collections', 'restock']);
       const agentRes = await apiCall(ownerToken, 'POST', `/agents/${agentKey}/run`).catch(() => ({ summary: 'completed' }));
       const ms = Math.round(performance.now() - t0);
-      console.log(`[${nowIso()}] 🤖 [AGENT] ${agentKey.toUpperCase()} Agent ran: ${agentRes.summary || 'ok'} [${ms}ms]`);
+      if (agentKey === 'restock') {
+        const tasks = await apiCall(ownerToken, 'GET', '/agents/tasks?open=true').catch(() => null);
+        const restockTasks = (tasks?.items || []).filter(t => t.agentKey === 'restock');
+        if (restockTasks.length > 0) {
+          const latest = restockTasks[0];
+          console.log(`[${nowIso()}] 🤖 [RESTOCK ADVICE] ${latest.title} [${ms}ms]`);
+          if (latest.detail) console.log(`   └─ Refill Detail: ${latest.detail}`);
+        } else {
+          console.log(`[${nowIso()}] 🤖 [AGENT] RESTOCK Agent: ${agentRes.summary || 'ok'} [${ms}ms]`);
+        }
+      } else {
+        console.log(`[${nowIso()}] 🤖 [AGENT] ${agentKey.toUpperCase()} Agent ran: ${agentRes.summary || 'ok'} [${ms}ms]`);
+      }
     }
 
     // Every 5 events, print live monitoring summary scorecard

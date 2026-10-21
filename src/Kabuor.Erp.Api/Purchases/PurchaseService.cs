@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Purchases;
 
-public sealed record PurchaseLineInput(Guid? ItemId, Guid? AccountId, string? Description, decimal Quantity, long? UnitCost, TaxType? TaxType, string? Unit = null, string? BatchNo = null, DateOnly? Expiry = null);
+public sealed record PurchaseLineInput(Guid? ItemId, Guid? AccountId, string? Description, decimal Quantity, long? UnitCost, TaxType? TaxType, string? Unit = null, string? BatchNo = null, DateOnly? Expiry = null, string? Brand = null);
 public sealed record PurchaseInput(PurchaseKind Kind, Guid SupplierId, DateOnly? IssueDate, int? DueInDays, string? SupplierRef, Guid? LocationId, string? Notes, List<PurchaseLineInput> Lines);
 public sealed record SupplierPaymentInput(PaymentMethod Method, long Amount, string? Reference, DateTimeOffset? PaidAt);
 
@@ -94,7 +94,8 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
             var (net, tax, total) = Tax.Line(l.Quantity, cost, type, vat);
             var description = (l.Description ?? item?.Name ?? "").Trim();
             if (description.Length == 0) throw new AppException("Describe each line.");
-            doc.Lines.Add(new PurchaseLine { ItemId = item?.Id, AccountId = item?.TrackStock == true ? null : l.AccountId, Description = description, Quantity = l.Quantity, UnitCost = cost, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor, BatchNo = batch, Expiry = batch.Length > 0 ? l.Expiry : null });
+            var brand = (l.Brand ?? item?.Brand ?? "").Trim();
+            doc.Lines.Add(new PurchaseLine { ItemId = item?.Id, AccountId = item?.TrackStock == true ? null : l.AccountId, Description = description, Brand = brand, Quantity = l.Quantity, UnitCost = cost, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor, BatchNo = batch, Expiry = batch.Length > 0 ? l.Expiry : null });
         }
         doc.Net = doc.Lines.Sum(l => l.Net);
         doc.Tax = doc.Lines.Sum(l => l.Tax);
@@ -141,7 +142,7 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
         if (o.Kind != PurchaseKind.Order) throw new AppException("Only purchase orders can be received.");
         if (o.Status is PurchaseStatus.Received or PurchaseStatus.Void) throw new AppException("This order has already been received or voided.");
         var bill = await Create(new PurchaseInput(PurchaseKind.Bill, o.SupplierId, Clock.Today, o.DueDate.DayNumber - o.IssueDate.DayNumber, "", o.LocationId, o.Notes,
-            o.Lines.Select(l => new PurchaseLineInput(l.ItemId, l.AccountId, l.Description, l.Quantity, l.UnitCost, l.TaxType, l.Unit)).ToList()));
+            o.Lines.Select(l => new PurchaseLineInput(l.ItemId, l.AccountId, l.Description, l.Quantity, l.UnitCost, l.TaxType, l.Unit, l.BatchNo, l.Expiry, l.Brand)).ToList()));
         bill.FromOrderId = o.Id;
         o.Status = PurchaseStatus.Received;
         await db.SaveChangesAsync();

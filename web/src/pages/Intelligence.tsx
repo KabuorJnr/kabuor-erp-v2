@@ -156,8 +156,9 @@ function Buy() {
     <div className="space-y-4">
       <p className="text-sm text-muted">Based on the last 60 days of sales, enough stock for {data.leadDays} days of delivery plus {data.safetyDays} days spare, after what’s on hand and already on order.</p>
       {data.items.length ? (
-        <Table head={['Product', 'Sells a day', 'On hand', 'On order', 'Runs out in', 'Buy', 'About']} rows={data.items.map((i: any) => [
+        <Table head={['Product', 'Brand', 'Sells a day', 'On hand', 'On order', 'Runs out in', 'Buy', 'About']} rows={data.items.map((i: any) => [
           <span><b>{i.name}</b>{i.supplier && <span className="block text-xs text-muted">from {i.supplier}</span>}</span>,
+          i.brand ? <span className="rounded bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand">{i.brand}</span> : <span className="text-muted">—</span>,
           i.perDay, i.onHand, i.onOrder, i.daysLeft == null ? '—' : <b className={cn(i.daysLeft <= 3 && 'text-bad')}>{i.daysLeft} days</b>, <b>{i.buy} {i.unit}</b>, i.estimatedCost == null ? '—' : ksh(i.estimatedCost),
         ])} />
       ) : <Empty title="Stock covers demand">Nothing needs reordering at today’s rate of sale.</Empty>}

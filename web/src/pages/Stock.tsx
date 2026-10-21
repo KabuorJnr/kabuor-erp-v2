@@ -10,6 +10,7 @@ import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, 
 type StockItem = {
   id: string;
   name: string;
+  brand?: string;
   sku: string;
   unit: string;
   price: number;
@@ -432,7 +433,7 @@ export default function Stock() {
             ['expiring', 'Expiring'],
           ]}
         />
-        <SearchBox value={q} onChange={setQ} placeholder="Search product name or SKU" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search product name, brand or SKU" />
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -468,8 +469,13 @@ export default function Stock() {
                 onClick={() => setHistoryItem({ id: it.id, name: it.name })}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <b className="truncate text-ink">{it.name}</b>
+                    {it.brand && (
+                      <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                        {it.brand}
+                      </span>
+                    )}
                     <Status
                       tone={it.state === 'ok' ? 'good' : it.state === 'low' ? 'warn' : 'bad'}
                     >
@@ -493,6 +499,7 @@ export default function Stock() {
             <thead className="border-b border-line bg-paper text-left text-xs text-muted">
               <tr>
                 <th className="px-4 py-2.5 font-semibold">Item</th>
+                <th className="px-4 py-2.5 font-semibold">Brand</th>
                 <th className="px-4 py-2.5 font-semibold">SKU</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
                 <th className="px-4 py-2.5 text-right font-semibold">On Hand</th>
@@ -506,6 +513,15 @@ export default function Stock() {
               {items.map((it) => (
                 <tr key={it.id} className="hover:bg-paper">
                   <td className="px-4 py-3 font-semibold text-ink">{it.name}</td>
+                  <td className="px-4 py-3">
+                    {it.brand ? (
+                      <span className="rounded bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand">
+                        {it.brand}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted font-mono text-xs">{it.sku || '—'}</td>
                   <td className="px-4 py-3">
                     <Status

@@ -59,9 +59,9 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
             WhenSure: "Also applies payments from a customer's own phone when they're within your limit. A payment that only has the same amount as an invoice is never applied without you.",
             Trigger: "As soon as a payment arrives that didn't match itself"),
         new("restock", "Restock agent",
-            "Watches stock against reorder levels and drafts purchase orders to the supplier you last bought each item from.",
+            "Watches stock against reorder levels, advises what to refill, and drafts purchase orders with specific brands to the supplier you last bought each item from.",
             Policies.Buy,
-            ["Checks stock every morning", "Drafts purchase orders (drafts commit you to nothing)"],
+            ["Checks stock continuously against reorder levels", "Advises on what items and brands to refill in stock", "Drafts purchase orders with specified brands (drafts commit you to nothing)"],
             ["Sending an order to a supplier"],
             TimeSpan.FromHours(24), "Every morning",
             WhenSure: "Sends orders within your limit to suppliers you've ordered from at least twice before.",
@@ -455,20 +455,22 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
             {
                 var qty = Math.Max(Math.Ceiling(x.item.ReorderLevel * 2 - x.onHand), 1); // back up to twice the reorder level
                 var l = last[x.item.Id];
-                return new PurchaseLineInput(x.item.Id, null, x.item.Name, qty, l.UnitCost, l.TaxType);
+                return new PurchaseLineInput(x.item.Id, null, x.item.Name, qty, l.UnitCost, l.TaxType, Unit: null, BatchNo: null, Expiry: null, Brand: x.item.Brand);
             }).ToList();
             var po = await purchases.Create(new PurchaseInput(PurchaseKind.Order, bySupplier.Key, Clock.Today, null, null, null, $"Drafted by the {a.Name}", lines));
             var supplier = await db.Suppliers.Where(s => s.Id == bySupplier.Key).Select(s => s.Name).SingleAsync();
-            var t = NewTask(a, $"Send order {po.Number} to {supplier}? ({lines.Count} item{(lines.Count == 1 ? "" : "s")}, {K(po.Total)})",
-                $"{string.Join(", ", bySupplier.Select(x => $"{x.item.Name}: {x.onHand:0.##} {x.item.Unit} left, reorder at {x.item.ReorderLevel:0.##}"))}.",
-                $"Drafted {po.Number} to {supplier}, who supplied these last, at their last prices. Quantities bring each item back to twice its reorder level.");
+            var brands = bySupplier.Select(x => x.item.Brand.Trim()).Where(b => b.Length > 0).Distinct().ToList();
+            var brandTag = brands.Count > 0 ? $" [{string.Join(", ", brands)}]" : "";
+            var t = NewTask(a, $"Restock Advice: Send order {po.Number} to {supplier}? ({lines.Count} item{(lines.Count == 1 ? "" : "s")}{brandTag}, {K(po.Total)})",
+                $"{string.Join(", ", bySupplier.Select(x => $"{(string.IsNullOrWhiteSpace(x.item.Brand) ? "" : $"[{x.item.Brand}] ")}{x.item.Name}: {x.onHand:0.##} {x.item.Unit} left (reorder at {x.item.ReorderLevel:0.##})"))}.",
+                $"Restock advice: Drafted {po.Number} to {supplier}, who supplied these brands and items last, at their last prices. Quantities bring each item back to twice its reorder level.");
             (t.Action, t.Payload, t.SubjectKind, t.SubjectId, t.Link) = ("send_order", new JsonObject { ["purchaseId"] = po.Id }.ToJsonString(), "purchase", po.Id, $"/purchases/{po.Id}");
-            t.Detail = string.Join("; ", lines.Select(l => $"{l.Description} × {l.Quantity:0.##}"));
+            t.Detail = string.Join("; ", lines.Select(l => $"{(string.IsNullOrWhiteSpace(l.Brand) ? "" : $"[{l.Brand}] ")}{l.Description} × {l.Quantity:0.##}"));
             var orders = await db.PurchaseDocs.CountAsync(d => d.SupplierId == bySupplier.Key && d.Status != PurchaseStatus.Draft && d.Status != PurchaseStatus.Void);
             if (WhenSure(settings) && po.Total <= limit && orders >= 2)
             {
                 await purchases.Post(po.Id);
-                t.Title = $"Sent order {po.Number} to {supplier} ({K(po.Total)})";
+                t.Title = $"Restock Advice: Sent order {po.Number} to {supplier} ({lines.Count} items{brandTag}, {K(po.Total)})";
                 DidItself(a, t, $"{po.Number} marked as sent.", $"{supplier} is a regular supplier ({orders} orders and bills before) and {K(po.Total)} is within your {K(limit)} limit.");
                 sent++;
                 continue;
@@ -479,8 +481,8 @@ public sealed partial class AgentService(ErpDb db, RequestContext ctx, PaymentSe
         var weekAgo = DateTimeOffset.UtcNow.AddDays(-7);
         if (unknown.Count > 0 && !(await db.AgentTasks.Where(t => t.AgentKey == a.Key && t.SubjectKind == "no-supplier").Select(t => t.CreatedAt).ToListAsync()).Any(c => c >= weekAgo))
         {
-            var t = NewTask(a, $"{unknown.Count} low item{(unknown.Count == 1 ? " has" : "s have")} no supplier yet", "I can only draft orders for items bought before, because that's how I know the supplier and price.");
-            (t.SubjectKind, t.Link, t.Detail) = ("no-supplier", "/stock?filter=low", string.Join(", ", unknown.Select(x => $"{x.item.Name} ({x.onHand:0.##} left)")));
+            var t = NewTask(a, $"Restock Advice: {unknown.Count} low item{(unknown.Count == 1 ? " needs" : "s need")} restocking", "I can only advise and draft orders for items bought before, because that's how I know the supplier, brand, and price.");
+            (t.SubjectKind, t.Link, t.Detail) = ("no-supplier", "/stock?filter=low", string.Join(", ", unknown.Select(x => $"{(string.IsNullOrWhiteSpace(x.item.Brand) ? "" : $"[{x.item.Brand}] ")}{x.item.Name} ({x.onHand:0.##} left, reorder at {x.item.ReorderLevel:0.##})")));
         }
         await db.SaveChangesAsync();
         if (drafted + sent == 0) return $"{unknown.Count} low item(s) need a supplier first.";

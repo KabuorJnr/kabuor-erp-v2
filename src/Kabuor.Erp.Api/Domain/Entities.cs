@@ -180,6 +180,7 @@ public sealed class Item : ICompanyOwned
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CompanyId { get; set; }
     public required string Name { get; set; }
+    public string Brand { get; set; } = "";
     public string Sku { get; set; } = "";
     public ItemKind Kind { get; set; } = ItemKind.Product;
     public string Unit { get; set; } = "pc";
@@ -495,6 +496,7 @@ public sealed class PurchaseLine : ICompanyOwned
     public Guid? ItemId { get; set; }
     public Guid? AccountId { get; set; }
     public required string Description { get; set; }
+    public string Brand { get; set; } = "";
     public decimal Quantity { get; set; } = 1;
     /// <summary>VAT-inclusive unit cost, in cents.</summary>
     public long UnitCost { get; set; }

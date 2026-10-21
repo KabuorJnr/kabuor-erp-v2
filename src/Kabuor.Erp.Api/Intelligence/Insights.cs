@@ -100,7 +100,7 @@ public sealed class InsightsService(ErpDb db, LinkService links)
             var last = lastBuy.GetValueOrDefault(i.Id);
             return new
             {
-                i.Id, i.Name, i.Unit, perDay = Math.Round(perDay, 2), onHand = have, onOrder = coming, daysLeft = perDay > 0 ? (int?)Math.Floor(Math.Max(0, have) / perDay) : null,
+                i.Id, i.Name, i.Brand, i.Unit, perDay = Math.Round(perDay, 2), onHand = have, onOrder = coming, daysLeft = perDay > 0 ? (int?)Math.Floor(Math.Max(0, have) / perDay) : null,
                 buy, estimatedCost = last is null ? (long?)null : (long)Math.Round(buy * last.cost), supplier = last is null ? null : suppliers.GetValueOrDefault(last.SupplierId),
                 turnedAway = asked.Count(q => q.ItemId == i.Id && (q.LostReason == "Out of stock" || have <= 0)),
             };

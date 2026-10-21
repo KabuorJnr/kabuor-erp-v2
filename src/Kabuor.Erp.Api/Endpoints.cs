@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Kabuor.Erp;
 
 public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
-public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null);
+public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null, string? Brand = null);
 public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null);
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
@@ -148,7 +148,7 @@ public static class Endpoints
         {
             var query = db.Items.AsQueryable();
             if (all != true) query = query.Where(i => i.Active);
-            if (!string.IsNullOrWhiteSpace(q)) query = query.Where(i => EF.Functions.Like(i.Name, $"%{q.Trim()}%") || EF.Functions.Like(i.Sku, $"%{q.Trim()}%"));
+            if (!string.IsNullOrWhiteSpace(q)) query = query.Where(i => EF.Functions.Like(i.Name, $"%{q.Trim()}%") || EF.Functions.Like(i.Sku, $"%{q.Trim()}%") || EF.Functions.Like(i.Brand, $"%{q.Trim()}%"));
             return await query.OrderBy(i => i.Name).Take(500).ToListAsync();
         });
         items.MapPost("", async (ItemInput input, ErpDb db) =>
@@ -407,6 +407,7 @@ public static class Endpoints
         if (name.Length < 2) throw new AppException("Enter the item's name.");
         if (input.Price < 0) throw new AppException("Prices can't be negative.");
         (i.Name, i.Sku, i.Kind, i.Unit, i.Price, i.TaxType, i.Active) = (name, (input.Sku ?? "").Trim(), input.Kind ?? i.Kind, string.IsNullOrWhiteSpace(input.Unit) ? i.Unit : input.Unit.Trim(), input.Price, input.TaxType ?? i.TaxType, input.Active ?? i.Active);
+        i.Brand = (input.Brand ?? i.Brand ?? "").Trim();
         if (input.ReorderLevel < 0) throw new AppException("The reorder level can't be negative.");
         i.TrackStock = (input.TrackStock ?? i.TrackStock) && i.Kind == ItemKind.Product; // services aren't counted
         i.ReorderLevel = input.ReorderLevel ?? i.ReorderLevel;
