@@ -79,32 +79,60 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, RequestContext ctx
 
     public async Task<object> List(string? status, bool mine)
     {
-        var all = await db.Inquiries.ToListAsync();
-        var scoped = mine ? all.Where(i => i.AssignedUserId == ctx.UserId).ToList() : all;
+        var baseQuery = db.Inquiries.AsNoTracking();
+        if (mine && ctx.UserId is { } uid) baseQuery = baseQuery.Where(i => i.AssignedUserId == uid);
+
+        var statusGroups = await baseQuery
+            .GroupBy(i => i.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+        var unassignedCount = await baseQuery.CountAsync(i => i.AssignedUserId == null && i.Status == InquiryStatus.Open);
+
+        var countDict = statusGroups.ToDictionary(g => g.Status, g => g.Count);
         var counts = new
         {
-            open = scoped.Count(i => i.Status == InquiryStatus.Open), answered = scoped.Count(i => i.Status == InquiryStatus.Answered), quoted = scoped.Count(i => i.Status == InquiryStatus.Quoted),
-            won = scoped.Count(i => i.Status == InquiryStatus.Won), lost = scoped.Count(i => i.Status == InquiryStatus.Lost), unassigned = scoped.Count(i => i.AssignedUserId == null && i.Status == InquiryStatus.Open),
+            open = countDict.GetValueOrDefault(InquiryStatus.Open),
+            answered = countDict.GetValueOrDefault(InquiryStatus.Answered),
+            quoted = countDict.GetValueOrDefault(InquiryStatus.Quoted),
+            won = countDict.GetValueOrDefault(InquiryStatus.Won),
+            lost = countDict.GetValueOrDefault(InquiryStatus.Lost),
+            unassigned = unassignedCount,
         };
-        var shown = status switch
+
+        var query = status switch
         {
-            "open" => scoped.Where(i => i.Status == InquiryStatus.Open),
-            "waiting" => scoped.Where(i => i.Status is InquiryStatus.Answered or InquiryStatus.Quoted),
-            "won" => scoped.Where(i => i.Status == InquiryStatus.Won),
-            "lost" => scoped.Where(i => i.Status == InquiryStatus.Lost),
-            _ => scoped.Where(i => i.Status is InquiryStatus.Open or InquiryStatus.Answered or InquiryStatus.Quoted),
+            "open" => baseQuery.Where(i => i.Status == InquiryStatus.Open),
+            "waiting" => baseQuery.Where(i => i.Status == InquiryStatus.Answered || i.Status == InquiryStatus.Quoted),
+            "won" => baseQuery.Where(i => i.Status == InquiryStatus.Won),
+            "lost" => baseQuery.Where(i => i.Status == InquiryStatus.Lost),
+            _ => baseQuery.Where(i => i.Status == InquiryStatus.Open || i.Status == InquiryStatus.Answered || i.Status == InquiryStatus.Quoted),
         };
+
+        var rawItems = await query
+            .OrderBy(i => i.Status == InquiryStatus.Open ? 0 : 1)
+            .ThenByDescending(i => i.CreatedAt)
+            .Take(100)
+            .Select(i => new
+            {
+                i.Id, i.Number, i.Name, i.Phone, i.Subject, i.Channel, i.Status, i.AssignedUserId, i.AssignedName, i.CustomerId, i.LeadId,
+                i.BroughtByName,
+                i.QuoteId, i.InvoiceId, i.CreatedAt, i.FirstResponseAt, i.LostReason,
+            })
+            .ToListAsync();
+
         var now = DateTimeOffset.UtcNow;
+        var items = rawItems.Select(i => new
+        {
+            i.Id, i.Number, i.Name, i.Phone, i.Subject, channel = i.Channel.ToString(), status = i.Status.ToString(), i.AssignedUserId, i.AssignedName, i.CustomerId, i.LeadId,
+            i.BroughtByName, broughtBy = !string.IsNullOrWhiteSpace(i.BroughtByName) ? i.BroughtByName : (!string.IsNullOrWhiteSpace(i.AssignedName) ? i.AssignedName : "Website / Direct"),
+            i.QuoteId, i.InvoiceId, i.CreatedAt, i.FirstResponseAt, i.LostReason,
+            waitingHours = i.Status == InquiryStatus.Open && i.FirstResponseAt is null ? Math.Round((now - i.CreatedAt).TotalHours, 1) : (double?)null,
+        });
+
         return new
         {
             counts, lostReasons = LostReasons,
-            items = shown.OrderBy(i => i.Status == InquiryStatus.Open ? 0 : 1).ThenBy(i => i.CreatedAt).Take(200).Select(i => new
-            {
-                i.Id, i.Number, i.Name, i.Phone, i.Subject, channel = i.Channel.ToString(), status = i.Status.ToString(), i.AssignedUserId, i.AssignedName, i.CustomerId, i.LeadId,
-                i.BroughtByName, broughtBy = !string.IsNullOrWhiteSpace(i.BroughtByName) ? i.BroughtByName : (!string.IsNullOrWhiteSpace(i.AssignedName) ? i.AssignedName : "Website / Direct"),
-                i.QuoteId, i.InvoiceId, i.CreatedAt, i.FirstResponseAt, i.LostReason,
-                waitingHours = i.Status == InquiryStatus.Open && i.FirstResponseAt is null ? Math.Round((now - i.CreatedAt).TotalHours, 1) : (double?)null,
-            }),
+            items,
         };
     }
 

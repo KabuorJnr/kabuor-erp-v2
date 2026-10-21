@@ -49,7 +49,7 @@ public sealed class QuoteAuditService(ErpDb db)
 
     public async Task<QuoteVarianceReport?> AuditDoc(Guid docId)
     {
-        var doc = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == docId);
+        var doc = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == docId);
         if (doc is null) return null;
 
         SalesDoc? quote = null;
@@ -60,62 +60,102 @@ public sealed class QuoteAuditService(ErpDb db)
             invoice = doc;
             if (invoice.FromQuoteId is { } qid)
             {
-                quote = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == qid);
+                quote = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == qid);
             }
             else
             {
-                // Check if an inquiry links a quote to this invoice
-                var inq = await db.Inquiries.FirstOrDefaultAsync(i => i.InvoiceId == invoice.Id && i.QuoteId != null);
+                var inq = await db.Inquiries.AsNoTracking().FirstOrDefaultAsync(i => i.InvoiceId == invoice.Id && i.QuoteId != null);
                 if (inq?.QuoteId is { } iqid)
-                    quote = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == iqid);
+                    quote = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == iqid);
             }
         }
         else if (doc.Kind == SalesDocKind.Quote)
         {
             quote = doc;
-            invoice = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).FirstOrDefaultAsync(d => d.FromQuoteId == quote.Id);
+            invoice = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).FirstOrDefaultAsync(d => d.FromQuoteId == quote.Id);
             if (invoice is null)
             {
-                var inq = await db.Inquiries.FirstOrDefaultAsync(i => i.QuoteId == quote.Id && i.InvoiceId != null);
+                var inq = await db.Inquiries.AsNoTracking().FirstOrDefaultAsync(i => i.QuoteId == quote.Id && i.InvoiceId != null);
                 if (inq?.InvoiceId is { } inid)
-                    invoice = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inid);
+                    invoice = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inid);
             }
         }
 
         if (quote is null || invoice is null) return null;
-        return await BuildReport(quote, invoice);
+
+        var inqDoc = await db.Inquiries.AsNoTracking().FirstOrDefaultAsync(i => i.InvoiceId == invoice.Id || (invoice.FromQuoteId != null && i.QuoteId == invoice.FromQuoteId) || i.Id == invoice.InquiryId || i.Id == quote.InquiryId);
+        var linkId = invoice.LinkId ?? quote.LinkId ?? inqDoc?.LinkId;
+        var link = linkId != null ? await db.TrackingLinks.AsNoTracking().FirstOrDefaultAsync(l => l.Id == linkId) : null;
+
+        var itemIds = quote.Lines.Select(l => l.ItemId).Concat(invoice.Lines.Select(l => l.ItemId)).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        var items = await db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+
+        return BuildReportSync(quote, invoice, items, inqDoc, link);
     }
 
     public async Task<QuoteVarianceReport?> AuditInquiry(Guid inquiryId)
     {
-        var inq = await db.Inquiries.SingleOrDefaultAsync(i => i.Id == inquiryId);
+        var inq = await db.Inquiries.AsNoTracking().SingleOrDefaultAsync(i => i.Id == inquiryId);
         if (inq is null || inq.QuoteId is null || inq.InvoiceId is null) return null;
 
-        var quote = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inq.QuoteId.Value);
-        var invoice = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inq.InvoiceId.Value);
+        var quote = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inq.QuoteId.Value);
+        var invoice = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).SingleOrDefaultAsync(d => d.Id == inq.InvoiceId.Value);
         if (quote is null || invoice is null) return null;
 
-        return await BuildReport(quote, invoice, inq);
+        var linkId = invoice.LinkId ?? quote.LinkId ?? inq.LinkId;
+        var link = linkId != null ? await db.TrackingLinks.AsNoTracking().FirstOrDefaultAsync(l => l.Id == linkId) : null;
+
+        var itemIds = quote.Lines.Select(l => l.ItemId).Concat(invoice.Lines.Select(l => l.ItemId)).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        var items = await db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+
+        return BuildReportSync(quote, invoice, items, inq, link);
     }
 
     public async Task<object> AllVariances(int days = 90)
     {
         var since = Clock.Today.AddDays(-days);
-        var invoices = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer)
+        var invoices = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer)
             .Where(d => d.Kind == SalesDocKind.Invoice && d.FromQuoteId != null && d.IssueDate >= since)
             .OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.CreatedAt)
             .Take(100)
             .ToListAsync();
 
         var quoteIds = invoices.Select(i => i.FromQuoteId!.Value).Distinct().ToList();
-        var quotes = await db.SalesDocs.Include(d => d.Lines).Include(d => d.Customer).Where(d => quoteIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+        var quotes = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer).Where(d => quoteIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+
+        var invoiceIds = invoices.Select(i => i.Id).ToList();
+
+        // Batch pre-fetch all items for these invoices and quotes in a single query
+        var allItemIds = invoices.SelectMany(i => i.Lines).Select(l => l.ItemId)
+            .Concat(quotes.Values.SelectMany(q => q.Lines).Select(l => l.ItemId))
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        var items = await db.Items.AsNoTracking().Where(i => allItemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+
+        // Batch pre-fetch inquiries linked to these invoices or quotes
+        var inqs = await db.Inquiries.AsNoTracking()
+            .Where(i => (i.InvoiceId != null && invoiceIds.Contains(i.InvoiceId.Value)) || (i.QuoteId != null && quoteIds.Contains(i.QuoteId.Value)))
+            .ToListAsync();
+
+        var inqByInvoice = inqs.Where(i => i.InvoiceId.HasValue).GroupBy(i => i.InvoiceId!.Value).ToDictionary(g => g.Key, g => g.First());
+        var inqByQuote = inqs.Where(i => i.QuoteId.HasValue).GroupBy(i => i.QuoteId!.Value).ToDictionary(g => g.Key, g => g.First());
+
+        // Batch pre-fetch tracking links
+        var linkIds = invoices.Select(i => i.LinkId)
+            .Concat(quotes.Values.Select(q => q.LinkId))
+            .Concat(inqs.Select(i => i.LinkId))
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
+        var links = await db.TrackingLinks.AsNoTracking().Where(l => linkIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id);
 
         var reports = new List<QuoteVarianceReport>();
         foreach (var inv in invoices)
         {
             if (quotes.TryGetValue(inv.FromQuoteId!.Value, out var q))
             {
-                var rep = await BuildReport(q, inv);
+                var inq = inqByInvoice.GetValueOrDefault(inv.Id) ?? inqByQuote.GetValueOrDefault(q.Id);
+                var linkId = inv.LinkId ?? q.LinkId ?? inq?.LinkId;
+                var link = linkId != null ? links.GetValueOrDefault(linkId.Value) : null;
+
+                var rep = BuildReportSync(q, inv, items, inq, link);
                 reports.Add(rep);
             }
         }
@@ -147,12 +187,8 @@ public sealed class QuoteAuditService(ErpDb db)
         };
     }
 
-    private async Task<QuoteVarianceReport> BuildReport(SalesDoc quote, SalesDoc invoice, Inquiry? explicitInq = null)
+    private static QuoteVarianceReport BuildReportSync(SalesDoc quote, SalesDoc invoice, Dictionary<Guid, Item> items, Inquiry? inq, TrackingLink? link)
     {
-        var inq = explicitInq ?? await db.Inquiries.FirstOrDefaultAsync(i => i.InvoiceId == invoice.Id || (invoice.FromQuoteId != null && i.QuoteId == invoice.FromQuoteId) || i.Id == invoice.InquiryId || i.Id == quote.InquiryId);
-        var linkId = invoice.LinkId ?? quote.LinkId ?? inq?.LinkId;
-        var link = linkId != null ? await db.TrackingLinks.FirstOrDefaultAsync(l => l.Id == linkId) : null;
-
         var broughtBy = !string.IsNullOrWhiteSpace(inq?.BroughtByName) ? inq.BroughtByName
             : link != null ? (!string.IsNullOrWhiteSpace(link.OwnerName) ? $"{link.OwnerName} (via {link.Name})" : $"{link.Name} ({link.Channel})")
             : !string.IsNullOrWhiteSpace(quote.SalespersonName) ? quote.SalespersonName
@@ -163,8 +199,6 @@ public sealed class QuoteAuditService(ErpDb db)
         var invoicedBy = !string.IsNullOrWhiteSpace(invoice.SalespersonName) ? invoice.SalespersonName : "Staff";
         var custName = invoice.Customer?.Name ?? quote.Customer?.Name ?? "Customer";
         var custPhone = invoice.Customer?.Phone ?? quote.Customer?.Phone;
-
-        var items = await db.Items.ToDictionaryAsync(i => i.Id);
 
         var lines = new List<QuoteVarianceLine>();
         var agentReasons = new List<string>();

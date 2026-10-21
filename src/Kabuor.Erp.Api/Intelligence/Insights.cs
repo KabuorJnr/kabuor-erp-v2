@@ -5,10 +5,11 @@ using Kabuor.Erp.Common;
 using Kabuor.Erp.Data;
 using Kabuor.Erp.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Kabuor.Erp.Intelligence;
 
-public sealed class InsightsService(ErpDb db, LinkService links)
+public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache cache, RequestContext ctx)
 {
     static readonly SalesDocStatus[] Issued = [SalesDocStatus.Sent, SalesDocStatus.PartPaid, SalesDocStatus.Paid];
 
@@ -89,7 +90,7 @@ public sealed class InsightsService(ErpDb db, LinkService links)
         var suppliers = await db.Suppliers.ToDictionaryAsync(s => s.Id, s => s.Name);
         // Asked for in inquiries while out of stock: demand that is being turned away.
         var since = DateTimeOffset.UtcNow.AddDays(-60);
-        var asked = (await db.Inquiries.Where(q => q.ItemId != null).Select(q => new { q.ItemId, q.CreatedAt, q.Status, q.LostReason }).ToListAsync()).Where(q => q.CreatedAt >= since).ToList();
+        var asked = await db.Inquiries.AsNoTracking().Where(q => q.ItemId != null && q.CreatedAt >= since).Select(q => new { q.ItemId, q.CreatedAt, q.Status, q.LostReason }).ToListAsync();
         var rows = items.Select(i =>
         {
             var perDay = sold.Where(s => s.ItemId == i.Id).Sum(s => s.Qty) / 60m;
@@ -268,10 +269,10 @@ public sealed class InsightsService(ErpDb db, LinkService links)
     public async Task<object> StockAccuracy(int days = 90)
     {
         var since = DateTimeOffset.UtcNow.AddDays(-days);
-        var lines = (await db.StockCountLines.ToListAsync()).Where(l => l.At >= since).ToList();
-        var items = await db.Items.Where(i => i.TrackStock && i.Active).ToListAsync();
-        var lastCount = (await db.StockCountLines.Select(l => new { l.ItemId, l.At }).ToListAsync()).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Max(x => x.At));
-        var onHand = await db.StockLevels.GroupBy(l => l.ItemId).Select(g => new { g.Key, q = g.Sum(x => x.Quantity) }).ToDictionaryAsync(x => x.Key, x => x.q);
+        var lines = await db.StockCountLines.AsNoTracking().Where(l => l.At >= since).ToListAsync();
+        var items = await db.Items.AsNoTracking().Where(i => i.TrackStock && i.Active).ToListAsync();
+        var lastCount = (await db.StockCountLines.AsNoTracking().Select(l => new { l.ItemId, l.At }).ToListAsync()).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Max(x => x.At));
+        var onHand = await db.StockLevels.AsNoTracking().GroupBy(l => l.ItemId).Select(g => new { g.Key, q = g.Sum(x => x.Quantity) }).ToDictionaryAsync(x => x.Key, x => x.q);
         var exact = lines.Count(l => l.Counted == l.Expected);
         var value = lines.Sum(l => (long)Math.Round(Math.Abs(l.Counted - l.Expected) * l.UnitCost));
         var missing = lines.Sum(l => (long)Math.Round(Math.Max(0, l.Expected - l.Counted) * l.UnitCost));
@@ -335,6 +336,12 @@ public sealed class InsightsService(ErpDb db, LinkService links)
 
     public async Task<object> Overview()
     {
+        var cacheKey = $"insights_overview_{ctx.CompanyId}";
+        if (cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+        {
+            return cached;
+        }
+
         var today = Clock.Today;
         var from = today.AddDays(-89);
         var selling = (dynamic)await Selling(from, today);
@@ -351,7 +358,7 @@ public sealed class InsightsService(ErpDb db, LinkService links)
         // Only a reason that clearly leads is "the" reason; a tie isn't.
         var reasons = ((IEnumerable<dynamic>)inquiries.lostReasons).ToList();
         var topLost = reasons.Count > 0 && (reasons.Count == 1 || (int)reasons[0].count > (int)reasons[1].count) ? reasons[0] : null;
-        return new
+        var result = new
         {
             period = new { from, to = today },
             bestSeller = topItem is null ? null : new { topItem.name, topItem.revenue, topItem.share },
@@ -364,5 +371,7 @@ public sealed class InsightsService(ErpDb db, LinkService links)
             salespersonOfTheYear = people.leader is null ? null : new { name = (string)people.leader.Name, sold = (long)people.leader.sold, brought = (long)people.leader.broughtRevenue },
             stockAccuracy = (double?)accuracy.accuracy,
         };
+        cache.Set(cacheKey, result, TimeSpan.FromSeconds(30));
+        return result;
     }
 }

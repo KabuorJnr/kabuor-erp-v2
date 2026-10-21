@@ -38,6 +38,7 @@ if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
 // Database: PostgreSQL in production (a "Host=…" connection string), SQLite file locally.
 var cs = Program.ConnectionString(config.GetConnectionString("Erp") ?? config["DATABASE_URL"] ?? "Data Source=kabuor-erp.db");
 builder.Services.AddScoped<RequestContext>();
+builder.Services.AddMemoryCache();
 builder.Services.AddDbContext<ErpDb>(o =>
 {
     if (cs.StartsWith("Host=", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(cs);

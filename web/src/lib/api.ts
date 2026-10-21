@@ -32,17 +32,36 @@ export function setSession(s: Session | null) {
   window.dispatchEvent(new Event('kerp-session'));
 }
 
+const apiCache = new Map<string, { data: any; timestamp: number }>();
+
+export function clearApiCache(prefix?: string) {
+  if (!prefix) {
+    apiCache.clear();
+  } else {
+    for (const key of apiCache.keys()) {
+      if (key.startsWith(prefix)) apiCache.delete(key);
+    }
+  }
+}
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const s = getSession();
+  const method = opts.method ?? (opts.body !== undefined ? 'POST' : 'GET');
   const res = await fetch(`/api${path}`, {
-    method: opts.method ?? (opts.body !== undefined ? 'POST' : 'GET'),
+    method,
     headers: { ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { Authorization: `Bearer ${s.token}` } : {}) },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
   if (res.status === 401 && s) setSession(null);
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    if (method !== 'GET') clearApiCache();
+    return undefined as T;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error ?? (res.status === 403 ? 'You don’t have access to this.' : 'Network problem. Check your connection.'));
+  if (method !== 'GET') {
+    clearApiCache();
+  }
   return data as T;
 }
 
@@ -60,22 +79,41 @@ export async function download(path: string, fallbackName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Loads `path` and reloads when it changes. `reload()` fetches again (after a save). */
+/** Loads `path` and reloads when it changes. SWR caching renders instantaneously if cached. `reload()` forces a refetch. */
 export function useApi<T = any>(path: string | null) {
-  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: Boolean(path) });
+  const cached = path ? apiCache.get(path) : undefined;
+  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({
+    data: cached ? (cached.data as T) : null,
+    error: null,
+    loading: Boolean(path) && !cached,
+  });
   const [tick, setTick] = useState(0);
+
   useEffect(() => {
     if (!path) return;
     let live = true;
-    setState((s) => ({ ...s, loading: true }));
+    const currentCached = apiCache.get(path);
+    if (!currentCached) {
+      setState((s) => ({ ...s, loading: true }));
+    }
     api<T>(path)
-      .then((data) => live && setState({ data, error: null, loading: false }))
-      .catch((e: Error) => live && setState((s) => ({ ...s, error: e.message, loading: false })));
+      .then((data) => {
+        apiCache.set(path, { data, timestamp: Date.now() });
+        if (live) setState({ data, error: null, loading: false });
+      })
+      .catch((e: Error) => {
+        if (live) setState((s) => ({ ...s, error: e.message, loading: false }));
+      });
     return () => {
       live = false;
     };
   }, [path, tick]);
-  const reload = useCallback(() => setTick((t) => t + 1), []);
+
+  const reload = useCallback(() => {
+    if (path) apiCache.delete(path);
+    setTick((t) => t + 1);
+  }, [path]);
+
   return { ...state, reload };
 }
 
