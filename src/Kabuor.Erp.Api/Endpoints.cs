@@ -134,6 +134,9 @@ public static class Endpoints
             await db.SaveChangesAsync();
             return Results.Created($"/api/customers/{c.Id}", c);
         }).RequireAuthorization(Policies.Sell);
+        // The customer's rights under the Data Protection Act: a full copy of their data, and erasure. Owner and admins only.
+        customers.MapGet("/{id:guid}/data-export", (Guid id, Kabuor.Erp.Privacy.DataRightsService s) => s.Export(id)).RequireAuthorization(Policies.Admin);
+        customers.MapPost("/{id:guid}/erase", (Guid id, Kabuor.Erp.Privacy.EraseInput input, Kabuor.Erp.Privacy.DataRightsService s) => s.Erase(id, input)).RequireAuthorization(Policies.Admin);
         customers.MapPut("/{id:guid}", async (Guid id, CustomerInput input, ErpDb db, RequestContext ctx) =>
         {
             var c = await db.Customers.SingleOrDefaultAsync(x => x.Id == id) ?? throw new AppException("Not found.", 404);

@@ -48,6 +48,7 @@ export function Privacy() {
         <li>Records you enter: customers, invoices, payments, stock, purchases, and, if you use payroll, employee details such as ID, KRA PIN, NSSF, SHA and bank or M-Pesa details.</li>
         <li>Payment details Safaricom sends us when someone pays your Paybill or Till: the amount, M-Pesa receipt, phone number and name.</li>
         <li>Basic technical logs (time, address of the request, errors) to keep the service secure and working.</li>
+        <li>If you use tracking links and the online shop: which link someone clicked, a random browser id (cookie <code>kv</code>), the link they came through (cookie <code>kref</code>), whether it was a phone, and what they asked. No advertising cookies are used. Your sign-in is kept in your browser’s storage, not a cookie.</li>
       </ul>
 
       <h2>Why we use it</h2>
@@ -58,18 +59,24 @@ export function Privacy() {
         <li>Marketing messages only go to customers you have not marked as having opted out, and every campaign respects that choice.</li>
       </ul>
       <p>We do not sell personal data, and we do not use your records to advertise to anyone.</p>
+      <p><b>Profiling and automated suggestions.</b> Kabuor Intelligence groups a business’s customers (for example “best customers” or “at risk”) and its agents suggest actions such as reminders or purchase orders. These help the business decide; no decision with a legal or similarly significant effect on a person is made by the system alone. A credit limit that holds an invoice can always be overridden by a person, and you can ask the business for a human review of any decision about you (section 35 of the Act).</p>
+      <p>The service is for businesses and is not meant for children under 18.</p>
 
       <h2>Who else sees it</h2>
       <ul>
-        <li><b>Hosting</b>: our application runs on Render and our database on Neon{info.hostingRegion ? `, in ${info.hostingRegion}` : ''}. This may mean data is stored outside Kenya; we rely on the safeguards in section 48 of the Act and the provider’s security commitments.</li>
-        <li><b>KRA</b>: invoices are sent to eTIMS when your business is VAT-registered.</li>
-        <li><b>Safaricom</b>: when you use M-Pesa features (payment notices, prompts, subscriptions).</li>
-        <li><b>Msaidizi, the assistant</b>: when you ask it something, the question and the records it needs are sent to an AI provider (Anthropic) to produce the answer. It suggests; a person approves anything that changes your books.</li>
+        <li><b>Hosting</b>: the application runs on Render (Frankfurt, Germany) and the database on Neon{info.hostingRegion ? ` (${info.hostingRegion})` : ''}. Data is therefore stored outside Kenya.</li>
+        <li><b>KRA</b> (Kenya): invoices are sent to eTIMS when your business is VAT-registered.</li>
+        <li><b>Safaricom</b> (Kenya): when you use M-Pesa features (payment notices, prompts, subscriptions).</li>
+        <li><b>Africa’s Talking</b> (Kenya): to send sign-in codes and messages by SMS, when SMS is switched on.</li>
+        <li><b>Anthropic</b> (United States), for Msaidizi and the agents: the question and the records needed to answer it are sent to produce the answer. It suggests; a person approves anything that changes your books.</li>
+        <li><b>GitHub</b> (United States): the nightly database backup, encrypted before it leaves our servers and kept 30 days.</li>
+        <li><b>Sentry</b>: error reports, set up not to include personal data such as names, emails or request addresses.</li>
         <li>Anyone the law requires us to share with, such as a court order.</li>
       </ul>
+      <p><b>Transfers outside Kenya.</b> We only send personal data abroad on the grounds in sections 48 and 49 of the Act and regulations 40 and 41: under written terms with each provider that bind them to protect it, to providers whose security we have assessed, and only what the service needs. We keep a record of each kind of transfer and give it to the Data Commissioner on request.</p>
 
       <h2>How long we keep it</h2>
-      <p>While your account is open. Tax law (Tax Procedures Act, section 23) requires business records to be kept for at least five years, so your business should export or keep its records for that long. When you ask us to close your account, we delete or anonymise your data within 90 days, unless you ask us to keep it longer or the law requires it.</p>
+      <p>While your account is open, reviewed at least once a year (regulation 19). Tax law (Tax Procedures Act, section 23) requires business records to be kept for at least five years, so your business should export or keep its records for that long. When you ask us to close your account, we delete or anonymise your data within 90 days, unless you ask us to keep it longer or the law requires it.</p>
 
       <h2>How we protect it</h2>
       <ul>
@@ -77,11 +84,12 @@ export function Privacy() {
         <li>Each business only ever sees its own records; inside a business, each role only sees what its job needs.</li>
         <li>Optional two-step sign-in, and “sign out everywhere”.</li>
         <li>Daily backups, kept separately.</li>
-        <li>If a breach puts your data at real risk, we will tell the Data Commissioner within 72 hours and tell you without delay, as section 43 requires.</li>
+        <li>If a breach puts personal data at real risk, we tell the Data Commissioner within 72 hours and the people affected without delay (section 43). For records we process for a business, we tell that business within 48 hours so it can do the same.</li>
       </ul>
 
       <h2>Your rights</h2>
-      <p>You can ask to be told what we hold about you, get a copy, have it corrected, object to its use, or have it deleted where the law allows. For records a business keeps about you (for example as its customer or employee), ask that business first; we will help them answer. Write to <Contact email={info.email} />. We reply within 30 days.</p>
+      <p>You can ask to be told what we hold about you, get a copy, have it corrected, move it to another provider, object to its use, stop direct marketing, or have it deleted where the law allows. For records a business keeps about you (for example as its customer or employee), ask that business first; the app lets it send you your data and erase it, and we help it answer. Write to <Contact email={info.email} />.</p>
+      <p>The law sets how fast we answer (Data Protection (General) Regulations, 2021): a copy of your data within <b>7 days</b>; correction within <b>14 days</b>; erasure within <b>14 days</b>; stopping direct marketing within <b>7 days</b>; moving your data to another provider within <b>30 days</b>. Records that tax or employment law requires a business to keep (such as issued invoices) can’t be erased until that period ends; we tell you what was kept and why.</p>
       <p>You can also complain to the Office of the Data Protection Commissioner (odpc.go.ke).</p>
 
       <h2>Changes</h2>
@@ -118,6 +126,20 @@ export function Terms() {
 
       <h2>Your data</h2>
       <p>Your records belong to your business. You can export them at any time. We handle personal data as described in the <Link className="font-semibold text-brand underline" to="/privacy">privacy notice</Link>, acting as your processor for the records you keep.</p>
+
+      <h2>Processing personal data for you</h2>
+      <p>For the records you keep, your business is the data controller and Kabuor Builds is your data processor. These terms are the written contract that section 42 of the Data Protection Act and regulation 24 require:</p>
+      <ul>
+        <li><b>What, how long and why</b>: we process your customers’, suppliers’, leads’ and employees’ details (names, phone numbers, emails, KRA PINs, ID and NSSF/SHA numbers, pay and bank or M-Pesa details, invoices, payments and messages) for as long as your account is open, only to provide the service.</li>
+        <li><b>Your instructions</b>: we act only on your instructions, given through the app and these terms. If we think an instruction breaks the law, we tell you.</li>
+        <li><b>Confidentiality</b>: everyone who works on the service is bound to keep your data confidential.</li>
+        <li><b>Security</b>: the technical and organisational measures in the privacy notice, kept up to date.</li>
+        <li><b>Sub-processors</b>: you authorise the providers listed in the privacy notice. We give you 30 days’ notice in the app before adding or replacing one, so you can object; each is bound by written terms like these, and we stay responsible for them (regulation 25).</li>
+        <li><b>Helping you</b>: we help you answer people’s requests, carry out impact assessments, and handle breaches, which we report to you within 48 hours of becoming aware.</li>
+        <li><b>At the end</b>: when the agreement ends you choose to take your records or have them returned; after 30 days we delete them, except where the law requires us to keep them.</li>
+        <li><b>Audit</b>: on reasonable notice, we give you the information you need to check we meet these terms, including the results of our security reviews.</li>
+      </ul>
+      <p><b>Schools and health providers</b>: the law requires personal data from basic education and from primary or secondary health care to be processed in Kenya or to keep a copy there (regulation 26). Kabuor is hosted outside Kenya, so don’t use it for learners’ or patients’ records until Kenya hosting is offered.</p>
 
       <h2>Liability</h2>
       <p>We are responsible for running the service with reasonable care and skill. We are not liable for indirect losses (such as lost profit) or for losses caused by information you entered, by KRA, Safaricom or other services being unavailable, or by events outside our control. Our total liability in any year is limited to what you paid us in the 12 months before the claim. Nothing here limits rights you have under the Consumer Protection Act or other law that can’t be excluded.</p>

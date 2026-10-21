@@ -7,6 +7,7 @@ import { useLang } from '../lib/i18n';
 import { DocStatus } from './Invoices';
 import { CustomerTerms } from '../components/Trade';
 import { CustomerJourney, CustomerProfile } from '../components/CustomerIntel';
+import DataRights from '../components/DataRights';
 import { ActivityList, LogActivity } from './Pipeline';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, Stat } from '../components/ui';
 
@@ -255,6 +256,7 @@ export function CustomerView() {
         <Conversation customerId={c.id} />
         <aside className="card h-fit p-4">
           <MarketingConsent customer={c} onChange={reload} />
+          {can(session, 'admin') && <DataRights customer={c} onErased={reload} />}
         </aside>
       </div>
       )}
