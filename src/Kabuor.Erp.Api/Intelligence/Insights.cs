@@ -9,7 +9,7 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Kabuor.Erp.Intelligence;
 
-public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache cache, RequestContext ctx)
+public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache memoryCache, AppCache appCache, RequestContext ctx)
 {
     static readonly SalesDocStatus[] Issued = [SalesDocStatus.Sent, SalesDocStatus.PartPaid, SalesDocStatus.Paid];
 
@@ -337,9 +337,21 @@ public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache ca
     public async Task<object> Overview()
     {
         var cacheKey = $"insights_overview_{ctx.CompanyId}";
-        if (cache.TryGetValue(cacheKey, out object? cached) && cached != null)
+        if (memoryCache.TryGetValue(cacheKey, out object? memCached) && memCached != null)
         {
-            return cached;
+            return memCached;
+        }
+
+        var redisCached = await appCache.GetStringAsync(cacheKey);
+        if (!string.IsNullOrEmpty(redisCached))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(redisCached);
+                memoryCache.Set(cacheKey, parsed, TimeSpan.FromSeconds(30));
+                return parsed;
+            }
+            catch {}
         }
 
         var today = Clock.Today;
@@ -371,7 +383,13 @@ public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache ca
             salespersonOfTheYear = people.leader is null ? null : new { name = (string)people.leader.Name, sold = (long)people.leader.sold, brought = (long)people.leader.broughtRevenue },
             stockAccuracy = (double?)accuracy.accuracy,
         };
-        cache.Set(cacheKey, result, TimeSpan.FromSeconds(30));
+        memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(30));
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(result);
+            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(60));
+        }
+        catch {}
         return result;
     }
 }
