@@ -41,7 +41,7 @@ builder.Services.AddScoped<RequestContext>();
 builder.Services.AddMemoryCache();
 
 // Distributed caching: Redis in production when REDIS_URL or ConnectionStrings:Redis is set, otherwise memory fallback.
-var redisCs = config["REDIS_URL"] ?? config.GetConnectionString("Redis") ?? config["REDIS_CONNECTION_STRING"];
+var redisCs = config["REDIS_URL"] ?? config["VALKEY_URL"] ?? config.GetConnectionString("Redis") ?? config.GetConnectionString("Valkey") ?? config["REDIS_CONNECTION_STRING"];
 if (!string.IsNullOrWhiteSpace(redisCs))
 {
     var redisOptions = Program.ParseRedisConnectionString(redisCs);
@@ -299,16 +299,21 @@ public partial class Program
 
     internal static StackExchange.Redis.ConfigurationOptions ParseRedisConnectionString(string raw)
     {
-        if (Uri.TryCreate(raw, UriKind.Absolute, out var u) && (u.Scheme.Equals("redis", StringComparison.OrdinalIgnoreCase) || u.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase)))
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var u) && 
+           (u.Scheme.Equals("redis", StringComparison.OrdinalIgnoreCase) || 
+            u.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase) ||
+            u.Scheme.Equals("valkey", StringComparison.OrdinalIgnoreCase) ||
+            u.Scheme.Equals("valkeys", StringComparison.OrdinalIgnoreCase)))
         {
+            var isSsl = u.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase) || u.Scheme.Equals("valkeys", StringComparison.OrdinalIgnoreCase);
             var parts = u.UserInfo.Split(':', 2);
             var pass = parts.Length == 2 ? Uri.UnescapeDataString(parts[1]) : (parts.Length == 1 ? Uri.UnescapeDataString(parts[0]) : null);
             var user = parts.Length == 2 && parts[0].Length > 0 && parts[0] != "default" ? Uri.UnescapeDataString(parts[0]) : null;
-            var port = u.Port > 0 ? u.Port : (u.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase) ? 6380 : 6379);
+            var port = u.Port > 0 ? u.Port : (isSsl ? 6380 : 6379);
             var opts = new StackExchange.Redis.ConfigurationOptions
             {
                 EndPoints = { { u.Host, port } },
-                Ssl = u.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase),
+                Ssl = isSsl,
                 AbortOnConnectFail = false,
                 ConnectTimeout = 5000,
                 SyncTimeout = 5000
