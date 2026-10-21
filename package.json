@@ -1,0 +1,13 @@
+{
+  "name": "kabuor-erp",
+  "version": "1.0.0",
+  "description": "Kabuor ERP live business data stream pipeline and tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "stream": "node tools/live-stream-pipeline.mjs",
+    "stream:local": "node tools/live-stream-pipeline.mjs http://localhost:5000",
+    "simulate": "node tools/simulate-month.mjs",
+    "dev:web": "npm run dev --prefix web"
+  }
+}
