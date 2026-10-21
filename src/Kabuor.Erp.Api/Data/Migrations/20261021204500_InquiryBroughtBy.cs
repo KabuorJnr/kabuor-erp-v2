@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Kabuor.Erp.Data.Migrations
 {
-    /// <inheritdoc />
+    [Microsoft.EntityFrameworkCore.Infrastructure.DbContext(typeof(ErpDb))]
+    [Migration("20261021204500_InquiryBroughtBy")]
     public partial class InquiryBroughtBy : Migration
     {
         /// <inheritdoc />

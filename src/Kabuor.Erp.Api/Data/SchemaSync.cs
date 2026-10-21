@@ -52,6 +52,50 @@ public static partial class SchemaSync
             await db.Database.CloseConnectionAsync();
         }
         await db.Database.MigrateAsync();
+        await SyncPostgreSqlColumns(db);
+    }
+
+    static async Task SyncPostgreSqlColumns(ErpDb db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            await db.Database.OpenConnectionAsync();
+            try
+            {
+                foreach (var entity in db.Model.GetEntityTypes())
+                {
+                    var table = entity.GetTableName();
+                    if (string.IsNullOrEmpty(table)) continue;
+                    var store = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier.Table(table, null);
+                    foreach (var p in entity.GetProperties())
+                    {
+                        var column = p.GetColumnName(store);
+                        if (string.IsNullOrEmpty(column)) continue;
+                        var type = p.GetColumnType();
+                        var notNull = !p.IsNullable;
+                        var fallback = p.Name == "UnitFactor" ? "'1.0'"
+                            : type.Contains("text", StringComparison.OrdinalIgnoreCase) || type.Contains("varchar", StringComparison.OrdinalIgnoreCase) ? "''"
+                            : type.Contains("uuid", StringComparison.OrdinalIgnoreCase) ? "'00000000-0000-0000-0000-000000000000'"
+                            : type.Contains("timestamp", StringComparison.OrdinalIgnoreCase) ? "NOW()"
+                            : type.Contains("bool", StringComparison.OrdinalIgnoreCase) ? "FALSE"
+                            : "0";
+                        var sql = $"ALTER TABLE IF EXISTS \"{table}\" ADD COLUMN IF NOT EXISTS \"{column}\" {type}{(notNull ? $" NOT NULL DEFAULT {fallback}" : "")};";
+                        await using var cmd = conn.CreateCommand();
+                        cmd.CommandText = sql;
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            finally
+            {
+                await db.Database.CloseConnectionAsync();
+            }
+        }
+        catch
+        {
+            // Non-blocking schema safeguard
+        }
     }
 
     static async Task SyncSqlite(ErpDb db)
