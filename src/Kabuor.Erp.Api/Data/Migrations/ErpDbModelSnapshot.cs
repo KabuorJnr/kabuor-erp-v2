@@ -467,6 +467,10 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("KpiTargets")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("KraPin")
                         .IsRequired()
                         .HasColumnType("text");

@@ -7,6 +7,8 @@ import { cn, day, daysBetween, ksh, msisdn, todayIso } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { Loading, ErrorNote, PageHeader, Stat } from '../components/ui';
 import Proposals from '../components/Proposals';
+import KpiBoard from '../components/KpiBoard';
+import DashboardCharts from '../components/DashboardCharts';
 
 type TodayData = {
   today: string;
@@ -267,6 +269,14 @@ export default function Today() {
             VAT report
           </Link>
         </p>
+      )}
+
+      {/* How the business is doing against its targets, for whoever reads the reports (owner, admin, accountant). */}
+      {can(session, 'reports') && (
+        <div className="space-y-6 border-t border-line pt-5">
+          <KpiBoard />
+          <DashboardCharts />
+        </div>
       )}
       </div>
     </div>

@@ -64,6 +64,7 @@ builder.Services.AddScoped<Kabuor.Erp.Payments.StkService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.LinkService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.InquiryService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.InsightsService>();
+builder.Services.AddScoped<Kabuor.Erp.Intelligence.KpiService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.PortalService>();
 builder.Services.AddSingleton<Kabuor.Erp.Intelligence.PortalTokens>();
 builder.Services.AddScoped<Kabuor.Erp.Integrations.WebhookService>();

@@ -27,6 +27,9 @@ public static class IntelligenceEndpoints
         // ---------- insights (the owner's questions) ----------
         var insights = staff.MapGroup("/insights").RequireAuthorization(Policies.Reports);
         insights.MapGet("/overview", (InsightsService s) => s.Overview());
+        insights.MapGet("/kpis", (KpiService s, string? period, int? offset) => s.Scorecard(period ?? "month", Math.Clamp(offset ?? 0, -36, 0)));
+        insights.MapGet("/charts", (KpiService s, int? months) => s.Charts(months ?? 12));
+        staff.MapPut("/insights/kpis/targets", (Dictionary<string, decimal?> input, KpiService s) => s.SaveTargets(input)).RequireAuthorization(Policies.Admin);
         insights.MapGet("/selling", (InsightsService s, DateOnly? from, DateOnly? to) => s.Selling(From(from), To(to)));
         insights.MapGet("/shelf", (InsightsService s) => s.Shelf());
         insights.MapGet("/buy", (InsightsService s, int? lead, int? safety) => s.BuyMore(Math.Clamp(lead ?? 7, 1, 90), Math.Clamp(safety ?? 7, 0, 90)));

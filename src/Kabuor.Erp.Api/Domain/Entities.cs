@@ -20,6 +20,8 @@ public sealed class Company
     /// <summary>The business's public address for its shop and customer portal (/s/{slug}); unique.</summary>
     public string Slug { get; set; } = "";
     public bool PortalEnabled { get; set; }
+    /// <summary>The owner's KPI targets, as JSON (key → target; money in cents).</summary>
+    public string KpiTargets { get; set; } = "";
     /// <summary>Refuse a sale that would take stock below zero (Business Central's "prevent negative inventory").</summary>
     public bool PreventNegativeStock { get; set; }
     /// <summary>The Paybill/Till customers pay into; M-Pesa confirmations for it land in this company.</summary>
