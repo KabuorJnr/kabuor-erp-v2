@@ -129,6 +129,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 
 var app = builder.Build();
 
+// Fail at start, with the reason, if there's no signing key: never run a server that can't sign anyone in.
+app.Services.GetRequiredService<TokenIssuer>();
+
 // Bring the database to the model's shape on start (see Data/SchemaSync.cs).
 using (var scope = app.Services.CreateScope())
 {
