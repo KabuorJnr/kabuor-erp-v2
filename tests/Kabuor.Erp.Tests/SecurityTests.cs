@@ -73,6 +73,36 @@ public class SecurityTests(ErpFactory factory) : IClassFixture<ErpFactory>
     }
 
     [Fact]
+    public async Task A_remembered_device_skips_the_code_until_the_user_signs_out_everywhere()
+    {
+        var (email, token) = await Owner();
+        var me = With(token);
+        var into = DateTimeOffset.UtcNow.ToUnixTimeSeconds() % Totp.Step;
+        if (into > 20) await Task.Delay(TimeSpan.FromSeconds(Totp.Step - into + 1));
+        var secret = (await Ok(await me.PostAsync("/api/auth/security/2fa/start", null))).GetProperty("secret").GetString()!;
+        var recovery = (await Ok(await me.PostAsJsonAsync("/api/auth/security/2fa/enable", new { code = Totp.Code(secret, Totp.StepNow()) })))
+            .GetProperty("recoveryCodes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        var status = await Ok(await me.GetAsync("/api/auth/security"));
+        Assert.True(status.GetProperty("twoFactorEnabled").GetBoolean());
+        Assert.False(status.GetProperty("needsSetupAgain").GetBoolean());
+
+        var anon = factory.CreateClient();
+        var challenge = (await Ok(await anon.PostAsJsonAsync("/api/auth/login", new { email, password = "a-long-password" }))).GetProperty("challenge").GetString()!;
+        var session = await Ok(await anon.PostAsJsonAsync("/api/auth/login/code", new { challenge, code = recovery[0], remember = true }));
+        var device = session.GetProperty("device").GetString()!;
+
+        // Next time on this device: the password is enough. A forged or other device still needs the code.
+        Assert.True((await Ok(await anon.PostAsJsonAsync("/api/auth/login", new { email, password = "a-long-password", device }))).TryGetProperty("token", out _));
+        Assert.True((await Ok(await anon.PostAsJsonAsync("/api/auth/login", new { email, password = "a-long-password", device = "not-a-token" }))).GetProperty("needsCode").GetBoolean());
+        // The device ticket is not a sign-in by itself.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await With(device).GetAsync("/api/today")).StatusCode);
+
+        // Signing out everywhere forgets every remembered device.
+        await me.PostAsync("/api/auth/security/sign-out-everywhere", null);
+        Assert.True((await Ok(await anon.PostAsJsonAsync("/api/auth/login", new { email, password = "a-long-password", device }))).GetProperty("needsCode").GetBoolean());
+    }
+
+    [Fact]
     public async Task Signing_out_everywhere_and_changing_the_password_end_other_sessions()
     {
         var (email, token) = await Owner();

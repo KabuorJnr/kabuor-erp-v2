@@ -92,7 +92,7 @@ public sealed class TokenIssuer(IConfiguration config)
     }
 }
 
-public sealed record CodeInput(string Challenge, string Code);
+public sealed record CodeInput(string Challenge, string Code, bool? Remember = null);
 public sealed record TwoFactorInput(string? Code, string? Password);
 
 public static class TokenIssuerChallenge
@@ -110,11 +110,30 @@ public static class TokenIssuerChallenge
             SigningCredentials = new SigningCredentials(t.Key, SecurityAlgorithms.HmacSha256),
         });
 
-    public static async Task<(Guid User, int Version)?> ReadChallenge(this TokenIssuer t, string token)
-    {
-        var r = await new JsonWebTokenHandler().ValidateTokenAsync(token ?? "", new TokenValidationParameters
+    const string DeviceAudience = "kabuor-erp-device";
+
+    /// <summary>"Remember this device": skips the code for 30 days, until the password changes, the user signs out
+    /// everywhere, or two-step sign-in is turned off (all of which bump the token version).</summary>
+    public static string Device(this TokenIssuer t, User u) =>
+        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
-            ValidIssuer = "kabuor-erp", ValidAudience = Audience, IssuerSigningKey = t.Key, ClockSkew = TimeSpan.FromSeconds(30),
+            Subject = new ClaimsIdentity([new Claim("sub", u.Id.ToString()), new Claim("tv", u.TokenVersion.ToString())]),
+            Expires = DateTime.UtcNow.AddDays(30),
+            Issuer = "kabuor-erp",
+            Audience = DeviceAudience,
+            SigningCredentials = new SigningCredentials(t.Key, SecurityAlgorithms.HmacSha256),
+        });
+
+    public static Task<(Guid User, int Version)?> ReadDevice(this TokenIssuer t, string? token) => Read(t, token, DeviceAudience);
+
+    public static Task<(Guid User, int Version)?> ReadChallenge(this TokenIssuer t, string token) => Read(t, token, Audience);
+
+    static async Task<(Guid User, int Version)?> Read(TokenIssuer t, string? token, string audience)
+    {
+        if (string.IsNullOrEmpty(token)) return null;
+        var r = await new JsonWebTokenHandler().ValidateTokenAsync(token, new TokenValidationParameters
+        {
+            ValidIssuer = "kabuor-erp", ValidAudience = audience, IssuerSigningKey = t.Key, ClockSkew = TimeSpan.FromSeconds(30),
         });
         if (!r.IsValid || !Guid.TryParse(r.Claims["sub"]?.ToString(), out var id) || !int.TryParse(r.Claims["tv"]?.ToString(), out var tv)) return null;
         return (id, tv);
@@ -123,10 +142,10 @@ public static class TokenIssuerChallenge
 
 public sealed record RegisterInput(string CompanyName, string OwnerName, string Email, string Phone, string Password, string? KraPin, bool? VatRegistered);
 /// <summary>Email, or (for employees) the phone number HR registered.</summary>
-public sealed record LoginInput(string Email, string Password);
+public sealed record LoginInput(string Email, string Password, string? Device = null);
 public sealed record PasswordInput(string Current, string New);
 public sealed record AccessGrant(string Phone, string Password, bool Reset);
-public sealed record Session(string Token, object User, object Company);
+public sealed record Session(string Token, object User, object Company, string? Device = null);
 
 public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens, SecretBox box, IConfiguration config)
 {
@@ -197,7 +216,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             throw new AppException(wrong, 401);
         }
         if (ok == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hasher.HashPassword(user, input.Password!);
-        if (user.TwoFactorEnabled)
+        if (user.TwoFactorEnabled && !(await tokens.ReadDevice(input.Device) is { } known && known.User == user.Id && known.Version == user.TokenVersion))
         {
             await db.SaveChangesAsync();
             return new { needsCode = true, challenge = tokens.Challenge(user) };
@@ -217,18 +236,24 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         if (user.LockedUntil > DateTimeOffset.UtcNow) throw new AppException("Too many wrong tries. Wait 15 minutes, or ask your admin to reset your password.", 429);
         (ctx.CompanyId, ctx.UserId, ctx.Actor) = (user.CompanyId, user.Id, user.Name);
         var code = (input.Code ?? "").Trim();
-        if (Totp.Match(box.Open(user.TotpSecret), code, user.TotpLastStep) is { } step) user.TotpLastStep = step;
+        // The secret is encrypted with a key derived from the server's signing key; if that key changed, it can't be
+        // read any more and only a recovery code can get the user in (they then set two-step up again).
+        var secret = box.TryOpen(user.TotpSecret);
+        if (secret is not null && Totp.Match(secret, code, user.TotpLastStep) is { } step) user.TotpLastStep = step;
         else if (RecoveryCodes.Use(user.RecoveryCodes, code) is { } left) user.RecoveryCodes = left;
         else
         {
             user.FailedLogins++;
             if (user.FailedLogins >= 5) (user.LockedUntil, user.FailedLogins) = (DateTimeOffset.UtcNow.AddMinutes(15), 0);
             await db.SaveChangesAsync();
-            throw new AppException("That code isn't right. Use the 6 digits in your authenticator app now, or a recovery code.", 401);
+            throw new AppException(secret is null
+                ? "Your two-step setup can't be read after a server change, so app codes won't work. Sign in with one of your recovery codes, then turn two-step sign-in off and on again in Security."
+                : "That code isn't right. Use the 6 digits in your authenticator app now, or a recovery code.", 401);
         }
         (user.FailedLogins, user.LockedUntil) = (0, null);
         await db.SaveChangesAsync();
-        return Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
+        var session = Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
+        return input.Remember == true ? session with { Device = tokens.Device(user) } : session;
     }
 
     // ---------- two-step sign-in and sessions (for the signed-in person) ----------
@@ -238,7 +263,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
     public async Task<object> Security()
     {
         var u = await Me();
-        return new { twoFactorEnabled = u.TwoFactorEnabled, recoveryCodesLeft = u.TwoFactorEnabled ? RecoveryCodes.Left(u.RecoveryCodes) : 0 };
+        return new { twoFactorEnabled = u.TwoFactorEnabled, recoveryCodesLeft = u.TwoFactorEnabled ? RecoveryCodes.Left(u.RecoveryCodes) : 0, needsSetupAgain = u.TwoFactorEnabled && box.TryOpen(u.TotpSecret) is null };
     }
 
     /// <summary>Step 1 of turning it on: a new secret to scan. Nothing changes until a code from it is confirmed.</summary>

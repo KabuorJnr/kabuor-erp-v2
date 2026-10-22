@@ -38,8 +38,19 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Devices the user chose to remember after a two-step code, per sign-in name. The server checks each token
+// (signed, 30 days, cancelled by a password change, signing out everywhere or turning two-step off).
+const DEVICES = 'kerp-devices';
+function devices(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(DEVICES) ?? '{}'); } catch { return {}; }
+}
+function rememberDevice(login: string, token: string) {
+  try { localStorage.setItem(DEVICES, JSON.stringify({ ...devices(), [login.trim().toLowerCase()]: token })); } catch {}
+}
+
 export function SignIn() {
   const [f, setF] = useState({ email: '', password: '' });
+  const [remember, setRemember] = useState(false);
   const [state, setState] = useState({ busy: false, error: '' });
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -48,7 +59,7 @@ export function SignIn() {
     e.preventDefault();
     setState({ busy: true, error: '' });
     try {
-      const r = await api<Session | { needsCode: true; challenge: string }>('/auth/login', { body: f });
+      const r = await api<Session | { needsCode: true; challenge: string }>('/auth/login', { body: { ...f, device: devices()[f.email.trim().toLowerCase()] } });
       if ('needsCode' in r) {
         setChallenge(r.challenge);
         setState({ busy: false, error: '' });
@@ -61,7 +72,9 @@ export function SignIn() {
     e.preventDefault();
     setState({ busy: true, error: '' });
     try {
-      setSession(await api<Session>('/auth/login/code', { body: { challenge, code } }));
+      const r = await api<Session & { device?: string }>('/auth/login/code', { body: { challenge, code, remember } });
+      if (r.device) rememberDevice(f.email, r.device);
+      setSession(r);
     } catch (err) {
       const message = (err as Error).message;
       if (/password again|too long/i.test(message)) setChallenge(null);
@@ -81,6 +94,10 @@ export function SignIn() {
               <input className="field num text-center font-display text-2xl tracking-[0.4em]" autoFocus required inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
             )}
           </Field>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>Remember this device for 30 days<span className="block text-xs text-muted">Don’t tick this on a shared or public computer.</span></span>
+          </label>
           {state.error && <ErrorNote>{state.error}</ErrorNote>}
           <button className="btn btn-primary w-full py-3" disabled={state.busy || (!recovery && code.length !== 6)}>
             {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Sign in

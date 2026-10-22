@@ -78,6 +78,14 @@ public sealed class SecretBox(TokenIssuer tokens)
         return Convert.ToBase64String([.. nonce, .. tag, .. cipher]);
     }
 
+    /// <summary>The secret, or null when it was sealed with a different server key (or is empty).</summary>
+    public string? TryOpen(string sealedText)
+    {
+        if (string.IsNullOrEmpty(sealedText)) return null;
+        try { return Open(sealedText); }
+        catch (Exception e) when (e is CryptographicException or FormatException or ArgumentException) { return null; }
+    }
+
     public string Open(string sealedText)
     {
         var all = Convert.FromBase64String(sealedText);

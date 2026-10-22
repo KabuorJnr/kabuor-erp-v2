@@ -10,7 +10,7 @@ import { ErrorNote, Field, Loading, PageHeader } from '../components/ui';
 
 export default function Security() {
   const session = useSession();
-  const status = useApi<{ twoFactorEnabled: boolean; recoveryCodesLeft: number }>('/auth/security');
+  const status = useApi<{ twoFactorEnabled: boolean; recoveryCodesLeft: number; needsSetupAgain?: boolean }>('/auth/security');
   if (!session) return null;
   return (
     <div className="max-w-2xl">
@@ -24,7 +24,7 @@ export default function Security() {
   );
 }
 
-function TwoStep({ status, session, onChange }: { status: { twoFactorEnabled: boolean; recoveryCodesLeft: number }; session: Session; onChange: () => void }) {
+function TwoStep({ status, session, onChange }: { status: { twoFactorEnabled: boolean; recoveryCodesLeft: number; needsSetupAgain?: boolean }; session: Session; onChange: () => void }) {
   const [setup, setSetup] = useState<{ secret: string; uri: string; qr: string } | null>(null);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
@@ -102,6 +102,11 @@ function TwoStep({ status, session, onChange }: { status: { twoFactorEnabled: bo
           </p>
         </div>
       </div>
+      {status.needsSetupAgain && (
+        <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
+          <b>Set it up again.</b> After a server change your authenticator app’s codes no longer match. Turn two-step sign-in off below (your password), then on again and scan the new code. Remove the old Kabuor entry from your app.
+        </p>
+      )}
 
       {!status.twoFactorEnabled && !setup && (
         <button onClick={start} disabled={state.busy} className="btn btn-primary mt-4">
