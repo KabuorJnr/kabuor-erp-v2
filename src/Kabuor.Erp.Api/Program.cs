@@ -84,6 +84,7 @@ builder.Services.AddScoped<Kabuor.Erp.Intelligence.InquiryService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.InsightsService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.KpiService>();
 builder.Services.AddScoped<Kabuor.Erp.Privacy.DataRightsService>();
+builder.Services.AddScoped<Kabuor.Erp.Assets.AssetService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.QuoteAuditService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.PortalService>();
 builder.Services.AddSingleton<Kabuor.Erp.Intelligence.PortalTokens>();
@@ -248,6 +249,7 @@ app.UseAuthorization();
 
 Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
+AssetEndpoints.Map(app);
 // The web app (built into wwwroot): any other path is a page in it.
 app.MapFallbackToFile("index.html");
 

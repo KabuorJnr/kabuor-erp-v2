@@ -20,6 +20,7 @@ import PurchaseEditor from './pages/PurchaseEditor';
 import PurchaseView from './pages/PurchaseView';
 import { SupplierList, SupplierView } from './pages/Suppliers';
 import Stock from './pages/Stock';
+import Assets from './pages/Assets';
 import { EmployeeList, EmployeeView } from './pages/Employees';
 import Leave from './pages/Leave';
 import { PayrollList, PayrollRun } from './pages/Payroll';
@@ -99,6 +100,7 @@ function App() {
         <Route path="suppliers" element={<Need p="buy.view"><SupplierList /></Need>} />
         <Route path="suppliers/:id" element={<Need p="buy.view"><SupplierView /></Need>} />
         <Route path="stock" element={<Need p="stock.view"><Stock /></Need>} />
+        <Route path="assets" element={<Need p="stock.view"><Assets /></Need>} />
         <Route path="people" element={<Need p="people"><EmployeeList /></Need>} />
         <Route path="people/:id" element={<Need p="people"><EmployeeView /></Need>} />
         <Route path="leave" element={<Need p="people"><Leave /></Need>} />

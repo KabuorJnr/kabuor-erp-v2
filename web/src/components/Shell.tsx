@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  BarChart3, Bot, Brain, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Armchair, BarChart3, Bot, Brain, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -80,6 +80,7 @@ export default function Shell({ session }: { session: Session }) {
           title: 'Operations',
           links: [
             can(session, 'stock.view') && { to: '/stock', label: t('Stock'), icon: Package },
+            can(session, 'stock.view') && { to: '/assets', label: 'Assets', icon: Armchair },
             can(session, 'make') && { to: '/production', label: 'Production', icon: Factory },
             can(session, 'buy.view') && { to: '/suppliers', label: t('Suppliers'), icon: Truck },
           ],

@@ -82,6 +82,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<InquiryMessage> InquiryMessages => Set<InquiryMessage>();
     public DbSet<PortalCode> PortalCodes => Set<PortalCode>();
     public DbSet<StockCountLine> StockCountLines => Set<StockCountLine>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<AssetEvent> AssetEvents => Set<AssetEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -172,6 +174,10 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<InquiryMessage>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
         b.Entity<PortalCode>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
         b.Entity<StockCountLine>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Asset>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<AssetEvent>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<Asset>().HasIndex(x => new { x.CompanyId, x.Tag }).IsUnique();
+        b.Entity<AssetEvent>().HasIndex(x => new { x.CompanyId, x.AssetId });
         b.Entity<StockCountLine>().HasIndex(x => new { x.CompanyId, x.ItemId, x.At });
         b.Entity<PortalCode>().HasIndex(x => new { x.CompanyId, x.Phone, x.ExpiresAt });
 
