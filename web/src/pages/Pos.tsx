@@ -10,9 +10,10 @@ import { api, useApi, useSession } from '../lib/api';
 import { enqueue, lastCatalogue, newRef, queued, saveCatalogue, sync, unreachable, discard, type Queued } from '../lib/offline';
 import { cn, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
 import { ErrorNote, Loading, Sheet } from '../components/ui';
+import { ScanButton } from '../components/Scanner';
 
 type TaxType = 'A_Exempt' | 'B_Standard16' | 'C_ZeroRated' | 'D_NonVat' | 'E_Reduced8';
-type CatalogItem = { id: string; name: string; code: string; unit: string; price: number; taxType: TaxType; trackStock: boolean; onHand: number };
+type CatalogItem = { id: string; name: string; code: string; barcode?: string; unit: string; price: number; taxType: TaxType; trackStock: boolean; onHand: number };
 type Customer = { id?: string; name: string; phone: string; number?: string };
 type Line = { item: CatalogItem; quantity: number };
 type Till = { id: string; sessionNumber: string; openingFloat: number; cashSales: number; mpesaSales: number; bankSales: number; openedAt: string };
@@ -179,14 +180,23 @@ export default function Pos() {
   if (!data) return <Loading />;
 
   // A barcode scanner types the code and presses Enter: add the exact match (or the only result) and clear.
+  const byCode = (raw: string) => {
+    const term = raw.trim().toLowerCase();
+    return items.find((i) => (i.barcode && i.barcode.toLowerCase() === term) || (i.code && i.code.toLowerCase() === term));
+  };
   const onSearchKey = (e: React.KeyboardEvent) => {
     if (e.key !== 'Enter') return;
-    const term = q.trim().toLowerCase();
-    const hit = items.find((i) => i.code && i.code.toLowerCase() === term) ?? (shown.length === 1 ? shown[0] : null);
+    const hit = byCode(q) ?? (shown.length === 1 ? shown[0] : null);
     if (hit) {
       add(hit);
       setQ('');
     }
+  };
+  // The camera: add the product if the code is known, else leave the code in the search box.
+  const onCameraCode = (code: string) => {
+    const hit = byCode(code);
+    if (hit) add(hit);
+    else setQ(code);
   };
 
   const done = (r: Receipt) => {
@@ -279,7 +289,8 @@ export default function Pos() {
         {/* Products */}
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="space-y-2.5 border-b border-line bg-white px-4 py-3 sm:px-6">
-            <label className="relative block">
+            <div className="flex gap-2">
+            <label className="relative block flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-faint" />
               <input
                 ref={search}
@@ -297,6 +308,8 @@ export default function Pos() {
                 </button>
               )}
             </label>
+            <ScanButton onCode={onCameraCode} title="Scan a product" />
+            </div>
             <div className="flex items-center gap-1.5">
               {(
                 [

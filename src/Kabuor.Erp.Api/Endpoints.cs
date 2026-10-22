@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Kabuor.Erp;
 
 public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
-public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null, string? Brand = null);
+public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null, string? Brand = null, string? Barcode = null);
 public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null);
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
@@ -151,13 +151,14 @@ public static class Endpoints
         {
             var query = db.Items.AsQueryable();
             if (all != true) query = query.Where(i => i.Active);
-            if (!string.IsNullOrWhiteSpace(q)) query = query.Where(i => EF.Functions.Like(i.Name, $"%{q.Trim()}%") || EF.Functions.Like(i.Sku, $"%{q.Trim()}%") || EF.Functions.Like(i.Brand, $"%{q.Trim()}%"));
+            if (!string.IsNullOrWhiteSpace(q)) query = query.Where(i => EF.Functions.Like(i.Name, $"%{q.Trim()}%") || EF.Functions.Like(i.Sku, $"%{q.Trim()}%") || EF.Functions.Like(i.Brand, $"%{q.Trim()}%") || i.Barcode == q.Trim());
             return await query.OrderBy(i => i.Name).Take(500).ToListAsync();
         });
         items.MapPost("", async (ItemInput input, ErpDb db) =>
         {
             var i = new Item { Name = "" };
             ApplyItem(i, input);
+            await UniqueBarcode(db, i);
             db.Items.Add(i);
             await db.SaveChangesAsync();
             return Results.Created($"/api/items/{i.Id}", i);
@@ -166,6 +167,7 @@ public static class Endpoints
         {
             var i = await db.Items.SingleOrDefaultAsync(x => x.Id == id) ?? throw new AppException("Not found.", 404);
             ApplyItem(i, input);
+            await UniqueBarcode(db, i);
             await db.SaveChangesAsync();
             return i;
         }).RequireAuthorization(Policies.Sell);
@@ -403,8 +405,16 @@ public static class Endpoints
         if (input.PriceListId is { } chosen) c.PriceListId = chosen == Guid.Empty ? null : chosen;
     }
 
+    /// <summary>A scan must find exactly one item.</summary>
+    static async Task UniqueBarcode(ErpDb db, Item i)
+    {
+        if (i.Barcode.Length > 0 && await db.Items.AnyAsync(x => x.Barcode == i.Barcode && x.Id != i.Id))
+            throw new AppException($"Another item already has barcode {i.Barcode}.");
+    }
+
     static void ApplyItem(Item i, ItemInput input)
     {
+        if (input.Barcode is { } code) i.Barcode = new string(code.Where(char.IsLetterOrDigit).ToArray());
         if (input.EtimsClassCode is { } cls) i.EtimsClassCode = new string(cls.Where(char.IsDigit).ToArray());
         var name = (input.Name ?? "").Trim();
         if (name.Length < 2) throw new AppException("Enter the item's name.");

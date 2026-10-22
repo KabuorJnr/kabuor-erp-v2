@@ -248,7 +248,7 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
             var state = total < 0 ? "below" : total == 0 ? "out" : total <= i.ReorderLevel ? "low" : "ok";
             return new
             {
-                i.Id, i.Name, i.Brand, i.Sku, i.Unit, i.ReorderLevel, i.Price,
+                i.Id, i.Name, i.Brand, i.Sku, i.Barcode, i.Unit, i.ReorderLevel, i.Price,
                 averageCost = (long)Math.Round(i.AverageCost),
                 total, value = (long)Math.Round(total * i.AverageCost),
                 state,
@@ -257,7 +257,7 @@ public sealed class InventoryService(ErpDb db, Ledger ledger, RequestContext ctx
         }).ToList();
         var counts = new { all = rows.Count, low = rows.Count(r => r.state is "low" or "out" or "below"), @out = rows.Count(r => r.state is "out" or "below"), below = rows.Count(r => r.state == "below") };
         var shown = rows.Where(r => filter switch { "low" => r.state is "low" or "out" or "below", "out" => r.state is "out" or "below", "below" => r.state == "below", _ => true })
-            .Where(r => string.IsNullOrWhiteSpace(q) || r.Name.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase) || r.Brand.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase) || r.Sku.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(r => string.IsNullOrWhiteSpace(q) || r.Name.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase) || r.Brand.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase) || r.Barcode == q.Trim() || r.Sku.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderBy(r => r.state == "below" ? 0 : r.state == "out" ? 1 : r.state == "low" ? 2 : 3).ThenBy(r => r.Name).ToList();
         return new { counts, locations, totalValue = rows.Sum(r => r.value), items = shown };
     }

@@ -182,6 +182,8 @@ public sealed class Item : ICompanyOwned
     public required string Name { get; set; }
     public string Brand { get; set; } = "";
     public string Sku { get; set; } = "";
+    /// <summary>The manufacturer's barcode printed on the pack (EAN-13, UPC…), for scanning. Unique per company when set.</summary>
+    public string Barcode { get; set; } = "";
     public ItemKind Kind { get; set; } = ItemKind.Product;
     public string Unit { get; set; } = "pc";
     /// <summary>Price customers pay, VAT included (how Kenyan shops quote prices).</summary>

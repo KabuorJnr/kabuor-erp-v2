@@ -6,6 +6,7 @@ import { api, can, useApi, useSession } from '../lib/api';
 import { dateTime, ksh } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, Status } from '../components/ui';
+import { ScanButton } from '../components/Scanner';
 
 type StockItem = {
   id: string;
@@ -433,7 +434,10 @@ export default function Stock() {
             ['expiring', 'Expiring'],
           ]}
         />
-        <SearchBox value={q} onChange={setQ} placeholder="Search product name, brand or SKU" />
+        <div className="flex gap-2">
+          <div className="min-w-0 flex-1"><SearchBox value={q} onChange={setQ} placeholder="Search product name, brand, SKU or barcode" /></div>
+          <ScanButton onCode={setQ} title="Scan a product" />
+        </div>
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}

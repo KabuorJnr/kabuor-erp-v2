@@ -58,6 +58,7 @@ public static class PosEndpoints
                 i.Id,
                 i.Name,
                 code = i.Sku,
+                barcode = i.Barcode,
                 i.Unit,
                 i.Price,
                 i.TaxType,

@@ -94,7 +94,7 @@ public sealed class OscuEtimsClient(ErpDb db, OscuApi api, SecretBox box, Reques
             await api.Call(d.Mode, (await db.Companies.SingleAsync(c => c.Id == db.CompanyId)).KraPin, d.BranchId, box.Open(d.CmcKey), "saveItem", new JsonObject
             {
                 ["itemCd"] = code, ["itemClsCd"] = cls, ["itemTyCd"] = type, ["itemNm"] = item.Name, ["itemStdNm"] = null, ["orgnNatCd"] = "KE",
-                ["pkgUnitCd"] = "NT", ["qtyUnitCd"] = "U", ["taxTyCd"] = Band(item.TaxType), ["btchNo"] = null, ["bcd"] = item.Sku.Length > 0 ? item.Sku : null,
+                ["pkgUnitCd"] = "NT", ["qtyUnitCd"] = "U", ["taxTyCd"] = Band(item.TaxType), ["btchNo"] = null, ["bcd"] = item.Barcode.Length > 0 ? item.Barcode : item.Sku.Length > 0 ? item.Sku : null,
                 ["dftPrc"] = OscuApi.Ksh(item.Price), ["addInfo"] = null, ["sftyQty"] = null, ["isrcAplcbYn"] = "N", ["useYn"] = "Y",
                 ["regrId"] = Who(), ["regrNm"] = ctx.Actor, ["modrId"] = Who(), ["modrNm"] = ctx.Actor,
             });
@@ -163,7 +163,7 @@ public sealed class OscuEtimsClient(ErpDb db, OscuApi api, SecretBox box, Reques
             list.Add(new JsonObject
             {
                 ["itemSeq"] = ++seq, ["itemCd"] = item?.EtimsItemCode ?? general, ["itemClsCd"] = item?.EtimsClassCode ?? d.DefaultClassCode,
-                ["itemNm"] = l.Description.Length > 200 ? l.Description[..200] : l.Description, ["bcd"] = item?.Sku is { Length: > 0 } sku ? sku : null,
+                ["itemNm"] = l.Description.Length > 200 ? l.Description[..200] : l.Description, ["bcd"] = item?.Barcode is { Length: > 0 } bc ? bc : item?.Sku is { Length: > 0 } sku ? sku : null,
                 ["pkgUnitCd"] = "NT", ["pkg"] = l.Quantity, ["qtyUnitCd"] = "U", ["qty"] = l.Quantity, ["prc"] = OscuApi.Ksh(l.UnitPrice),
                 ["splyAmt"] = OscuApi.Ksh(l.Total), ["dcRt"] = 0, ["dcAmt"] = 0,
                 ["isrccCd"] = null, ["isrccNm"] = null, ["isrcRt"] = null, ["isrcAmt"] = null,

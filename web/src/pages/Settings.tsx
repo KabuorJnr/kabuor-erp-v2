@@ -9,6 +9,7 @@ import { PriceLists, UnitsEditor, unitsBody, type UnitRow } from '../components/
 import { useSearchParams } from 'react-router';
 import { ksh, toCents } from '../lib/format';
 import { Chips, ErrorNote, Field, Loading, PageHeader, Sheet, Status } from '../components/ui';
+import { ScanButton } from '../components/Scanner';
 
 const ROLES: [string, string][] = [
   ['Owner', 'Everything, including people and settings'],
@@ -271,6 +272,12 @@ function Items() {
               </Field>
               <Field label="Code / SKU">
                 <input className="field" value={edit.sku} onChange={(e) => setEdit({ ...edit, sku: e.target.value })} />
+              </Field>
+              <Field label="Barcode" hint="The number under the stripes on the pack. Scan it, or type it.">
+                <div className="flex gap-2">
+                  <input className="field num flex-1" inputMode="numeric" value={edit.barcode ?? ''} onChange={(e) => setEdit({ ...edit, barcode: e.target.value })} placeholder="6001087340052" />
+                  <ScanButton onCode={(code) => setEdit({ ...edit, barcode: code })} title="Scan the barcode" />
+                </div>
               </Field>
               <Field label="Unit">
                 <input className="field" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value })} placeholder="pc, kg, hour…" />

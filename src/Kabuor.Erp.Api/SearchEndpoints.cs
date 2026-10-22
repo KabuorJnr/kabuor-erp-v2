@@ -38,7 +38,7 @@ public static class SearchEndpoints
                     .Select(d => new { d.Id, d.Number, d.Kind, d.Total, d.Status, customer = d.Customer!.Name }).ToListAsync())
                 .Select(d => new SearchHit(d.Kind == SalesDocKind.Quote ? "Quote" : "Invoice", d.Number, $"{d.customer} · KSh {d.Total / 100m:N0} · {Plain(d.Status, d.Kind)}", $"/sales/{d.Id}")));
             }
-            hits.AddRange((await db.Items.Where(i => EF.Functions.Like(i.Name, like) || EF.Functions.Like(i.Sku, like)).OrderBy(i => i.Name).Take(5).ToListAsync())
+            hits.AddRange((await db.Items.Where(i => EF.Functions.Like(i.Name, like) || EF.Functions.Like(i.Sku, like) || EF.Functions.Like(i.Barcode, like)).OrderBy(i => i.Name).Take(5).ToListAsync())
                 .Select(i => new SearchHit("Item", i.Name, $"KSh {i.Price / 100m:N0}{(i.TrackStock ? " · in stock list" : "")}", i.TrackStock && Can(Policies.StockView) ? $"/stock?q={Uri.EscapeDataString(i.Name)}" : "/settings")));
             if (Can(Policies.Crm))
             hits.AddRange((await db.Leads.Where(l => EF.Functions.Like(l.Name, like) || EF.Functions.Like(l.Business, like) || EF.Functions.Like(l.Phone, like)).OrderBy(l => l.Name).Take(5).ToListAsync())
