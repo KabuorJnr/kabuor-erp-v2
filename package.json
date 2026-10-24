@@ -10,6 +10,7 @@
     "simulate": "node tools/simulate-month.mjs",
     "simulate:enterprise": "node tools/simulate-enterprise-scale.mjs",
     "simulate:500k": "node tools/simulate-enterprise-scale.mjs --batch=5000",
-    "dev:web": "npm run dev --prefix web"
+    "dev:web": "npm run dev --prefix web",
+    "build": "npm run build --prefix web"
   }
 }
