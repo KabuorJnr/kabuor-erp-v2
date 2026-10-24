@@ -1,0 +1,19 @@
+{
+  "name": "Kabuor ERP - Point of Sale",
+  "short_name": "Kabuor POS",
+  "description": "Fast, offline-ready retail and supermarket POS with automatic M-Pesa matching and eTIMS compliance.",
+  "start_url": "/pos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0A0B1E",
+  "icons": [
+    {
+      "src": "/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

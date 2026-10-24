@@ -185,6 +185,8 @@ public static class IntegrationEndpoints
         hooks.MapPost("", async (WebhookInput input, ErpDb db) =>
         {
             if (!Uri.TryCreate((input.Url ?? "").Trim(), UriKind.Absolute, out var uri) || uri.Scheme != "https") throw new AppException("Enter the full https:// address that should receive events.");
+            if (uri.IsLoopback || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host.StartsWith("127.") || uri.Host.StartsWith("10.") || uri.Host.StartsWith("192.168.") || uri.Host.StartsWith("172.16.") || uri.Host == "169.254.169.254")
+                throw new AppException("Webhook URL cannot target private or internal network addresses.");
             var events = string.IsNullOrWhiteSpace(input.Events) ? "*" : string.Join(',', input.Events.Split(',').Select(x => x.Trim()).Where(WebhookService.EventNames.Contains));
             if (events.Length == 0) throw new AppException($"Choose events from: {string.Join(", ", WebhookService.EventNames)}.");
             var e = new WebhookEndpoint { Url = uri.ToString(), Events = events, Secret = "whsec_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant() };

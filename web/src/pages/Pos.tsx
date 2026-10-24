@@ -4,7 +4,7 @@
 // leaves the screen. M-Pesa payments Safaricom already sent are listed to tap, so nobody types a code twice.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Banknote, CheckCircle2, CloudOff, RefreshCw, ChevronRight, Clock, CreditCard, LayoutGrid, List, Lock, MapPin, Minus, Plus, Printer, Search, Share2, ShoppingCart, Smartphone, Trash2, Unlock, User, X,
+  Banknote, CheckCircle2, CloudOff, RefreshCw, ChevronRight, Clock, CreditCard, Download, LayoutGrid, List, Lock, MapPin, Minus, Plus, Printer, Search, Share2, ShoppingCart, Smartphone, Trash2, Unlock, User, X,
 } from 'lucide-react';
 import { api, useApi, useSession } from '../lib/api';
 import { enqueue, lastCatalogue, newRef, queued, saveCatalogue, sync, unreachable, discard, type Queued } from '../lib/offline';
@@ -107,6 +107,32 @@ export default function Pos() {
   const [sheet, setSheet] = useState<null | 'pay' | 'customer' | 'open' | 'close' | 'ticket'>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const search = useRef<HTMLInputElement>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const triggerInstall = async () => {
+    if (!installPrompt) {
+      alert('To install offline POS kiosk app:\nTap your browser menu (⋮ or Share) and select "Install app" or "Add to Home Screen".');
+      return;
+    }
+    installPrompt.prompt();
+    const outcome = await installPrompt.userChoice;
+    if (outcome?.outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   useEffect(() => {
     try { sessionStorage.setItem(TICKET_KEY, JSON.stringify(ticket)); } catch {}
@@ -269,18 +295,46 @@ export default function Pos() {
                 </span>
               )}
             </span>
-            <button onClick={() => setSheet('close')} className="btn btn-ghost ml-auto py-1.5 sm:ml-auto">
-              <Lock className="h-4 w-4" /> Close till
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {!isStandalone ? (
+                <button
+                  type="button"
+                  onClick={triggerInstall}
+                  title="Install offline POS app on this device for kiosks and supermarkets"
+                  className="btn btn-ghost py-1 text-xs"
+                >
+                  <Download className="h-3.5 w-3.5 text-brand" /> Install App
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good">
+                  <span className="h-1.5 w-1.5 rounded-full bg-good" /> Kiosk App
+                </span>
+              )}
+              <button onClick={() => setSheet('close')} className="btn btn-ghost py-1.5">
+                <Lock className="h-4 w-4" /> Close till
+              </button>
+            </div>
           </>
         ) : (
           <>
             <span className="flex items-center gap-1.5 text-sm font-semibold text-warn">
               <span className="h-2 w-2 rounded-full bg-gold" /> Till closed
             </span>
-            <button onClick={() => setSheet('open')} className="btn btn-primary ml-auto py-1.5">
-              <Unlock className="h-4 w-4" /> Open till
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {!isStandalone && (
+                <button
+                  type="button"
+                  onClick={triggerInstall}
+                  title="Install offline POS app on this device for kiosks and supermarkets"
+                  className="btn btn-ghost py-1 text-xs"
+                >
+                  <Download className="h-3.5 w-3.5 text-brand" /> Install App
+                </button>
+              )}
+              <button onClick={() => setSheet('open')} className="btn btn-primary py-1.5">
+                <Unlock className="h-4 w-4" /> Open till
+              </button>
+            </div>
           </>
         )}
       </header>

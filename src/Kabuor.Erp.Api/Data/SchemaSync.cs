@@ -101,6 +101,7 @@ public static partial class SchemaSync
     static async Task SyncSqlite(ErpDb db)
     {
         await db.Database.EnsureCreatedAsync();
+        try { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); } catch { }
         // Tables first, then missing columns, then indexes (a new index can be on a column added just now).
         var indexes = new List<string>();
         foreach (var raw in db.Database.GenerateCreateScript().Split(";", StringSplitOptions.RemoveEmptyEntries))

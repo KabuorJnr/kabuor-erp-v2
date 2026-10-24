@@ -104,6 +104,7 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
     {
         var p = await db.Payments.Include(x => x.Allocations).SingleOrDefaultAsync(x => x.Id == paymentId) ?? throw new AppException("Payment not found.", 404);
         if (allocations.Count == 0) throw new AppException("Choose at least one invoice.");
+        if (allocations.Count > 100) throw new AppException("Cannot allocate to more than 100 invoices at once.");
         if (allocations.Any(a => a.Amount <= 0)) throw new AppException("Amounts must be above 0.");
         if (allocations.Sum(a => a.Amount) > p.Unallocated) throw new AppException("That's more than is left on this payment.");
         var ids = allocations.Select(a => a.InvoiceId).ToList();

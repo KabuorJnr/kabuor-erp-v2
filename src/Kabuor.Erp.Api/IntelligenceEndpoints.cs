@@ -114,17 +114,19 @@ public static class IntelligenceEndpoints
         }).RequireAuthorization(Policies.Admin);
 
         // A tracking link: count the visit, remember the link in the visitor's browser, open the shop.
-        app.MapGet("/l/{code}", async (string code, HttpContext http, ErpDb db) =>
+        app.MapGet("/l/{code}", async (string code, HttpContext http, ErpDb db, RequestContext ctx) =>
         {
             var link = await db.TrackingLinks.IgnoreQueryFilters().SingleOrDefaultAsync(l => l.Code == code.ToLowerInvariant() && l.Active);
             if (link is null) return Results.Redirect("/");
+            (ctx.CompanyId, ctx.Actor) = (link.CompanyId, "Tracking link");
             var company = await db.Companies.Where(c => c.Id == link.CompanyId).Select(c => new { c.Slug, c.PortalEnabled }).SingleAsync();
-            var visitor = http.Request.Cookies["kv"] is { Length: > 10 and < 64 } v ? v : Guid.NewGuid().ToString("N");
+            var rawVisitor = http.Request.Cookies["kv"];
+            var visitor = rawVisitor is { Length: > 10 and < 64 } v && v.All(char.IsLetterOrDigit) ? v : Guid.NewGuid().ToString("N");
             var referrer = Uri.TryCreate(http.Request.Headers.Referer.ToString(), UriKind.Absolute, out var u) ? u.Host : "";
             var agent = http.Request.Headers.UserAgent.ToString();
             db.LinkVisits.Add(new LinkVisit { CompanyId = link.CompanyId, LinkId = link.Id, VisitorId = visitor, Referrer = referrer.Length > 120 ? referrer[..120] : referrer, Mobile = agent.Contains("Mobi", StringComparison.OrdinalIgnoreCase) });
             await db.SaveChangesAsync();
-            var cookie = new CookieOptions { MaxAge = TimeSpan.FromDays(60), HttpOnly = false, SameSite = SameSiteMode.Lax, Secure = http.Request.IsHttps };
+            var cookie = new CookieOptions { MaxAge = TimeSpan.FromDays(60), HttpOnly = false, SameSite = SameSiteMode.Lax, Secure = http.Request.IsHttps || !http.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) };
             http.Response.Cookies.Append("kv", visitor, cookie);
             http.Response.Cookies.Append("kref", link.Code, cookie);
             if (!company.PortalEnabled) return Results.Redirect("/");

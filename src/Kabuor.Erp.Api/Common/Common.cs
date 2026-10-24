@@ -18,15 +18,49 @@ public static class Clock
 
 public sealed class Numbers(ErpDb db)
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SequenceGate> Gates = new();
+
+    private sealed class SequenceGate
+    {
+        public readonly SemaphoreSlim Semaphore = new(1, 1);
+        public int? CurrentNext;
+    }
+
     /// <summary>The next number in a series for this company: Next("INV") → "INV-0001".</summary>
     public async Task<string> Next(string key)
     {
         // A series started earlier in this same save isn't in the database yet: use that one, not a second.
-        var seq = db.Sequences.Local.FirstOrDefault(s => s.Key == key && s.CompanyId == db.CompanyId)
-            ?? await db.Sequences.SingleOrDefaultAsync(s => s.Key == key);
-        if (seq is null) db.Sequences.Add(seq = new Sequence { Key = key, CompanyId = db.CompanyId });
-        var n = seq.Next++;
-        return $"{key}-{n:0000}";
+        var localSeq = db.Sequences.Local.FirstOrDefault(s => s.Key == key && s.CompanyId == db.CompanyId);
+        if (localSeq is not null)
+        {
+            var localN = localSeq.Next++;
+            return $"{key}-{localN:0000}";
+        }
+
+        var lockKey = $"{db.CompanyId}:{key}";
+        var gate = Gates.GetOrAdd(lockKey, _ => new SequenceGate());
+        await gate.Semaphore.WaitAsync();
+        try
+        {
+            var seq = await db.Sequences.SingleOrDefaultAsync(s => s.Key == key);
+            if (seq is null)
+            {
+                seq = new Sequence { Key = key, CompanyId = db.CompanyId, Next = gate.CurrentNext ?? 1 };
+                db.Sequences.Add(seq);
+            }
+            else if (gate.CurrentNext.HasValue && gate.CurrentNext.Value > seq.Next)
+            {
+                seq.Next = gate.CurrentNext.Value;
+            }
+
+            var n = seq.Next++;
+            gate.CurrentNext = seq.Next;
+            return $"{key}-{n:0000}";
+        }
+        finally
+        {
+            gate.Semaphore.Release();
+        }
     }
 }
 

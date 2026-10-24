@@ -19,6 +19,19 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
+// Network & Web server hardening against Slowloris, buffer overflow, and banner grabbing
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.AddServerHeader = false;
+    k.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10MB limit
+    k.Limits.MaxRequestHeaderCount = 64;
+    k.Limits.MaxRequestHeadersTotalSize = 32 * 1024;
+    k.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
+    k.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
+    k.Limits.MinRequestBodyDataRate = new Microsoft.AspNetCore.Server.Kestrel.Core.MinDataRate(bytesPerSecond: 100, gracePeriod: TimeSpan.FromSeconds(10));
+    k.Limits.MinResponseDataRate = new Microsoft.AspNetCore.Server.Kestrel.Core.MinDataRate(bytesPerSecond: 100, gracePeriod: TimeSpan.FromSeconds(10));
+});
+
 // Error alerts (Sentry), only when SENTRY__DSN is set: every crash and every logged error is reported, with the
 // route and the company id, never request bodies, names or phone numbers.
 if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
@@ -58,7 +71,14 @@ else
 builder.Services.AddSingleton<AppCache>();
 builder.Services.AddDbContext<ErpDb>(o =>
 {
-    if (cs.StartsWith("Host=", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(cs);
+    if (cs.StartsWith("Host=", StringComparison.OrdinalIgnoreCase))
+    {
+        o.UseNpgsql(cs, npgsql =>
+        {
+            npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+            npgsql.CommandTimeout(30);
+        });
+    }
     else o.UseSqlite(cs);
 });
 
@@ -68,6 +88,8 @@ builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<Kabuor.Erp.Auth.OnboardingService>();
+builder.Services.AddHealthChecks().AddCheck<ErpDbHealthCheck>("database");
 builder.Services.AddSingleton<SecretBox>();
 builder.Services.AddScoped<AssistantService>();
 builder.Services.AddScoped<Kabuor.Erp.Inventory.InventoryService>();
@@ -137,16 +159,42 @@ builder.Services.AddAuthorization(o =>
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = 429;
-    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 500, Window = TimeSpan.FromMinutes(15) }));
+    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(15) }));
     o.AddPolicy("assistant", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.User.FindFirst("sub")?.Value ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(10) }));
+
+    // Global flood protection across all API routes
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+    {
+        var path = http.Request.Path.Value ?? "";
+        if (path.StartsWith("/health") || !path.StartsWith("/api"))
+            return RateLimitPartition.GetNoLimiter("unlimited");
+
+        var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetTokenBucketLimiter(ip, _ => new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = 250,
+            QueueLimit = 25,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+            TokensPerPeriod = 50,
+            AutoReplenishment = true
+        });
+    });
 });
 
-builder.Services.AddCors(o => o.AddPolicy("dev", p => p.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod()));
+var originsConfig = (config["Cors:AllowedOrigins"] ?? Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? "http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+builder.Services.AddCors(o => o.AddPolicy("dev", p => p.WithOrigins(originsConfig).AllowAnyHeader().AllowAnyMethod()));
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    o.ForwardLimit = 2; // Prevent X-Forwarded-For header chain spoofing
     o.KnownIPNetworks.Clear();
     o.KnownProxies.Clear();
+    o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("127.0.0.1/8"));
+    o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("10.0.0.0/8"));
+    o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("172.16.0.0/12"));
+    o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("192.168.0.0/16"));
+    o.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
 });
 
 var app = builder.Build();
@@ -164,14 +212,25 @@ using (var scope = app.Services.CreateScope())
 app.UseForwardedHeaders();
 app.Use(async (ctx, next) =>
 {
+    // Block dangerous methods (Cross-Site Tracing / XST attacks)
+    var method = ctx.Request.Method;
+    if (method is "TRACE" or "TRACK" or "DEBUG")
+    {
+        ctx.Response.StatusCode = 405;
+        return;
+    }
+
     var h = ctx.Response.Headers;
     h.XContentTypeOptions = "nosniff";
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
     h.XFrameOptions = "DENY";
     h["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()";
+    h["Cross-Origin-Opener-Policy"] = "same-origin";
+    h["Cross-Origin-Resource-Policy"] = "same-origin";
+    h["X-Permitted-Cross-Domain-Policies"] = "none";
     // Only this site's own scripts, styles, fonts and API: injected scripts and other sites' code can't run.
-    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
-    if (ctx.Request.IsHttps) h.StrictTransportSecurity = "max-age=31536000";
+    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests;";
+    if (ctx.Request.IsHttps) h.StrictTransportSecurity = "max-age=31536000; includeSubDomains";
     await next();
 });
 
@@ -247,6 +306,16 @@ app.Use(async (http, next) =>
 });
 app.UseAuthorization();
 
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Name == "database"
+});
+
 Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
 AssetEndpoints.Map(app);
@@ -296,7 +365,12 @@ public partial class Program
             : query.GetValueOrDefault("sslmode") is "require" or "verify-ca" ? "SSL Mode=Require;Trust Server Certificate=true"
             : "SSL Mode=Prefer;Trust Server Certificate=true";
         var binding = query.GetValueOrDefault("channel_binding") == "require" ? ";Channel Binding=Require" : "";
-        return $"Host={u.Host};Port={(u.Port > 0 ? u.Port : 5432)};Database={u.AbsolutePath.TrimStart('/')};Username={user};Password={pass};{ssl}{binding}";
+        var maxPool = query.GetValueOrDefault("max_pool_size") ?? query.GetValueOrDefault("maximum pool size") ?? Environment.GetEnvironmentVariable("DB_MAX_POOL_SIZE") ?? "100";
+        var minPool = query.GetValueOrDefault("min_pool_size") ?? query.GetValueOrDefault("minimum pool size") ?? Environment.GetEnvironmentVariable("DB_MIN_POOL_SIZE") ?? "5";
+        var idleLife = query.GetValueOrDefault("connection_idle_lifetime") ?? "300";
+        var timeout = query.GetValueOrDefault("timeout") ?? "15";
+        var pool = $";Pooling=true;Minimum Pool Size={minPool};Maximum Pool Size={maxPool};Connection Idle Lifetime={idleLife};Timeout={timeout}";
+        return $"Host={u.Host};Port={(u.Port > 0 ? u.Port : 5432)};Database={u.AbsolutePath.TrimStart('/')};Username={user};Password={pass};{ssl}{binding}{pool}";
     }
 
     internal static StackExchange.Redis.ConfigurationOptions ParseRedisConnectionString(string raw)

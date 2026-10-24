@@ -9,6 +9,7 @@ import { Loading, ErrorNote, PageHeader, Stat } from '../components/ui';
 import Proposals from '../components/Proposals';
 import KpiBoard from '../components/KpiBoard';
 import DashboardCharts from '../components/DashboardCharts';
+import OnboardingWizard from '../components/OnboardingWizard';
 
 type TodayData = {
   today: string;
@@ -148,6 +149,8 @@ export default function Today() {
         ))}
       />
       <div className="space-y-5">
+        <OnboardingWizard onComplete={reload} />
+
         {d.headline && (
           <p className="flex items-start gap-3 rounded-md bg-brand-soft px-4 py-3 text-[15px] text-ink">
             <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-brand" /> {d.headline}

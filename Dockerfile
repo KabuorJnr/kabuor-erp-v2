@@ -20,5 +20,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=api /app ./
 ENV ASPNETCORE_ENVIRONMENT=Production
+# Run as unprivileged non-root app user
+USER $APP_UID
 # Render (and most hosts) set PORT; listen on it (8080 when run elsewhere).
 CMD ["sh", "-c", "dotnet Kabuor.Erp.Api.dll --urls http://0.0.0.0:${PORT:-8080}"]

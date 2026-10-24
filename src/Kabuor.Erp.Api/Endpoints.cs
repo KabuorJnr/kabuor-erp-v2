@@ -61,6 +61,7 @@ public static class Endpoints
         {
             var company = await db.Companies.SingleOrDefaultAsync(c => c.MpesaCallbackKey == key);
             if (company is null) return Results.NotFound();
+            using var activity = ErpTelemetry.StartPaymentActivity("StkCallback", "mpesa", company.Id);
             (ctx.CompanyId, ctx.Actor) = (company.Id, "M-Pesa");
             await stk.Callback(company, body);
             return MpesaAck();
@@ -76,12 +77,22 @@ public static class Endpoints
                 log.LogWarning("M-Pesa confirmation for shortcode {Got} reached company {Company} (expects {Want})", body.BusinessShortCode, company.Id, company.MpesaShortcode);
                 return MpesaAck();
             }
+            using var activity = ErpTelemetry.StartPaymentActivity("C2BConfirmation", "mpesa", company.Id, body.TransID);
             (ctx.CompanyId, ctx.Actor) = (company.Id, "M-Pesa");
-            await payments.FromMpesa(body);
+            var payment = await payments.FromMpesa(body);
+            if (payment is not null)
+            {
+                ErpTelemetry.RecordPayment("mpesa", payment.Amount, true, company.Id);
+            }
             return MpesaAck();
         });
 
         var app_ = api.MapGroup("").RequireAuthorization(Policies.Read);
+
+        // ---------- onboarding & quickstart self-service ----------
+        var onboarding = app_.MapGroup("/onboarding").RequireAuthorization(Policies.Admin);
+        onboarding.MapGet("/status", (OnboardingService s) => s.GetStatus());
+        onboarding.MapPost("/quickstart", (QuickstartSetupInput input, OnboardingService s) => s.Quickstart(input));
 
         // ---------- home ----------
         app_.MapGet("/today", (ReportService r) => r.Today());

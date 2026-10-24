@@ -213,6 +213,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<JournalEntry>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<JournalLine>().HasIndex(x => new { x.CompanyId, x.AccountId });
         b.Entity<Sequence>().HasKey(x => new { x.CompanyId, x.Key });
+        b.Entity<Sequence>().Property(x => x.Next).IsConcurrencyToken();
         b.Entity<AuditEntry>().HasIndex(x => new { x.CompanyId, x.At });
         b.Entity<Proposal>().HasIndex(x => new { x.CompanyId, x.Status });
         b.Entity<Company>().HasIndex(x => x.MpesaShortcode);
@@ -229,6 +230,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<SupplierPayment>().HasIndex(x => new { x.CompanyId, x.PaidAt });
         b.Entity<Location>().HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
         b.Entity<StockLevel>().HasKey(x => new { x.CompanyId, x.ItemId, x.LocationId });
+        b.Entity<StockLevel>().Property(x => x.Quantity).IsConcurrencyToken();
+        b.Entity<StockBatch>().Property(x => x.Quantity).IsConcurrencyToken();
         b.Entity<StockMove>().HasIndex(x => new { x.CompanyId, x.ItemId, x.At });
         b.Entity<StockMove>().HasIndex(x => new { x.CompanyId, x.SourceType, x.SourceId });
         b.Entity<Employee>().HasIndex(x => new { x.CompanyId, x.Number }).IsUnique();
@@ -272,6 +275,22 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
             if (sqlite && prop.ClrType == typeof(decimal))
                 prop.SetValueConverter(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.CastingConverter<decimal, double>());
         }
+
+        // Universal company isolation guarantee: ensures EVERY entity implementing ICompanyOwned
+        // has an airtight tenant filter, preventing data leakage across tenants under all conditions.
+        var setFilterMethod = typeof(ErpDb).GetMethod(nameof(SetCompanyFilter), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        foreach (var entity in b.Model.GetEntityTypes())
+        {
+            if (typeof(ICompanyOwned).IsAssignableFrom(entity.ClrType))
+            {
+                setFilterMethod.MakeGenericMethod(entity.ClrType).Invoke(this, [b]);
+            }
+        }
+    }
+
+    void SetCompanyFilter<T>(ModelBuilder b) where T : class, ICompanyOwned
+    {
+        b.Entity<T>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) => throw new NotSupportedException("Use SaveChangesAsync.");
@@ -290,10 +309,26 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         foreach (var e in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
         {
             if (e.Entity is AuditEntry) continue;
-            if (e.Entity is ICompanyOwned owned && e.State == EntityState.Added && owned.CompanyId == Guid.Empty)
+            if (e.Entity is ICompanyOwned owned)
             {
-                if (!ctx.HasCompany) throw new InvalidOperationException($"No company for new {e.Entity.GetType().Name}.");
-                owned.CompanyId = ctx.CompanyId;
+                if (e.State == EntityState.Added)
+                {
+                    if (ctx.HasCompany)
+                    {
+                        if (owned.CompanyId != Guid.Empty && owned.CompanyId != ctx.CompanyId)
+                            throw new UnauthorizedAccessException($"Tenant violation: cannot insert {e.Entity.GetType().Name} for a different company.");
+                        owned.CompanyId = ctx.CompanyId;
+                    }
+                    else if (owned.CompanyId == Guid.Empty)
+                    {
+                        throw new InvalidOperationException($"No company for new {e.Entity.GetType().Name}.");
+                    }
+                }
+                else if (e.State is EntityState.Modified or EntityState.Deleted)
+                {
+                    if (ctx.HasCompany && owned.CompanyId != ctx.CompanyId)
+                        throw new UnauthorizedAccessException($"Tenant violation: cannot modify or delete {e.Entity.GetType().Name} belonging to another company.");
+                }
             }
             var companyId = e.Entity switch
             {

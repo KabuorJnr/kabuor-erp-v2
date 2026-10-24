@@ -62,6 +62,7 @@ public sealed class StatementService(ErpDb db, Ledger ledger, PaymentService pay
         }
         row.Add(cell.ToString().Trim());
         if (row.Any(x => x.Length > 0)) rows.Add([.. row]);
+        if (rows.Count > 10_000) throw new AppException("CSV exceeds the maximum limit of 10,000 rows. Please split the file into smaller batches.");
         return rows;
     }
 
