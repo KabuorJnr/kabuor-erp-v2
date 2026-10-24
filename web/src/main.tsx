@@ -24,6 +24,7 @@ import Assets from './pages/Assets';
 import { EmployeeList, EmployeeView } from './pages/Employees';
 import Leave from './pages/Leave';
 import { PayrollList, PayrollRun } from './pages/Payroll';
+import Recruitment from './pages/Recruitment';
 import { LeadView, Pipeline } from './pages/Pipeline';
 import Production from './pages/Production';
 import { CampaignEditor, CampaignList, CampaignView } from './pages/Campaigns';
@@ -103,6 +104,7 @@ function App() {
         <Route path="assets" element={<Need p="stock.view"><Assets /></Need>} />
         <Route path="people" element={<Need p="people"><EmployeeList /></Need>} />
         <Route path="people/:id" element={<Need p="people"><EmployeeView /></Need>} />
+        <Route path="recruitment" element={<Need p="people"><Recruitment /></Need>} />
         <Route path="leave" element={<Need p="people"><Leave /></Need>} />
         <Route path="payroll" element={<Need p="people"><PayrollList /></Need>} />
         <Route path="payroll/:id" element={<Need p="people"><PayrollRun /></Need>} />
