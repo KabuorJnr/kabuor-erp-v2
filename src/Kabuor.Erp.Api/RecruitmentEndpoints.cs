@@ -245,7 +245,7 @@ public static class RecruitmentEndpoints
                 ok = true,
                 id = record.Id,
                 refCode = record.RefCode,
-                message = "Application submitted successfully to Kabuor ERP Talent Desk."
+                message = "Application submitted successfully to Kabuor Technologies Talent Desk."
             });
         });
 

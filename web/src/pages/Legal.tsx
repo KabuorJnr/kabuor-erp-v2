@@ -33,12 +33,12 @@ export function Privacy() {
   return (
     <Page title="Privacy notice">
       {info.updated && <p className="text-sm text-muted">Last updated {info.updated}</p>}
-      <p>Kabuor ERP is run by Kabuor Builds in Kenya. This notice explains what personal data the service holds, why, who sees it, and your rights under the Data Protection Act, 2019.</p>
+      <p>Kabuor ERP is a financial software platform operated by Kabuor Technologies Ltd (with web applications designed and engineered by Kabuor Builds) in Kenya. This notice explains what personal data the service holds, why, who sees it, and your rights under the Data Protection Act, 2019.</p>
 
       <h2>Two kinds of data, two roles</h2>
       <ul>
-        <li><b>Your account</b> (the business and the people who sign in): Kabuor Builds decides how this is used, so we are the <b>data controller</b>.</li>
-        <li><b>The records you keep</b> (your customers, suppliers, employees, payslips, invoices): your business decides what to record and why, so your business is the <b>controller</b> and Kabuor Builds is your <b>data processor</b>. We only use it to run the service for you.</li>
+        <li><b>Your account</b> (the business and the people who sign in): Kabuor Technologies decides how this is used, so we are the <b>data controller</b>.</li>
+        <li><b>The records you keep</b> (your customers, suppliers, employees, payslips, invoices): your business decides what to record and why, so your business is the <b>controller</b> and Kabuor Technologies is your <b>data processor</b>. We only use it to run the service for you.</li>
       </ul>
 
       <h2>What we collect</h2>
@@ -103,7 +103,7 @@ export function Terms() {
   return (
     <Page title="Terms of service">
       {info.updated && <p className="text-sm text-muted">Last updated {info.updated}</p>}
-      <p>These terms are an agreement between your business and Kabuor Builds for the use of Kabuor ERP. By opening an account you agree to them on behalf of your business.</p>
+      <p>These terms are an agreement between your business and Kabuor Technologies Ltd (operator of Kabuor ERP, with web applications engineered by Kabuor Builds) for the use of Kabuor ERP. By opening an account you agree to them on behalf of your business.</p>
 
       <h2>The service</h2>
       <p>Kabuor ERP helps you invoice, take payments, keep stock, run payroll and keep your books. It sends invoices to KRA eTIMS and reads M-Pesa payments when you connect them. We aim to keep it available at all times but can’t promise it will never be interrupted; we tell you in the app about planned maintenance.</p>
@@ -128,7 +128,7 @@ export function Terms() {
       <p>Your records belong to your business. You can export them at any time. We handle personal data as described in the <Link className="font-semibold text-brand underline" to="/privacy">privacy notice</Link>, acting as your processor for the records you keep.</p>
 
       <h2>Processing personal data for you</h2>
-      <p>For the records you keep, your business is the data controller and Kabuor Builds is your data processor. These terms are the written contract that section 42 of the Data Protection Act and regulation 24 require:</p>
+      <p>For the records you keep, your business is the data controller and Kabuor Technologies is your data processor. These terms are the written contract that section 42 of the Data Protection Act and regulation 24 require:</p>
       <ul>
         <li><b>What, how long and why</b>: we process your customers’, suppliers’, leads’ and employees’ details (names, phone numbers, emails, KRA PINs, ID and NSSF/SHA numbers, pay and bank or M-Pesa details, invoices, payments and messages) for as long as your account is open, only to provide the service.</li>
         <li><b>Your instructions</b>: we act only on your instructions, given through the app and these terms. If we think an instruction breaks the law, we tell you.</li>

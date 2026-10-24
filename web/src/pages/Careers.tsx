@@ -748,12 +748,12 @@ export default function Careers() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link to="/" className="flex items-center gap-2.5 transition hover:opacity-85">
-              <img src="/mark.svg" alt="Kabuor ERP" className="h-8 w-8" />
-              <span className="font-display text-lg font-bold tracking-tight text-ink">Kabuor ERP</span>
+              <img src="/mark.svg" alt="Kabuor Technologies" className="h-8 w-8" />
+              <span className="font-display text-lg font-bold tracking-tight text-ink">Kabuor Technologies</span>
             </Link>
             <span className="hidden sm:inline-block h-4 w-px bg-line" />
             <span className="hidden sm:inline-block rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-semibold text-brand">
-              Company Careers & Culture
+              Careers & Culture · Kabuor ERP
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -781,7 +781,7 @@ export default function Careers() {
         <div className="relative mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1 text-xs font-medium text-white/90 backdrop-blur-sm">
             <span className="h-2 w-2 rounded-full bg-good animate-pulse" />
-            <span>WE ARE EXPANDING · {ALL_ROLES.length} COMPANY ROLES OPEN · NAIROBI & HYBRID</span>
+            <span>KABUOR TECHNOLOGIES HIRING · {ALL_ROLES.length} STRATEGIC ROLES OPEN · NAIROBI & HYBRID</span>
           </div>
 
           <h1 className="mt-8 font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl leading-[1.08]">
@@ -1161,8 +1161,8 @@ export default function Careers() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <img src="/mark.svg" alt="" className="h-7 w-7" />
-            <span className="font-display font-bold text-ink">Kabuor ERP</span>
-            <span className="text-xs text-muted">· A Kabuor Builds product · Made with pride in Kenya</span>
+            <span className="font-display font-bold text-ink">Kabuor Technologies</span>
+            <span className="text-xs text-muted">· Creators of Kabuor ERP · Websites by Kabuor Builds · Nairobi, Kenya</span>
           </div>
           <div className="flex flex-wrap items-center gap-6 text-xs sm:text-sm">
             <Link to="/" className="hover:text-ink">Sign In</Link>
