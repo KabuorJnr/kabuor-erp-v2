@@ -390,7 +390,6 @@ public static class Endpoints
         SearchEndpoints.Map(app_);
         ProductionEndpoints.Map(app_);
         Assistant.AssistantEndpoints.Map(app_);
-        RecruitmentEndpoints.Map(api, app_);
     }
 
     // Safaricom's exact reply format (PascalCase, unlike the rest of the API).

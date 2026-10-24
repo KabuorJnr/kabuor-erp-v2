@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  Armchair, BarChart3, Bot, Brain, Briefcase, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Armchair, BarChart3, Bot, Brain, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -89,7 +89,6 @@ export default function Shell({ session }: { session: Session }) {
           title: 'People',
           links: [
             can(session, 'people') && { to: '/people', label: 'Employees', icon: UserRound },
-            can(session, 'people') && { to: '/recruitment', label: 'Recruitment & Vetting', icon: Briefcase },
             can(session, 'people') && { to: '/leave', label: 'Leave', icon: CalendarDays },
             can(session, 'people') && { to: '/payroll', label: 'Payroll', icon: Banknote },
           ],
@@ -158,12 +157,7 @@ export default function Shell({ session }: { session: Session }) {
               <LogOut className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex items-center justify-between pt-1 text-[11px] text-muted">
-            <NavLink to="/careers" className="flex items-center gap-1 font-medium hover:text-brand">
-              <span>Careers</span>
-              <span className="rounded bg-brand-soft px-1 py-0.5 text-[9px] font-bold text-brand">Hiring</span>
-            </NavLink>
-            <span className="text-faint">·</span>
+          <div className="flex items-center justify-center gap-3 pt-1 text-[11px] text-muted">
             <NavLink to="/terms" className="hover:text-ink">Terms</NavLink>
             <span className="text-faint">·</span>
             <NavLink to="/privacy" className="hover:text-ink">Privacy</NavLink>

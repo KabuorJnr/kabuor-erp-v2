@@ -34,8 +34,6 @@ import Inquiries from './pages/Inquiries';
 import Links from './pages/Links';
 import Shop from './pages/Shop';
 import { Privacy, Terms } from './pages/Legal';
-import Careers from './pages/Careers';
-import Recruitment from './pages/Recruitment';
 import MyPortal from './pages/MyPortal';
 import Agents from './pages/Agents';
 import Security from './pages/Security';
@@ -60,7 +58,6 @@ function App() {
     return (
       <Routes>
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/careers" element={<Careers />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/s/:slug" element={<Shop />} />
         <Route path="/terms" element={<Terms />} />
@@ -70,7 +67,6 @@ function App() {
   if (session.user.mustChangePassword) return <ChooseOwnPassword session={session} />;
   return (
     <Routes>
-      <Route path="careers" element={<Careers />} />
       <Route path="privacy" element={<Privacy />} />
       <Route path="s/:slug" element={<Shop />} />
       <Route path="terms" element={<Terms />} />
@@ -110,7 +106,6 @@ function App() {
         <Route path="leave" element={<Need p="people"><Leave /></Need>} />
         <Route path="payroll" element={<Need p="people"><PayrollList /></Need>} />
         <Route path="payroll/:id" element={<Need p="people"><PayrollRun /></Need>} />
-        <Route path="recruitment" element={<Need p="people"><Recruitment /></Need>} />
         <Route path="pipeline" element={<Need p="crm"><Pipeline /></Need>} />
         <Route path="pipeline/:id" element={<Need p="crm"><LeadView /></Need>} />
         <Route path="production" element={<Need p="make"><Production /></Need>} />
