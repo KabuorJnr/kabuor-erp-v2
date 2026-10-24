@@ -23,7 +23,17 @@ function Frame({ children }: { children: React.ReactNode }) {
             ))}
           </ul>
         </div>
-        <p className="relative text-sm text-white/50">A Kabuor Builds product · Made in Kenya</p>
+        <div className="relative flex flex-wrap items-center gap-3 text-xs text-white/60">
+          <span>A Kabuor Builds product · Made in Kenya</span>
+          <span>·</span>
+          <Link to="/careers" className="font-medium text-white hover:underline">
+            Careers <span className="rounded bg-brand/30 px-1.5 py-0.5 text-[10px] font-bold text-white">We're hiring</span>
+          </Link>
+          <span>·</span>
+          <Link to="/terms" className="hover:text-white">Terms</Link>
+          <span>·</span>
+          <Link to="/privacy" className="hover:text-white">Privacy</Link>
+        </div>
       </section>
       <section className="grid place-items-center px-5 py-10">
         <div className="w-full max-w-sm">
@@ -32,6 +42,12 @@ function Frame({ children }: { children: React.ReactNode }) {
             <span className="font-display font-bold">Kabuor ERP</span>
           </div>
           {children}
+          <div className="mt-8 border-t border-line pt-4 text-center text-xs text-muted">
+            <Link to="/careers" className="inline-flex items-center gap-1.5 font-semibold text-brand hover:underline">
+              <span>Explore Careers at Kabuor</span>
+              <span className="rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold text-brand">8 open roles</span>
+            </Link>
+          </div>
         </div>
       </section>
     </div>

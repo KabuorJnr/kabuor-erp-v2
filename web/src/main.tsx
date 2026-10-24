@@ -34,6 +34,7 @@ import Inquiries from './pages/Inquiries';
 import Links from './pages/Links';
 import Shop from './pages/Shop';
 import { Privacy, Terms } from './pages/Legal';
+import Careers from './pages/Careers';
 import MyPortal from './pages/MyPortal';
 import Agents from './pages/Agents';
 import Security from './pages/Security';
@@ -58,6 +59,7 @@ function App() {
     return (
       <Routes>
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/careers" element={<Careers />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/s/:slug" element={<Shop />} />
         <Route path="/terms" element={<Terms />} />
@@ -67,6 +69,7 @@ function App() {
   if (session.user.mustChangePassword) return <ChooseOwnPassword session={session} />;
   return (
     <Routes>
+      <Route path="careers" element={<Careers />} />
       <Route path="privacy" element={<Privacy />} />
       <Route path="s/:slug" element={<Shop />} />
       <Route path="terms" element={<Terms />} />

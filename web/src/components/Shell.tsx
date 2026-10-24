@@ -157,6 +157,16 @@ export default function Shell({ session }: { session: Session }) {
               <LogOut className="h-4 w-4" />
             </button>
           </div>
+          <div className="flex items-center justify-between pt-1 text-[11px] text-muted">
+            <NavLink to="/careers" className="flex items-center gap-1 font-medium hover:text-brand">
+              <span>Careers</span>
+              <span className="rounded bg-brand-soft px-1 py-0.5 text-[9px] font-bold text-brand">Hiring</span>
+            </NavLink>
+            <span className="text-faint">·</span>
+            <NavLink to="/terms" className="hover:text-ink">Terms</NavLink>
+            <span className="text-faint">·</span>
+            <NavLink to="/privacy" className="hover:text-ink">Privacy</NavLink>
+          </div>
         </div>
       </aside>
 
