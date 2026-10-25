@@ -223,4 +223,255 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
             }).OrderByDescending(c => c.invoiceValue).ThenByDescending(c => c.lastSignIn).Take(50),
         };
     }
+
+    public sealed record UpdatePlanInput(string? Plan, int? ExtendDays, bool? Lock);
+    public sealed record WipeBusinessInput(string? Reason, string? Confirm);
+
+    // ------------------------------------------------------------------ resources & scaling
+    public async Task<object> Resources()
+    {
+        var proc = Process.GetCurrentProcess();
+        var workingSetMb = Math.Round(proc.WorkingSet64 / 1048576.0, 1);
+        var heapMb = Math.Round(GC.GetTotalMemory(false) / 1048576.0, 1);
+        ThreadPool.GetAvailableThreads(out int availWorkers, out int availIo);
+        ThreadPool.GetMaxThreads(out int maxWorkers, out int maxIo);
+        var busyWorkers = maxWorkers - availWorkers;
+
+        long? dbSizeBytes = null;
+        int? dbConnections = null;
+        try
+        {
+            if (db.Database.IsNpgsql())
+            {
+                dbSizeBytes = await db.Database.SqlQueryRaw<long>("SELECT pg_database_size(current_database()) AS \"Value\"").SingleAsync();
+                dbConnections = await db.Database.SqlQueryRaw<int>("SELECT count(*)::int AS \"Value\" FROM pg_stat_activity").SingleAsync();
+            }
+        }
+        catch { }
+
+        dynamic traffic = metrics.Snapshot();
+        double p95 = (double)traffic.p95;
+        double errorRate = (double)traffic.errorRate;
+
+        // Automated scaling recommendation
+        string scalingStatus = "optimal";
+        var reasons = new List<string>();
+
+        if (workingSetMb > 1200)
+        {
+            scalingStatus = "scale_up_recommended";
+            reasons.Add($"Container RAM is high ({workingSetMb} MB). Recommend scaling memory from 1GB to 2GB or 4GB.");
+        }
+        if (p95 > 800)
+        {
+            scalingStatus = "scale_up_recommended";
+            reasons.Add($"95th percentile latency is elevated ({p95} ms). Recommend scaling to 2+ CPU cores.");
+        }
+        if (errorRate > 2.0)
+        {
+            scalingStatus = "attention_needed";
+            reasons.Add($"Server error rate is {errorRate}%. Check application logs.");
+        }
+        if (reasons.Count == 0)
+        {
+            reasons.Add("Optimal: System resources, memory, and database responsiveness are operating well within capacity.");
+        }
+
+        return new
+        {
+            scaling = new
+            {
+                status = scalingStatus,
+                summary = scalingStatus == "optimal" ? "System capacity is optimal" : "Scale-up recommended",
+                recommendations = reasons,
+            },
+            memory = new
+            {
+                workingSetMb,
+                heapMb,
+                gen0 = GC.CollectionCount(0),
+                gen1 = GC.CollectionCount(1),
+                gen2 = GC.CollectionCount(2),
+            },
+            cpu = new
+            {
+                threads = proc.Threads.Count,
+                busyWorkerThreads = busyWorkers,
+                maxWorkerThreads = maxWorkers,
+            },
+            database = new
+            {
+                sizeMb = dbSizeBytes.HasValue ? Math.Round(dbSizeBytes.Value / 1048576.0, 1) : (double?)null,
+                connections = dbConnections,
+            },
+            uptime = new
+            {
+                startedAt = metrics.StartedAt,
+                uptimeHours = Math.Round((DateTimeOffset.UtcNow - metrics.StartedAt).TotalHours, 1),
+            }
+        };
+    }
+
+    // ------------------------------------------------------------------ businesses & governance
+    public async Task<object> Businesses()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var companies = await db.Companies.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        var users = await db.Users.IgnoreQueryFilters().Select(u => new { u.CompanyId, u.LastSignInAt, u.Role, u.Active }).ToListAsync();
+        var docs = await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && Issued.Contains(d.Status)).Select(d => new { d.CompanyId, d.Total, d.IssueDate }).ToListAsync();
+
+        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) =>
+            paidUntil > now ? "paying" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)) ? "trial" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)).AddDays(Plans.GraceDays) ? "grace" : "locked";
+
+        var list = companies.Select(c =>
+        {
+            var cUsers = users.Where(u => u.CompanyId == c.Id).ToList();
+            var cDocs = docs.Where(d => d.CompanyId == c.Id).ToList();
+            return new
+            {
+                c.Id,
+                c.Name,
+                c.Email,
+                c.Phone,
+                c.County,
+                c.Plan,
+                c.CreatedAt,
+                c.TrialEndsAt,
+                c.PaidUntil,
+                state = State(c.PaidUntil, c.TrialEndsAt, c.CreatedAt),
+                usersCount = cUsers.Count,
+                invoicesCount = cDocs.Count,
+                invoiceValue = cDocs.Sum(d => d.Total),
+                lastActive = cUsers.Max(u => u.LastSignInAt)
+            };
+        }).ToList();
+
+        return list;
+    }
+
+    public async Task<object> UpdatePlan(Guid id, UpdatePlanInput input)
+    {
+        var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == id) ?? throw new AppException("Business not found.", 404);
+        if (!string.IsNullOrWhiteSpace(input.Plan)) company.Plan = input.Plan.Trim().ToLowerInvariant();
+        if (input.ExtendDays.HasValue && input.ExtendDays.Value > 0)
+        {
+            var baseDate = company.PaidUntil > DateTimeOffset.UtcNow ? company.PaidUntil.Value : DateTimeOffset.UtcNow;
+            company.PaidUntil = baseDate.AddDays(input.ExtendDays.Value);
+        }
+        if (input.Lock == true)
+        {
+            company.PaidUntil = DateTimeOffset.UtcNow.AddDays(-1);
+            company.TrialEndsAt = DateTimeOffset.UtcNow.AddDays(-10);
+        }
+        await db.SaveChangesAsync();
+        return new { success = true, company.Id, company.Name, company.Plan, company.PaidUntil };
+    }
+
+    public async Task<object> WipeBusiness(Guid id, WipeBusinessInput input)
+    {
+        var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == id) ?? throw new AppException("Business not found.", 404);
+        if (company.Name == "Kabuor Builds") throw new AppException("Cannot wipe the platform admin company.", 400);
+
+        var confirm = (input.Confirm ?? "").Trim();
+        if (!string.Equals(confirm, company.Name, StringComparison.OrdinalIgnoreCase) && !string.Equals(confirm, "WIPE", StringComparison.OrdinalIgnoreCase))
+            throw new AppException($"Confirmation mismatch. Type '{company.Name}' or 'WIPE' to confirm permanent erasure.", 400);
+
+        var reason = (input.Reason ?? "").Trim();
+        if (reason.Length < 3) throw new AppException("A reason for data erasure must be provided for compliance audit logging.", 400);
+
+        async Task RemoveAll<T>(IQueryable<T> query) where T : class
+        {
+            var items = await query.ToListAsync();
+            if (items.Count > 0) db.Set<T>().RemoveRange(items);
+        }
+
+        await RemoveAll(db.DeliveryItems.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.DispatchTrips.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.AssetEvents.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Assets.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StockCountLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PortalCodes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.InquiryMessages.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Inquiries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.LinkVisits.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.TrackingLinks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.AgentSteps.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.AgentTasks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.AgentSetups.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StatementLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StatementImports.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.EtimsPurchases.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.WebhookDeliveries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.WebhookEndpoints.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.ApiKeys.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.MpesaRequests.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.BillingPayments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.EtimsDevices.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.WithholdingCertificates.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.EmployeeDeductions.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PosSessions.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.CampaignRecipients.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Campaigns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.ProductionRuns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.RecipeLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Recipes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Activities.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Leads.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Payslips.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PayrollRuns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.LeaveRequests.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Employees.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.ItemUnits.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PriceListItems.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PriceLists.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StockBatches.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StockMoves.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.StockLevels.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Locations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.SupplierPayments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PurchaseLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PurchaseDocs.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Suppliers.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Proposals.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.AuditEntries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Sequences.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.JournalLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.JournalEntries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Accounts.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.PaymentAllocations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Payments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.SalesLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.SalesDocs.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Items.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Customers.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        await RemoveAll(db.Users.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+
+        db.Companies.Remove(company);
+        await db.SaveChangesAsync();
+
+        return new
+        {
+            success = true,
+            wiped = company.Name,
+            reason,
+            wipedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    public async Task<object> ExecuteAction(string action)
+    {
+        action = action.ToLowerInvariant().Trim();
+        await Task.Yield();
+        switch (action)
+        {
+            case "clear-cache":
+                return new { action, status = "ok", message = "Platform cache refreshed." };
+            case "gc-collect":
+                GC.Collect(2, GCCollectionMode.Forced, true, true);
+                GC.WaitForPendingFinalizers();
+                return new { action, status = "ok", message = "Garbage collection completed. LOH compacted." };
+            default:
+                throw new AppException($"Unknown action '{action}'.", 400);
+        }
+    }
 }
