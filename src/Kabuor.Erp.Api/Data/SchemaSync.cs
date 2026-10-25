@@ -17,6 +17,8 @@ public static partial class SchemaSync
     {
         if (db.Database.IsNpgsql()) await Migrate(db);
         else await SyncSqlite(db);
+
+        await SeedPlatformAdmin(db);
     }
 
     static async Task Migrate(ErpDb db)
@@ -151,4 +153,49 @@ public static partial class SchemaSync
 
     [GeneratedRegex(@"^(CREATE (?:UNIQUE )?INDEX) ")]
     private static partial Regex Index();
+
+    static async Task SeedPlatformAdmin(ErpDb db)
+    {
+        try
+        {
+            const string email = "rooneykabuor2004@gmail.com";
+            var exists = await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email);
+            if (!exists)
+            {
+                var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == "Kabuor Builds");
+                if (company is null)
+                {
+                    company = new Domain.Company
+                    {
+                        Name = "Kabuor Builds",
+                        Email = email,
+                        Phone = "0705607954",
+                        County = "Nairobi",
+                        Plan = "enterprise",
+                        PaidUntil = DateTimeOffset.UtcNow.AddYears(10)
+                    };
+                    db.Companies.Add(company);
+                    await db.SaveChangesAsync();
+                }
+
+                var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
+                var admin = new Domain.User
+                {
+                    CompanyId = company.Id,
+                    Name = "Rooney Kabuor",
+                    Email = email,
+                    Phone = "0705607954",
+                    Role = Domain.Role.Owner,
+                    TwoFactorEnabled = false,
+                    Active = true,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    LastSignInAt = DateTimeOffset.UtcNow
+                };
+                admin.PasswordHash = hasher.HashPassword(admin, "KabuorAdmin2026!");
+                db.Users.Add(admin);
+                await db.SaveChangesAsync();
+            }
+        }
+        catch { /* best-effort bootstrap */ }
+    }
 }
