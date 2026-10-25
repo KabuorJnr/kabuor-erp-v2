@@ -20,11 +20,11 @@ type Charts = {
 };
 
 // Categorical slots 1 and 2 of the reference palette, checked for colour-blind separation and contrast on white.
-const SERIES = ['#2a78d6', '#eb6834'];
+export const SERIES = ['#2a78d6', '#eb6834'];
 
 const money = (cents: number) => ksh(Math.round(cents / 100) * 100);
 /** Axis and label money: KSh 1.2M, KSh 350K. */
-function compact(cents: number) {
+export function compact(cents: number) {
   const s = cents / 100;
   const a = Math.abs(s);
   if (a >= 1e6) return `${(s / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
@@ -69,7 +69,9 @@ function barPath(x: number, base: number, w: number, h: number) {
 type Series = { name: string; color: string; values: number[] };
 
 /** Month columns on one money axis, optionally with a dashed target line. Hover a month for its figures. */
-function Columns({ labels, series, reference, tip }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode }) {
+export function Columns({ labels, series, reference, tip, fmt, whole }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode; fmt?: (v: number) => string; whole?: boolean }) {
+  void whole;
+  const formatter = fmt ?? compact;
   const [ref, w] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const H = 220, top = 16, bottom = 24, left = 46, right = 8;
@@ -93,7 +95,7 @@ function Columns({ labels, series, reference, tip }: { labels: string[]; series:
           {t.map((v) => (
             <g key={v}>
               <line x1={left} x2={w - right} y1={y(v)} y2={y(v)} stroke="var(--color-line)" strokeWidth={1} />
-              <text x={left - 6} y={y(v)} dy="0.32em" textAnchor="end" className="fill-faint text-[10px]">{compact(v)}</text>
+              <text x={left - 6} y={y(v)} dy="0.32em" textAnchor="end" className="fill-faint text-[10px]">{formatter(v)}</text>
             </g>
           ))}
           {labels.map((l, i) => {
@@ -107,7 +109,7 @@ function Columns({ labels, series, reference, tip }: { labels: string[]; series:
           })}
           {/* Direct labels on the latest month, so the current figures read without hovering. */}
           {hover == null && series.map((s, k) => s.values[last] > 0 && (
-            <text key={s.name} x={left + band * last + (band - groupW) / 2 + k * (barW + gap) + barW / 2} y={y(s.values[last]) - 4} textAnchor="middle" className="fill-ink-2 text-[10px] font-semibold">{compact(s.values[last])}</text>
+            <text key={s.name} x={left + band * last + (band - groupW) / 2 + k * (barW + gap) + barW / 2} y={y(s.values[last]) - 4} textAnchor="middle" className="fill-ink-2 text-[10px] font-semibold">{formatter(s.values[last])}</text>
           ))}
           {reference && reference.value > 0 && (
             <g>
@@ -148,7 +150,7 @@ function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; valu
   );
 }
 
-function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
+export function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -169,7 +171,7 @@ function Legend({ items }: { items: [string, string][] }) {
   );
 }
 
-function ChartCard({ title, answer, legend, link, table, children, className }: { title: string; answer: ReactNode; legend?: ReactNode; link?: [string, string]; table: ReactNode; children: ReactNode; className?: string }) {
+export function ChartCard({ title, answer, legend, link, table, children, className }: { title: string; answer: ReactNode; legend?: ReactNode; link?: [string, string]; table: ReactNode; children: ReactNode; className?: string }) {
   const [asTable, setAsTable] = useState(false);
   return (
     <section className={cn('card flex flex-col gap-3 p-4 sm:p-5', className)}>

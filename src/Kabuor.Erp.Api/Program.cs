@@ -132,6 +132,9 @@ builder.Services.AddHttpClient("anthropic", c =>
     c.BaseAddress = new Uri("https://api.anthropic.com/");
     c.Timeout = TimeSpan.FromSeconds(90);
 });
+builder.Services.AddSingleton<Kabuor.Erp.Platform.RequestMetrics>();
+builder.Services.AddSingleton<Kabuor.Erp.Platform.Heartbeat>();
+builder.Services.AddScoped<Kabuor.Erp.Platform.PlatformService>();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
@@ -263,6 +266,9 @@ app.UseCors("dev");
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRateLimiter();
+
+app.Use(Kabuor.Erp.Platform.RequestMetrics.Middleware(app.Services.GetRequiredService<Kabuor.Erp.Platform.RequestMetrics>()));
+
 app.UseAuthentication();
 
 // Who is asking: the company and person from the sign-in token, used by the database's company filter.
@@ -320,6 +326,7 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
 AssetEndpoints.Map(app);
+PlatformEndpoints.Map(app);
 // The web app (built into wwwroot): any other path is a page in it.
 app.MapFallbackToFile("index.html");
 

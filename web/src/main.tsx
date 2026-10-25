@@ -40,6 +40,7 @@ import Agents from './pages/Agents';
 import Security from './pages/Security';
 import Reconcile from './pages/Reconcile';
 import EtimsInbox from './pages/EtimsInbox';
+import Platform from './pages/Platform';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -124,6 +125,7 @@ function App() {
         <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />
         <Route path="reconcile" element={<Need p="finance"><Reconcile /></Need>} />
         <Route path="settings" element={<Need p="admin"><Settings /></Need>} />
+        <Route path="platform" element={<Need p="admin"><Platform /></Need>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

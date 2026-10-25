@@ -184,7 +184,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             PreventNegativeStock = industry is "distribution" or "retail"
         };
         (ctx.CompanyId, ctx.Actor) = (company.Id, input.OwnerName!.Trim());
-        var owner = new User { CompanyId = company.Id, Name = input.OwnerName.Trim(), Email = email, Phone = phone, Role = Role.Owner };
+        var owner = new User { CompanyId = company.Id, Name = input.OwnerName.Trim(), Email = email, Phone = phone, Role = Role.Owner, LastSignInAt = DateTimeOffset.UtcNow };
         owner.PasswordHash = Hasher.HashPassword(owner, input.Password);
         ctx.UserId = owner.Id;
         db.Companies.Add(company);
@@ -231,7 +231,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             await db.SaveChangesAsync();
             return new { needsCode = true, challenge = tokens.Challenge(user) };
         }
-        (user.FailedLogins, user.LockedUntil) = (0, null);
+        (user.FailedLogins, user.LockedUntil, user.LastSignInAt) = (0, null, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync();
         var company = await db.Companies.SingleAsync(c => c.Id == user.CompanyId);
         return Session(user, company);
@@ -260,7 +260,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
                 ? "Your two-step setup can't be read after a server change, so app codes won't work. Sign in with one of your recovery codes, then turn two-step sign-in off and on again in Security."
                 : "That code isn't right. Use the 6 digits in your authenticator app now, or a recovery code.", 401);
         }
-        (user.FailedLogins, user.LockedUntil) = (0, null);
+        (user.FailedLogins, user.LockedUntil, user.LastSignInAt) = (0, null, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync();
         var session = Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
         return input.Remember == true ? session with { Device = tokens.Device(user) } : session;

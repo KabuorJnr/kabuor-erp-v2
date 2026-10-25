@@ -135,6 +135,7 @@ public sealed class User : ICompanyOwned
     public bool TwoFactorEnabled { get; set; }
     public long TotpLastStep { get; set; }
     public string RecoveryCodes { get; set; } = "";
+    public DateTimeOffset? LastSignInAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 

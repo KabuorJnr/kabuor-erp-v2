@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Agents;
 
-public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration config, ILogger<AgentScheduler> log) : BackgroundService
+public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration config, ILogger<AgentScheduler> log, Kabuor.Erp.Platform.Heartbeat heartbeat) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
@@ -14,8 +14,17 @@ public sealed class AgentScheduler(IServiceScopeFactory scopes, IConfiguration c
         await Task.Delay(TimeSpan.FromSeconds(30), stop);
         while (!stop.IsCancellationRequested)
         {
-            try { await RunDue(stop); }
-            catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "Agent scheduler tick failed"); }
+            try
+            {
+                await RunDue(stop);
+                heartbeat.AgentsTick = DateTimeOffset.UtcNow;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                heartbeat.AgentsError = DateTimeOffset.UtcNow;
+                heartbeat.AgentsErrorMessage = e.Message;
+                log.LogError(e, "Agent scheduler tick failed");
+            }
             await Task.Delay(tick, stop);
         }
     }
