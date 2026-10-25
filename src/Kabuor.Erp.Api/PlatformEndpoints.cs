@@ -20,8 +20,11 @@ public static class PlatformEndpoints
         admin.MapGet("/analytics", (PlatformService s, int? days) => s.Analytics(days ?? 30));
         admin.MapGet("/resources", (PlatformService s) => s.Resources());
         admin.MapGet("/businesses", (PlatformService s) => s.Businesses());
+        admin.MapGet("/businesses/{id:guid}", (PlatformService s, Guid id) => s.BusinessDetail(id));
         admin.MapPost("/businesses/{id:guid}/plan", (PlatformService s, Guid id, PlatformService.UpdatePlanInput input) => s.UpdatePlan(id, input));
         admin.MapPost("/businesses/{id:guid}/wipe", (PlatformService s, Guid id, PlatformService.WipeBusinessInput input) => s.WipeBusiness(id, input));
+        admin.MapGet("/issues", (PlatformService s) => s.Issues());
+        admin.MapPost("/issues/{id:guid}/reply", (PlatformService s, Guid id, PlatformService.ReplyIssueInput input) => s.ReplyIssue(id, input));
         admin.MapPost("/actions/{action}", (PlatformService s, string action) => s.ExecuteAction(action));
     }
 }

@@ -19,6 +19,7 @@ public static partial class SchemaSync
         else await SyncSqlite(db);
 
         await SeedPlatformAdmin(db);
+        await SeedDemoBusiness(db);
     }
 
     static async Task Migrate(ErpDb db)
@@ -207,6 +208,186 @@ public static partial class SchemaSync
                 user.Email = email;
                 user.CompanyId = company.Id;
                 user.PasswordHash = hasher.HashPassword(user, "KabuorAdmin2026!");
+                await db.SaveChangesAsync();
+            }
+        }
+        catch { /* best-effort bootstrap */ }
+    }
+
+    public static readonly Guid DemoCompanyId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+
+    static async Task SeedDemoBusiness(ErpDb db)
+    {
+        try
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == DemoCompanyId || c.Name == "Amani Distributors Ltd");
+            if (company is null)
+            {
+                company = new Domain.Company
+                {
+                    Id = DemoCompanyId,
+                    Name = "Amani Distributors Ltd",
+                    Email = "accounts@amani.test",
+                    Phone = "0712000001",
+                    County = "Nairobi",
+                    KraPin = "P051234567X",
+                    VatRegistered = true,
+                    Plan = "growth",
+                    Industry = "distribution",
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-60),
+                    PaidUntil = DateTimeOffset.UtcNow.AddDays(180)
+                };
+                db.Companies.Add(company);
+                await db.SaveChangesAsync();
+            }
+
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
+            var staffDefs = new[]
+            {
+                ("Grace Wambui", "owner@amani.test", "0712000001", Domain.Role.Owner, "Amani-owner-2026!"),
+                ("Peter Otieno", "peter@amani.test", "0712000002", Domain.Role.Accountant, "Amani-peter-2026"),
+                ("Mercy Achieng", "mercy@amani.test", "0712000003", Domain.Role.Sales, "Amani-mercy-2026"),
+                ("Joseph Mutua", "joseph@amani.test", "0712000004", Domain.Role.Storekeeper, "Amani-joseph-2026"),
+                ("Faith Njeri", "faith@amani.test", "0712000005", Domain.Role.HR, "Amani-faith-2026"),
+            };
+
+            foreach (var (name, email, phone, role, pass) in staffDefs)
+            {
+                var u = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Email == email && x.CompanyId == company.Id);
+                if (u is null)
+                {
+                    u = new Domain.User
+                    {
+                        CompanyId = company.Id,
+                        Name = name,
+                        Email = email,
+                        Phone = phone,
+                        Role = role,
+                        Active = true,
+                        CreatedAt = DateTimeOffset.UtcNow.AddDays(-55),
+                        LastSignInAt = DateTimeOffset.UtcNow.AddHours(-3)
+                    };
+                    u.PasswordHash = hasher.HashPassword(u, pass);
+                    db.Users.Add(u);
+                }
+            }
+            await db.SaveChangesAsync();
+
+            // Sample Customer
+            var customer = await db.Customers.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.CompanyId == company.Id);
+            if (customer is null)
+            {
+                customer = new Domain.Customer
+                {
+                    CompanyId = company.Id,
+                    Number = "C-0001",
+                    Name = "Mama Njeri Supermarket",
+                    Phone = "0722100200",
+                    Email = "mamanjeri@duka.test",
+                    Address = "Ngara Market, Stalls 41-44",
+                    CreditLimit = 150_000_00,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-50)
+                };
+                db.Customers.Add(customer);
+                await db.SaveChangesAsync();
+            }
+
+            // Sample Invoices
+            var hasInvoices = await db.SalesDocs.IgnoreQueryFilters().AnyAsync(d => d.CompanyId == company.Id);
+            if (!hasInvoices)
+            {
+                var doc1 = new Domain.SalesDoc
+                {
+                    CompanyId = company.Id,
+                    Kind = Domain.SalesDocKind.Invoice,
+                    Number = "INV-0001",
+                    CustomerId = customer.Id,
+                    IssueDate = Common.Clock.Today.AddDays(-14),
+                    DueDate = Common.Clock.Today.AddDays(16),
+                    Net = 120_000_00,
+                    Tax = 19_200_00,
+                    Total = 139_200_00,
+                    Paid = 139_200_00,
+                    Status = Domain.SalesDocStatus.Paid,
+                    EtimsStatus = Domain.EtimsStatus.Signed,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-14)
+                };
+                var doc2 = new Domain.SalesDoc
+                {
+                    CompanyId = company.Id,
+                    Kind = Domain.SalesDocKind.Invoice,
+                    Number = "INV-0002",
+                    CustomerId = customer.Id,
+                    IssueDate = Common.Clock.Today.AddDays(-2),
+                    DueDate = Common.Clock.Today.AddDays(28),
+                    Net = 95_000_00,
+                    Tax = 15_200_00,
+                    Total = 110_200_00,
+                    Paid = 0,
+                    Status = Domain.SalesDocStatus.Sent,
+                    EtimsStatus = Domain.EtimsStatus.Signed,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-2)
+                };
+                db.SalesDocs.AddRange(doc1, doc2);
+                await db.SaveChangesAsync();
+            }
+
+            // Sample Support Issues
+            var hasInquiries = await db.Inquiries.IgnoreQueryFilters().AnyAsync(i => i.CompanyId == company.Id);
+            if (!hasInquiries)
+            {
+                var inq1 = new Domain.Inquiry
+                {
+                    CompanyId = company.Id,
+                    Number = "ISS-1001",
+                    Name = "Grace Wambui (Owner)",
+                    Phone = "0712000001",
+                    Email = "owner@amani.test",
+                    Subject = "Need assistance integrating KRA eTIMS OSCU device with our physical warehouse barcode scanner",
+                    Channel = Domain.Channel.Website,
+                    Status = Domain.InquiryStatus.Open,
+                    CreatedAt = DateTimeOffset.UtcNow.AddHours(-18)
+                };
+                inq1.Messages.Add(new Domain.InquiryMessage
+                {
+                    CompanyId = company.Id,
+                    From = "customer",
+                    Author = "Grace Wambui",
+                    Text = "Hello Kabuor Team, our eTIMS device received KRA validation approval yesterday. How do we test direct print sync with the thermal till receipts?",
+                    At = DateTimeOffset.UtcNow.AddHours(-18)
+                });
+
+                var inq2 = new Domain.Inquiry
+                {
+                    CompanyId = company.Id,
+                    Number = "ISS-1002",
+                    Name = "Peter Otieno (Accountant)",
+                    Phone = "0712000002",
+                    Email = "peter@amani.test",
+                    Subject = "Request to verify M-Pesa B2B bank settlement reconciliation rules",
+                    Channel = Domain.Channel.WhatsApp,
+                    Status = Domain.InquiryStatus.Answered,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-2),
+                    FirstResponseAt = DateTimeOffset.UtcNow.AddDays(-2).AddMinutes(45)
+                };
+                inq2.Messages.Add(new Domain.InquiryMessage
+                {
+                    CompanyId = company.Id,
+                    From = "customer",
+                    Author = "Peter Otieno",
+                    Text = "We noticed M-Pesa Paybill statements now show separate utility charges. Are these automatically booked under Bank Charges?",
+                    At = DateTimeOffset.UtcNow.AddDays(-2)
+                });
+                inq2.Messages.Add(new Domain.InquiryMessage
+                {
+                    CompanyId = company.Id,
+                    From = "staff",
+                    Author = "Rooney Kabuor (Platform Admin)",
+                    Text = "Yes Peter, standard tariff fees are automatically posted to Account 6200 (Bank & M-Pesa Charges) during statement sync.",
+                    At = DateTimeOffset.UtcNow.AddDays(-2).AddMinutes(45)
+                });
+
+                db.Inquiries.AddRange(inq1, inq2);
                 await db.SaveChangesAsync();
             }
         }

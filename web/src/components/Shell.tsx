@@ -36,9 +36,20 @@ export default function Shell({ session }: { session: Session }) {
   }, []);
   const initials = session.user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
+  const isPlatformAdmin = session.user.isPlatformAdmin === true;
   const isEmployee = session.user.role === 'Employee';
 
-  const groups: { title: string; links: (Link | false)[] }[] = isEmployee
+  const groups: { title: string; links: (Link | false)[] }[] = isPlatformAdmin
+    ? [
+        {
+          title: 'Platform Management',
+          links: [
+            { to: '/platform', label: 'Platform Console', icon: Activity },
+            { to: '/security', label: 'Sign-in security', icon: ShieldCheck },
+          ],
+        },
+      ]
+    : isEmployee
     ? [
         {
           title: 'Self Service',
@@ -46,26 +57,14 @@ export default function Shell({ session }: { session: Session }) {
         },
       ]
     : [
-        ...(session.user.isPlatformAdmin
-          ? [
-              {
-                title: 'Platform Oversight',
-                links: [
-                  { to: '/platform', label: 'Platform Console', icon: Activity },
-                  { to: '/today', label: 'Workspace Today', icon: Home },
-                ],
-              },
-            ]
-          : [
-              {
-                title: '',
-                links: [
-                  { to: '/', label: t('Today'), icon: Home, end: true },
-                  can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
-                  (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
-                ],
-              },
-            ]),
+        {
+          title: '',
+          links: [
+            { to: '/', label: t('Today'), icon: Home, end: true },
+            can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
+            (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
+          ],
+        },
         {
           title: 'Sell',
           links: [
@@ -106,11 +105,16 @@ export default function Shell({ session }: { session: Session }) {
             can(session, 'people') && { to: '/payroll', label: 'Payroll', icon: Banknote },
           ],
         },
-        { title: '', links: [{ to: '/security', label: 'Sign-in security', icon: ShieldCheck }, can(session, 'admin') && { to: '/settings', label: t('Settings'), icon: Cog }, can(session, 'admin') && { to: '/platform', label: 'Platform Console', icon: Activity }] },
+        { title: '', links: [{ to: '/security', label: 'Sign-in security', icon: ShieldCheck }, can(session, 'admin') && { to: '/settings', label: t('Settings'), icon: Cog }] },
       ];
   const visible = groups.map((g) => ({ ...g, links: g.links.filter(Boolean) as Link[] })).filter((g) => g.links.length);
   // Phone tabs: Today, then the first three sections this role uses most, in this order of preference.
-  const phoneTabs: Link[] = isEmployee
+  const phoneTabs: Link[] = isPlatformAdmin
+    ? [
+        { to: '/platform', label: 'Console', icon: Activity, end: true },
+        { to: '/security', label: 'Security', icon: ShieldCheck },
+      ]
+    : isEmployee
     ? [{ to: '/portal', label: 'My Portal', icon: UserRound, end: true }]
     : [
         { to: '/', label: t('Today'), icon: Home, end: true },
@@ -146,8 +150,12 @@ export default function Shell({ session }: { session: Session }) {
         <div className="flex items-center gap-2.5 px-2">
           <img src="/mark.svg" alt="" className="h-8 w-8" />
           <div className="min-w-0 leading-tight">
-            <p className="font-display text-[15px] font-bold">Kabuor ERP</p>
-            <p className="truncate text-xs text-muted">{session.company.name}</p>
+            <p className="font-display text-[15px] font-bold">
+              {session.user.isPlatformAdmin ? 'Kabuor Platform' : 'Kabuor ERP'}
+            </p>
+            <p className="truncate text-xs text-muted">
+              {session.user.isPlatformAdmin ? 'Platform Admin Console' : session.company.name}
+            </p>
           </div>
         </div>
         <nav className="mt-6 min-h-0 flex-1 overflow-y-auto pb-2" aria-label="Main">
@@ -184,7 +192,9 @@ export default function Shell({ session }: { session: Session }) {
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-white/95 px-4 py-3 backdrop-blur lg:hidden print:hidden">
         <div className="flex min-w-0 items-center gap-2">
           <img src="/mark.svg" alt="" className="h-7 w-7" />
-          <span className="truncate font-display font-bold">{session.company.name}</span>
+          <span className="truncate font-display font-bold">
+            {session.user.isPlatformAdmin ? 'Kabuor Platform' : session.company.name}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <button onClick={() => setTellMe(true)} className="grid h-9 w-9 place-items-center rounded-full text-muted" aria-label="Search">

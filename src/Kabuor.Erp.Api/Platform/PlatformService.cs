@@ -226,6 +226,7 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
 
     public sealed record UpdatePlanInput(string? Plan, int? ExtendDays, bool? Lock);
     public sealed record WipeBusinessInput(string? Reason, string? Confirm);
+    public sealed record ReplyIssueInput(string? Message);
 
     // ------------------------------------------------------------------ resources & scaling
     public async Task<object> Resources()
@@ -347,6 +348,135 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         }).ToList();
 
         return list;
+    }
+
+    public async Task<object> BusinessDetail(Guid id)
+    {
+        var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == id) ?? throw new AppException("Business not found.", 404);
+        var users = await db.Users.IgnoreQueryFilters().Where(u => u.CompanyId == id).OrderByDescending(u => u.LastSignInAt).Select(u => new
+        {
+            u.Id,
+            u.Name,
+            u.Email,
+            u.Phone,
+            role = u.Role.ToString(),
+            u.Active,
+            u.CreatedAt,
+            u.LastSignInAt
+        }).ToListAsync();
+
+        var docs = await db.SalesDocs.IgnoreQueryFilters()
+            .Include(d => d.Customer)
+            .Where(d => d.CompanyId == id && d.Kind == SalesDocKind.Invoice)
+            .OrderByDescending(d => d.CreatedAt).Take(20).Select(d => new
+            {
+                d.Id,
+                d.Number,
+                customerName = d.Customer != null ? d.Customer.Name : "Walk-in Customer",
+                total = d.Total,
+                balance = d.Total - d.Paid,
+                status = d.Status.ToString(),
+                d.IssueDate,
+                d.DueDate
+            }).ToListAsync();
+
+        var footprint = new
+        {
+            users = users.Count,
+            customers = await db.Customers.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            items = await db.Items.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            invoices = await db.SalesDocs.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id && c.Kind == SalesDocKind.Invoice),
+            payments = await db.Payments.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            assets = await db.Assets.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            inquiries = await db.Inquiries.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            employees = await db.Employees.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+            journals = await db.JournalEntries.IgnoreQueryFilters().CountAsync(c => c.CompanyId == id),
+        };
+
+        var now = DateTimeOffset.UtcNow;
+        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) =>
+            paidUntil > now ? "paying" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)) ? "trial" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)).AddDays(Plans.GraceDays) ? "grace" : "locked";
+
+        return new
+        {
+            company.Id,
+            company.Name,
+            company.Email,
+            company.Phone,
+            company.County,
+            company.KraPin,
+            company.VatRegistered,
+            company.Plan,
+            company.Industry,
+            company.MpesaShortcode,
+            company.CreatedAt,
+            company.TrialEndsAt,
+            company.PaidUntil,
+            state = State(company.PaidUntil, company.TrialEndsAt, company.CreatedAt),
+            users,
+            invoices = docs,
+            invoicedTotal = docs.Sum(d => d.total),
+            footprint,
+            canWipe = company.Name != "Kabuor Builds"
+        };
+    }
+
+    public async Task<object> Issues()
+    {
+        var inquiries = await db.Inquiries.IgnoreQueryFilters()
+            .Include(i => i.Messages)
+            .OrderByDescending(i => i.CreatedAt)
+            .Take(50)
+            .ToListAsync();
+
+        var companies = await db.Companies.ToDictionaryAsync(c => c.Id, c => c.Name);
+
+        return inquiries.Select(i => new
+        {
+            i.Id,
+            i.CompanyId,
+            companyName = companies.GetValueOrDefault(i.CompanyId, "Unknown Business"),
+            i.Number,
+            i.Name,
+            i.Phone,
+            i.Email,
+            i.Subject,
+            channel = i.Channel.ToString(),
+            status = i.Status.ToString(),
+            i.CreatedAt,
+            i.FirstResponseAt,
+            messages = i.Messages.OrderBy(m => m.At).Select(m => new
+            {
+                m.Id,
+                m.From,
+                m.Author,
+                m.Text,
+                m.At
+            }).ToList()
+        }).ToList();
+    }
+
+    public async Task<object> ReplyIssue(Guid id, ReplyIssueInput input)
+    {
+        var msg = (input.Message ?? "").Trim();
+        if (msg.Length < 2) throw new AppException("Message cannot be empty.", 400);
+
+        var inq = await db.Inquiries.IgnoreQueryFilters().Include(i => i.Messages).FirstOrDefaultAsync(i => i.Id == id)
+            ?? throw new AppException("Issue not found.", 404);
+
+        inq.Messages.Add(new InquiryMessage
+        {
+            CompanyId = inq.CompanyId,
+            From = "staff",
+            Author = "Rooney Kabuor (Platform Admin)",
+            Text = msg,
+            At = DateTimeOffset.UtcNow
+        });
+        inq.Status = InquiryStatus.Answered;
+        inq.FirstResponseAt ??= DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return new { success = true, inq.Id, status = inq.Status.ToString() };
     }
 
     public async Task<object> UpdatePlan(Guid id, UpdatePlanInput input)
