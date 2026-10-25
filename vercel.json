@@ -14,21 +14,9 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "kabuor-erp"
-      }
-    },
-    {
-      "source": "/l/(.*)",
-      "destination": {
-        "service": "kabuor-erp"
-      }
-    },
-    {
       "source": "/(.*)",
       "destination": {
-        "service": "web"
+        "service": "kabuor-erp"
       }
     }
   ],
