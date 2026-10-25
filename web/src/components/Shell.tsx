@@ -46,14 +46,26 @@ export default function Shell({ session }: { session: Session }) {
         },
       ]
     : [
-        {
-          title: '',
-          links: [
-            { to: '/', label: t('Today'), icon: Home, end: true },
-            can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
-            (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
-          ],
-        },
+        ...(session.user.isPlatformAdmin
+          ? [
+              {
+                title: 'Platform Oversight',
+                links: [
+                  { to: '/platform', label: 'Platform Console', icon: Activity },
+                  { to: '/today', label: 'Workspace Today', icon: Home },
+                ],
+              },
+            ]
+          : [
+              {
+                title: '',
+                links: [
+                  { to: '/', label: t('Today'), icon: Home, end: true },
+                  can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
+                  (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
+                ],
+              },
+            ]),
         {
           title: 'Sell',
           links: [
@@ -152,7 +164,9 @@ export default function Shell({ session }: { session: Session }) {
           <div className="flex items-center justify-between gap-2">
             <span className="min-w-0">
               <b className="block truncate">{session.user.name}</b>
-              <span className="text-xs text-muted">{session.user.role}</span>
+              <span className="text-xs text-muted font-medium">
+                {session.user.isPlatformAdmin ? '🛡️ Platform Admin' : session.user.role}
+              </span>
             </span>
             <button onClick={() => setSession(null)} className="grid h-9 w-9 place-items-center rounded-full text-muted hover:bg-paper" aria-label={t('Sign out')} title={t('Sign out')}>
               <LogOut className="h-4 w-4" />

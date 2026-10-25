@@ -154,33 +154,38 @@ public static partial class SchemaSync
     [GeneratedRegex(@"^(CREATE (?:UNIQUE )?INDEX) ")]
     private static partial Regex Index();
 
+    public static readonly Guid PlatformCompanyId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    public static readonly Guid PlatformAdminUserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
     static async Task SeedPlatformAdmin(ErpDb db)
     {
         try
         {
             const string email = "rooneykabuor2004@gmail.com";
-            var exists = await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email);
-            if (!exists)
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == "Kabuor Builds" || c.Id == PlatformCompanyId);
+            if (company is null)
             {
-                var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == "Kabuor Builds");
-                if (company is null)
+                company = new Domain.Company
                 {
-                    company = new Domain.Company
-                    {
-                        Name = "Kabuor Builds",
-                        Email = email,
-                        Phone = "0705607954",
-                        County = "Nairobi",
-                        Plan = "enterprise",
-                        PaidUntil = DateTimeOffset.UtcNow.AddYears(10)
-                    };
-                    db.Companies.Add(company);
-                    await db.SaveChangesAsync();
-                }
+                    Id = PlatformCompanyId,
+                    Name = "Kabuor Builds",
+                    Email = email,
+                    Phone = "0705607954",
+                    County = "Nairobi",
+                    Plan = "enterprise",
+                    PaidUntil = DateTimeOffset.UtcNow.AddYears(10)
+                };
+                db.Companies.Add(company);
+                await db.SaveChangesAsync();
+            }
 
-                var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
-                var admin = new Domain.User
+            var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == email || u.Id == PlatformAdminUserId);
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
+            if (user is null)
+            {
+                user = new Domain.User
                 {
+                    Id = PlatformAdminUserId,
                     CompanyId = company.Id,
                     Name = "Rooney Kabuor",
                     Email = email,
@@ -191,8 +196,17 @@ public static partial class SchemaSync
                     CreatedAt = DateTimeOffset.UtcNow,
                     LastSignInAt = DateTimeOffset.UtcNow
                 };
-                admin.PasswordHash = hasher.HashPassword(admin, "KabuorAdmin2026!");
-                db.Users.Add(admin);
+                user.PasswordHash = hasher.HashPassword(user, "KabuorAdmin2026!");
+                db.Users.Add(user);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                user.Active = true;
+                user.Role = Domain.Role.Owner;
+                user.Email = email;
+                user.CompanyId = company.Id;
+                user.PasswordHash = hasher.HashPassword(user, "KabuorAdmin2026!");
                 await db.SaveChangesAsync();
             }
         }

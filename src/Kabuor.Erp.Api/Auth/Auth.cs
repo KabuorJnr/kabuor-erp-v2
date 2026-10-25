@@ -389,8 +389,13 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         return Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
     }
 
-    Session Session(User u, Company c) => new(
-        tokens.Issue(u),
-        new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, permissions = Policies.For(u.Role) },
-        new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate });
+    Session Session(User u, Company c)
+    {
+        var admins = (config["Platform:Admins"] ?? "").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries).Select(e => e.Trim().ToLowerInvariant()).ToHashSet();
+        var isPlatformAdmin = admins.Contains(u.Email.ToLowerInvariant());
+        return new(
+            tokens.Issue(u),
+            new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, isPlatformAdmin, permissions = Policies.For(u.Role) },
+            new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate });
+    }
 }

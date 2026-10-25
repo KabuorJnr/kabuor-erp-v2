@@ -76,7 +76,9 @@ function App() {
         <Route
           index
           element={
-            session.user.role === 'Employee' ? (
+            session.user.isPlatformAdmin ? (
+              <Navigate to="/platform" replace />
+            ) : session.user.role === 'Employee' ? (
               <Navigate to="/portal" replace />
             ) : session.user.role === 'Sales' ? (
               <Navigate to="/pos" replace />
@@ -85,6 +87,7 @@ function App() {
             )
           }
         />
+        <Route path="today" element={<Today />} />
         <Route path="pos" element={<Need p="pos"><Pos /></Need>} />
         <Route path="portal" element={<MyPortal />} />
         <Route path="invoices" element={<Need p="sales.view"><InvoiceList kind="Invoice" /></Need>} />
