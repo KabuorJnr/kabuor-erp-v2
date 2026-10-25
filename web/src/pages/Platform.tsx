@@ -1,5 +1,6 @@
 // The platform console for Kabuor Builds: oversight across every business, server health & auto-scaling
 // telemetry, database capacity, data governance & KDPA/GDPR compliance data wipes, cross-tenant support desk, and platform growth.
+// STYLING: PURE WHITE BACKGROUND, CRISP BLACK TEXT, ULTRA HIGH CONTRAST, ZERO DARK MODE INVERSIONS.
 import { useEffect, useId, useState } from 'react';
 import {
   Activity,
@@ -225,38 +226,24 @@ const short = (n: number) =>
   n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(n);
 
 // -----------------------------------------------------------------------------
-// Sleek Minimalist Executive Components
+// Pure White & Crisp Black Executive Status Components
 // -----------------------------------------------------------------------------
-function StatusDot({ status }: { status: 'good' | 'warn' | 'bad' | 'info' | 'neutral' }) {
-  const bg =
-    status === 'good'
-      ? 'bg-emerald-500'
-      : status === 'warn'
-      ? 'bg-amber-500'
-      : status === 'bad'
-      ? 'bg-rose-500'
-      : status === 'info'
-      ? 'bg-sky-500'
-      : 'bg-slate-400';
-  return <span className={cn('inline-block h-2 w-2 rounded-full ring-2 ring-white/20', bg)} />;
-}
-
 function StatusBadge({ state }: { state: string }) {
-  const map: Record<string, { dot: 'good' | 'warn' | 'bad' | 'info' | 'neutral'; label: string }> = {
-    paying: { dot: 'good', label: 'Paying' },
-    trial: { dot: 'info', label: 'Trial' },
-    grace: { dot: 'warn', label: 'Grace' },
-    locked: { dot: 'bad', label: 'Locked' },
-    Open: { dot: 'warn', label: 'Open' },
-    InProgress: { dot: 'info', label: 'In Progress' },
-    Resolved: { dot: 'good', label: 'Resolved' },
-    Closed: { dot: 'neutral', label: 'Closed' },
+  const map: Record<string, string> = {
+    paying: 'Paying',
+    trial: 'Trial',
+    grace: 'Grace',
+    locked: 'Locked',
+    Open: 'Open',
+    InProgress: 'In Progress',
+    Resolved: 'Resolved',
+    Closed: 'Closed',
   };
-  const item = map[state] ?? { dot: 'neutral', label: state };
+  const label = map[state] ?? state;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/80 px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-300">
-      <StatusDot status={item.dot} />
-      <span>{item.label}</span>
+    <span className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-black">
+      <span className="h-1.5 w-1.5 rounded-full bg-black" />
+      <span>{label}</span>
     </span>
   );
 }
@@ -273,28 +260,28 @@ function StatCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-zinc-400">
+        <span className="text-xs font-bold tracking-wider text-black uppercase">
           {title}
         </span>
-        {icon && <span className="text-slate-400 dark:text-zinc-500">{icon}</span>}
+        {icon && <span className="text-black">{icon}</span>}
       </div>
-      <div className="num mt-1.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-100">
+      <div className="num mt-2 text-2xl font-black tracking-tight text-black">
         {value}
       </div>
-      {subtitle && <div className="mt-1 text-xs text-slate-500 dark:text-zinc-400">{subtitle}</div>}
+      {subtitle && <div className="mt-1 text-xs font-medium text-slate-700">{subtitle}</div>}
     </div>
   );
 }
 
 // -----------------------------------------------------------------------------
-// High-Precision SVG Line Chart Component
+// High-Precision SVG Line Chart (White Background & Black Stroke)
 // -----------------------------------------------------------------------------
 function SvgLineChart({
   data,
   height = 200,
-  strokeColor = '#0f172a',
+  strokeColor = '#000000',
   fillGradient = true,
   fmt = (v: number) => String(v),
   emptyMsg = 'No telemetry data recorded for this window',
@@ -312,7 +299,7 @@ function SvgLineChart({
   if (!data || data.length === 0) {
     return (
       <div
-        className="flex items-center justify-center rounded-lg border border-dashed border-slate-200 text-xs text-slate-400 dark:border-zinc-800"
+        className="flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xs font-medium text-slate-500"
         style={{ height }}
       >
         {emptyMsg}
@@ -352,24 +339,21 @@ function SvgLineChart({
     points[0].x
   } ${padding.top + innerH} Z`;
 
-  // Y-axis ticks (4 ticks)
   const yTicks = [0, maxVal * 0.33, maxVal * 0.66, maxVal];
-
-  // X-axis label sample indices (up to 6)
   const step = Math.max(1, Math.floor(data.length / 5));
   const xIndices = data.map((_, i) => i).filter((i) => i % step === 0 || i === data.length - 1);
 
   return (
-    <div className="relative w-full select-none" onMouseLeave={() => setHoverIndex(null)}>
+    <div className="relative w-full select-none bg-white" onMouseLeave={() => setHoverIndex(null)}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-auto w-full overflow-visible"
+        className="h-auto w-full overflow-visible bg-white"
         style={{ maxHeight: height }}
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+            <stop offset="0%" stopColor="#000000" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0.0" />
           </linearGradient>
         </defs>
 
@@ -383,15 +367,15 @@ function SvgLineChart({
                 y1={y}
                 x2={width - padding.right}
                 y2={y}
-                stroke="#94a3b8"
-                strokeOpacity="0.15"
+                stroke="#cbd5e1"
+                strokeOpacity="0.6"
                 strokeDasharray="3 3"
               />
               <text
                 x={padding.left - 8}
                 y={y + 3}
                 textAnchor="end"
-                className="fill-slate-400 text-[10px] font-medium num"
+                className="fill-black text-[11px] font-semibold num"
               >
                 {short(Math.round(tick))}
               </text>
@@ -403,7 +387,7 @@ function SvgLineChart({
         {fillGradient && <path d={areaPath} fill={`url(#${gradId})`} />}
 
         {/* Main Line Stroke */}
-        <path d={linePath} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />
+        <path d={linePath} fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />
 
         {/* X-axis tick labels */}
         {xIndices.map((idx) => {
@@ -414,14 +398,14 @@ function SvgLineChart({
               x={x}
               y={height - 8}
               textAnchor="middle"
-              className="fill-slate-400 text-[10px] font-medium"
+              className="fill-black text-[11px] font-semibold"
             >
               {data[idx].label}
             </text>
           );
         })}
 
-        {/* Hover vertical crosshair & point indicator */}
+        {/* Hover crosshair & point indicator */}
         {hoverIndex !== null && hoverIndex >= 0 && hoverIndex < points.length && (
           <g>
             <line
@@ -429,22 +413,22 @@ function SvgLineChart({
               y1={padding.top}
               x2={points[hoverIndex].x}
               y2={padding.top + innerH}
-              stroke="#64748b"
-              strokeWidth="1"
+              stroke="#000000"
+              strokeWidth="1.5"
               strokeDasharray="2 2"
             />
             <circle
               cx={points[hoverIndex].x}
               cy={points[hoverIndex].y}
               r="4.5"
-              fill={strokeColor}
+              fill="#000000"
               stroke="#ffffff"
               strokeWidth="2"
             />
           </g>
         )}
 
-        {/* Invisible mouse hover overlay columns */}
+        {/* Mouse hover capture columns */}
         {data.map((_, i) => {
           const x = getX(i);
           const colW = innerW / data.length;
@@ -463,17 +447,17 @@ function SvgLineChart({
         })}
       </svg>
 
-      {/* Floating Tooltip */}
+      {/* Floating Tooltip in Pure White with Crisp Black Text */}
       {hoverIndex !== null && hoverIndex >= 0 && hoverIndex < data.length && (
         <div
-          className="pointer-events-none absolute top-2 z-10 rounded-md border border-slate-200 bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-md transition-all dark:border-zinc-700"
+          className="pointer-events-none absolute top-2 z-10 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-black shadow-lg transition-all"
           style={{
             left: `${Math.min(85, Math.max(15, (points[hoverIndex].x / width) * 100))}%`,
             transform: 'translateX(-50%)',
           }}
         >
-          <div className="font-medium text-slate-300">{data[hoverIndex].label}</div>
-          <div className="num font-bold text-white">{fmt(data[hoverIndex].value)}</div>
+          <div className="font-semibold text-slate-600">{data[hoverIndex].label}</div>
+          <div className="num font-bold text-black">{fmt(data[hoverIndex].value)}</div>
         </div>
       )}
     </div>
@@ -481,7 +465,7 @@ function SvgLineChart({
 }
 
 // -----------------------------------------------------------------------------
-// Main Entrypoint
+// Main Entrypoint: Platform Console
 // -----------------------------------------------------------------------------
 export default function Platform() {
   const me = useApi<{ allowed: boolean; why: string }>('/platform/me');
@@ -489,12 +473,12 @@ export default function Platform() {
   if (!me.data) return <Loading />;
   if (!me.data.allowed) {
     return (
-      <div className="mx-auto max-w-lg py-16 text-center">
-        <ShieldAlert className="mx-auto h-12 w-12 text-slate-400" />
-        <h1 className="mt-4 text-xl font-bold text-slate-900 dark:text-zinc-100">Platform Admin Console</h1>
-        <p className="mt-2 text-sm text-slate-500">{me.data.why}</p>
-        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left text-xs text-slate-600 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-400">
-          <p className="font-semibold text-slate-800 dark:text-zinc-200">Administrative Policy</p>
+      <div className="mx-auto max-w-lg py-16 text-center bg-white">
+        <ShieldAlert className="mx-auto h-12 w-12 text-black" />
+        <h1 className="mt-4 text-xl font-bold text-black">Platform Admin Console</h1>
+        <p className="mt-2 text-sm text-slate-700">{me.data.why}</p>
+        <div className="mt-6 rounded-lg border border-slate-300 bg-white p-4 text-left text-xs text-slate-800">
+          <p className="font-bold text-black">Administrative Policy</p>
           <p className="mt-1">
             Access to cross-tenant administration, system resource telemetry, KDPA/GDPR data wipes, and cross-company
             issues is restricted to verified platform administrators.
@@ -564,74 +548,67 @@ function Console() {
   const openIssuesCount = issues.data?.filter((i) => i.status === 'Open' || i.status === 'InProgress').length ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white min-h-screen text-black">
       <PageHeader
         title="Platform Admin Console"
         subtitle="Oversee server telemetry, cross-tenant businesses, support inquiries, and KDPA compliance erasures"
         actions={
           <div className="flex items-center gap-2">
             <button
-              className="btn btn-ghost text-xs border border-slate-200 dark:border-zinc-800"
+              className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-50"
               onClick={reloadAll}
               title="Refresh all metrics"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </button>
             <button
-              className="btn btn-secondary text-xs"
+              className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50"
               disabled={acting}
               onClick={() => runAction('gc-collect')}
               title="Force Garbage Collection & compact memory"
             >
-              <Zap className="h-3.5 w-3.5 text-slate-700 dark:text-zinc-300" /> {acting ? 'Running...' : 'Run GC'}
+              <Zap className="h-3.5 w-3.5 text-black" /> {acting ? 'Running...' : 'Run GC'}
             </button>
           </div>
         }
       />
 
       {actionMsg && (
-        <div
-          className={cn(
-            'flex items-center justify-between rounded-lg px-4 py-2.5 text-xs font-medium border transition',
-            actionMsg.tone === 'good'
-              ? 'border-slate-200 bg-slate-50 text-slate-800 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200'
-              : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
-          )}
-        >
+        <div className="flex items-center justify-between rounded-lg px-4 py-2.5 text-xs font-bold border border-slate-300 bg-white text-black">
           <span>{actionMsg.text}</span>
-          <button className="opacity-70 hover:opacity-100" onClick={() => setActionMsg(null)}>
+          <button className="underline hover:opacity-75" onClick={() => setActionMsg(null)}>
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Primary Tab Navigation */}
-      <div className="border-b border-slate-200 dark:border-zinc-800">
+      {/* Primary Tab Navigation in All White */}
+      <div className="border-b border-slate-300 bg-white">
         <nav className="flex space-x-1 overflow-x-auto pb-px" aria-label="Tabs">
           <button
             onClick={() => setTab('resources')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'resources'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <Server className="h-4 w-4" /> Resources & Scaling
+            <Server className="h-4 w-4 text-black" /> Resources & Scaling
           </button>
 
           <button
             onClick={() => setTab('businesses')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'businesses'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <Building2 className="h-4 w-4" /> Businesses & Demo
+            <Building2 className="h-4 w-4 text-black" /> Businesses & Demo
             {businesses.data && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+              <span className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-bold text-black">
                 {businesses.data.length}
               </span>
             )}
@@ -640,15 +617,15 @@ function Console() {
           <button
             onClick={() => setTab('traffic')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'traffic'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <Activity className="h-4 w-4" /> Traffic & Health
+            <Activity className="h-4 w-4 text-black" /> Traffic & Health
             {problems.length > 0 && (
-              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+              <span className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-bold text-black">
                 {problems.length}
               </span>
             )}
@@ -657,27 +634,27 @@ function Console() {
           <button
             onClick={() => setTab('growth')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'growth'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <BarChart3 className="h-4 w-4" /> Growth & Revenue
+            <BarChart3 className="h-4 w-4 text-black" /> Growth & Revenue
           </button>
 
           <button
             onClick={() => setTab('issues')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'issues'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <MessageSquare className="h-4 w-4" /> Support & Issues
+            <MessageSquare className="h-4 w-4 text-black" /> Support & Issues
             {openIssuesCount > 0 && (
-              <span className="rounded-full bg-slate-900 px-2 py-0.5 text-xs font-bold text-white dark:bg-zinc-100 dark:text-zinc-900">
+              <span className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-bold text-black">
                 {openIssuesCount}
               </span>
             )}
@@ -686,43 +663,43 @@ function Console() {
           <button
             onClick={() => setTab('purge')}
             className={cn(
-              'flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              'flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-bold whitespace-nowrap transition bg-white',
               tab === 'purge'
-                ? 'border-slate-900 text-slate-900 dark:border-zinc-100 dark:text-zinc-100'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                ? 'border-black text-black'
+                : 'border-transparent text-slate-600 hover:text-black hover:border-slate-300'
             )}
           >
-            <Trash2 className="h-4 w-4" /> Delete Account / Purge
+            <Trash2 className="h-4 w-4 text-black" /> Delete Account / Purge
           </button>
         </nav>
       </div>
 
       {/* TAB 1: RESOURCES & SCALING */}
       {tab === 'resources' && (
-        <div className="space-y-6">
+        <div className="space-y-6 bg-white">
           {resources.error ? (
             <ErrorNote>{resources.error}</ErrorNote>
           ) : !r ? (
             <Loading />
           ) : (
             <>
-              {/* Scaling Diagnosis Card */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+              {/* Capacity Status Card */}
+              <div className="rounded-xl border border-slate-300 bg-white p-5 shadow-sm">
                 <div className="flex items-start gap-3.5">
-                  <div className="mt-0.5 rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                    <Server className="h-5 w-5 text-slate-700 dark:text-zinc-300" />
+                  <div className="rounded-lg border border-slate-300 bg-white p-2 text-black">
+                    <Server className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                      <h2 className="text-base font-bold text-black">
                         Capacity Telemetry: {r.scaling.summary}
                       </h2>
                       <StatusBadge state={r.scaling.status === 'optimal' ? 'Resolved' : 'Open'} />
                     </div>
-                    <div className="mt-2 space-y-1.5 text-xs text-slate-600 dark:text-zinc-400">
+                    <div className="mt-2 space-y-1.5 text-xs font-medium text-slate-700">
                       {r.scaling.recommendations.map((rec, i) => (
                         <p key={i} className="flex items-center gap-2">
-                          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-black" />
                           <span>{rec}</span>
                         </p>
                       ))}
@@ -731,7 +708,7 @@ function Console() {
                 </div>
               </div>
 
-              {/* KPI Cards */}
+              {/* KPI Stat Cards in White */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
                   title="Working Set Memory"
@@ -761,62 +738,62 @@ function Console() {
 
               {/* Memory Saturation & Server Specs */}
               <div className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-900 dark:text-zinc-100">
+                    <h3 className="font-bold text-black text-sm">
                       Memory Allocation & GC Pressure
                     </h3>
-                    <span className="text-xs text-slate-400">Vercel Container Engine</span>
+                    <span className="text-xs font-semibold text-slate-600">Vercel Container Runtime</span>
                   </div>
 
                   <div>
-                    <div className="flex justify-between text-xs font-medium text-slate-500 mb-1.5">
+                    <div className="flex justify-between text-xs font-bold text-black mb-1.5">
                       <span>RAM Utilization</span>
                       <span>{r.memory.workingSetMb} MB / 1024 MB</span>
                     </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+                    <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-300">
                       <div
-                        className="h-full rounded-full bg-slate-800 transition-all duration-500 dark:bg-zinc-200"
+                        className="h-full rounded-full bg-black transition-all duration-500"
                         style={{ width: `${Math.min(100, Math.round((r.memory.workingSetMb / 1024) * 100))}%` }}
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 pt-2 text-center text-xs">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/40">
-                      <p className="text-slate-500">GC Gen 0</p>
-                      <p className="num text-lg font-bold text-slate-900 mt-0.5 dark:text-zinc-100">{r.memory.gen0}</p>
+                    <div className="rounded-lg border border-slate-300 bg-white p-3">
+                      <p className="font-bold text-slate-700">GC Gen 0</p>
+                      <p className="num text-lg font-black text-black mt-0.5">{r.memory.gen0}</p>
                     </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/40">
-                      <p className="text-slate-500">GC Gen 1</p>
-                      <p className="num text-lg font-bold text-slate-900 mt-0.5 dark:text-zinc-100">{r.memory.gen1}</p>
+                    <div className="rounded-lg border border-slate-300 bg-white p-3">
+                      <p className="font-bold text-slate-700">GC Gen 1</p>
+                      <p className="num text-lg font-black text-black mt-0.5">{r.memory.gen1}</p>
                     </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/40">
-                      <p className="text-slate-500">GC Gen 2</p>
-                      <p className="num text-lg font-bold text-slate-900 mt-0.5 dark:text-zinc-100">{r.memory.gen2}</p>
+                    <div className="rounded-lg border border-slate-300 bg-white p-3">
+                      <p className="font-bold text-slate-700">GC Gen 2</p>
+                      <p className="num text-lg font-black text-black mt-0.5">{r.memory.gen2}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="font-semibold text-slate-900 dark:text-zinc-100">
+                <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
+                  <h3 className="font-bold text-black text-sm">
                     Host Architecture & Quick Operations
                   </h3>
-                  <div className="space-y-3 text-xs text-slate-600 dark:text-zinc-400">
+                  <div className="space-y-3 text-xs font-medium text-slate-700">
                     <p>
                       Kabuor ERP runs on .NET 8 Server Garbage Collector. When hosting multi-tenant workloads, use
-                      these controls to reclaim cache pools or compact memory.
+                      these controls to compact memory or purge stale query cache buffers.
                     </p>
                     <div className="flex flex-wrap gap-2 pt-2">
                       <button
-                        className="btn btn-secondary text-xs"
+                        className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50"
                         disabled={acting}
                         onClick={() => runAction('gc-collect')}
                       >
-                        <Zap className="h-3.5 w-3.5 text-slate-700 dark:text-zinc-300" /> Compact Large Object Heap
+                        <Zap className="h-3.5 w-3.5 text-black" /> Compact Large Object Heap
                       </button>
                       <button
-                        className="btn btn-secondary text-xs"
+                        className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50"
                         disabled={acting}
                         onClick={() => runAction('clear-cache')}
                       >
@@ -877,7 +854,7 @@ function Console() {
         />
       )}
 
-      {/* Business Details Slide-over Sheet */}
+      {/* Business Details Slide-over Sheet in Pure White */}
       {selectedBizId && (
         <BusinessDetailSheet
           businessId={selectedBizId}
@@ -894,7 +871,7 @@ function Console() {
         />
       )}
 
-      {/* Modal: Update Plan & Access */}
+      {/* Modal: Update Plan & Access in Pure White */}
       {planModalBiz && (
         <PlanModal
           business={planModalBiz}
@@ -910,7 +887,7 @@ function Console() {
 }
 
 // -----------------------------------------------------------------------------
-// Component: Businesses & Demo Explorer
+// Component: Businesses & Demo Explorer (All White Background, Black Text)
 // -----------------------------------------------------------------------------
 function BusinessesView({
   businesses,
@@ -950,13 +927,13 @@ function BusinessesView({
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 bg-white text-black">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-2 max-w-md">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-black" />
             <input
-              className="field pl-9 text-xs"
+              className="field pl-9 text-xs bg-white text-black border border-slate-300"
               placeholder="Search companies, demo businesses, emails, counties..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -964,7 +941,7 @@ function BusinessesView({
           </div>
           <button
             type="button"
-            className="btn btn-ghost text-xs p-2 border border-slate-200 dark:border-zinc-800"
+            className="btn btn-ghost text-xs p-2 border border-slate-300 bg-white text-black hover:bg-slate-50"
             onClick={onReload}
             title="Refresh businesses directory"
           >
@@ -986,10 +963,10 @@ function BusinessesView({
         />
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase tracking-wider dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-400">
+          <table className="w-full text-left text-sm bg-white">
+            <thead className="border-b border-slate-300 bg-white text-xs font-bold text-black uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-4">Business & Identity</th>
                 <th className="py-3 px-4">Status & Plan</th>
@@ -999,10 +976,10 @@ function BusinessesView({
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-slate-200 bg-white">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-xs text-slate-500">
+                  <td colSpan={6} className="py-8 text-center text-xs font-semibold text-slate-600 bg-white">
                     No businesses match your filter query.
                   </td>
                 </tr>
@@ -1010,53 +987,53 @@ function BusinessesView({
                 filtered.map((b) => (
                   <tr
                     key={b.id}
-                    className="hover:bg-slate-50/60 transition cursor-pointer dark:hover:bg-zinc-800/40"
+                    className="hover:bg-slate-50 transition cursor-pointer bg-white"
                     onClick={() => onSelect(b.id)}
                   >
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 bg-white">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900 hover:underline dark:text-zinc-100">
+                        <span className="font-bold text-black hover:underline">
                           {b.name}
                         </span>
                         {b.name.includes('Amani') && (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+                          <span className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-black">
                             Demo
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {b.email || b.phone || 'No direct email'} {b.county ? `· ${b.county}` : ''}
+                      <div className="text-xs text-slate-700 font-medium">
+                        {b.email || b.phone || 'No direct contact'} {b.county ? `· ${b.county}` : ''}
                       </div>
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 bg-white">
                       <div className="flex items-center gap-1.5">
                         <StatusBadge state={b.state} />
-                        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
                           {b.plan || 'Free'}
                         </span>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-center font-medium num text-slate-700 dark:text-zinc-300">
+                    <td className="py-3.5 px-4 text-center font-bold num text-black bg-white">
                       {b.usersCount} users
                     </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="font-semibold num text-slate-900 dark:text-zinc-100">{ksh(b.invoiceValue)}</div>
-                      <div className="text-xs text-slate-400 num">{b.invoicesCount} invoices</div>
+                    <td className="py-3.5 px-4 text-right bg-white">
+                      <div className="font-bold num text-black">{ksh(b.invoiceValue)}</div>
+                      <div className="text-xs text-slate-600 font-medium num">{b.invoicesCount} invoices</div>
                     </td>
-                    <td className="py-3.5 px-4 text-xs text-slate-500">
+                    <td className="py-3.5 px-4 text-xs font-medium text-slate-700 bg-white">
                       {b.lastActive ? dateTime(b.lastActive) : 'Never'}
                     </td>
-                    <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="py-3.5 px-4 text-right bg-white" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
                         <button
-                          className="btn btn-ghost text-xs py-1 px-2 border border-slate-200 dark:border-zinc-800"
+                          className="btn btn-ghost text-xs py-1 px-2.5 border border-slate-300 bg-white text-black hover:bg-slate-50"
                           onClick={() => onSelect(b.id)}
                           title="View complete business profile, team members, and footprint"
                         >
-                          <Eye className="h-3.5 w-3.5" /> Details
+                          <Eye className="h-3.5 w-3.5 text-black" /> Details
                         </button>
                         <button
-                          className="btn btn-secondary text-xs py-1 px-2.5"
+                          className="btn btn-secondary text-xs py-1 px-2.5 border border-slate-300 bg-white text-black hover:bg-slate-50"
                           onClick={() => onEditPlan(b)}
                           title="Adjust plan tier or extend trial days"
                         >
@@ -1064,11 +1041,11 @@ function BusinessesView({
                         </button>
                         {b.name !== 'Kabuor Builds' && (
                           <button
-                            className="btn btn-ghost text-xs text-slate-400 hover:text-rose-600 py-1 px-2"
+                            className="btn btn-ghost text-xs text-black border border-slate-300 hover:bg-slate-100 py-1 px-2"
                             onClick={() => onWipe(b)}
                             title="Open compliance data wipe"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3.5 w-3.5 text-black" />
                           </button>
                         )}
                       </div>
@@ -1085,7 +1062,7 @@ function BusinessesView({
 }
 
 // -----------------------------------------------------------------------------
-// Component: Business Detail Slide-over Sheet
+// Component: Business Detail Slide-over Sheet (All White Background, Black Text)
 // -----------------------------------------------------------------------------
 function BusinessDetailSheet({
   businessId,
@@ -1108,100 +1085,100 @@ function BusinessDetailSheet({
       ) : !b ? (
         <Loading />
       ) : (
-        <div className="space-y-6 text-sm">
+        <div className="space-y-6 text-sm bg-white text-black">
           {/* Header Summary */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-800/30">
+          <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="font-bold text-slate-900 text-base dark:text-zinc-100">{b.name}</h3>
-                <p className="text-xs text-slate-500">ID: {b.id}</p>
+                <h3 className="font-bold text-black text-base">{b.name}</h3>
+                <p className="text-xs text-slate-600 font-mono">ID: {b.id}</p>
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge state={b.state} />
-                <span className="rounded bg-slate-200/80 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-slate-700 dark:bg-zinc-700 dark:text-zinc-200">
+                <span className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-black">
                   {b.plan} Plan
                 </span>
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-zinc-400 sm:grid-cols-3">
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-medium text-slate-800 sm:grid-cols-3">
               <div>
-                <span className="block text-slate-400">Email Contact</span>
-                <span className="font-medium text-slate-800 dark:text-zinc-200">{b.email || 'None'}</span>
+                <span className="block text-slate-500 font-bold">Email Contact</span>
+                <span className="text-black">{b.email || 'None'}</span>
               </div>
               <div>
-                <span className="block text-slate-400">Phone Number</span>
-                <span className="font-medium text-slate-800 dark:text-zinc-200">{b.phone || 'None'}</span>
+                <span className="block text-slate-500 font-bold">Phone Number</span>
+                <span className="text-black">{b.phone || 'None'}</span>
               </div>
               <div>
-                <span className="block text-slate-400">County</span>
-                <span className="font-medium text-slate-800 dark:text-zinc-200">{b.county || 'Nairobi'}</span>
+                <span className="block text-slate-500 font-bold">County</span>
+                <span className="text-black">{b.county || 'Nairobi'}</span>
               </div>
               <div>
-                <span className="block text-slate-400">KRA PIN</span>
-                <span className="font-medium font-mono text-slate-800 dark:text-zinc-200">{b.kraPin || 'Unset'}</span>
+                <span className="block text-slate-500 font-bold">KRA PIN</span>
+                <span className="font-mono text-black">{b.kraPin || 'Unset'}</span>
               </div>
               <div>
-                <span className="block text-slate-400">VAT Registered</span>
-                <span className="font-medium text-slate-800 dark:text-zinc-200">{b.vatRegistered ? 'Yes' : 'No'}</span>
+                <span className="block text-slate-500 font-bold">VAT Registered</span>
+                <span className="text-black">{b.vatRegistered ? 'Yes' : 'No'}</span>
               </div>
               <div>
-                <span className="block text-slate-400">Onboarded</span>
-                <span className="font-medium text-slate-800 dark:text-zinc-200">{dateTime(b.createdAt)}</span>
+                <span className="block text-slate-500 font-bold">Onboarded</span>
+                <span className="text-black">{dateTime(b.createdAt)}</span>
               </div>
             </div>
           </div>
 
           {/* Footprint Grid */}
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-black mb-2">
               Data Storage Footprint
             </h4>
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-5">
-              <div className="rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                <span className="text-slate-400 block">Users</span>
-                <span className="font-bold num text-sm text-slate-800 dark:text-zinc-200">{b.footprint.users}</span>
+              <div className="rounded-lg border border-slate-300 bg-white p-2">
+                <span className="text-slate-600 block font-medium">Users</span>
+                <span className="font-black num text-sm text-black">{b.footprint.users}</span>
               </div>
-              <div className="rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                <span className="text-slate-400 block">Customers</span>
-                <span className="font-bold num text-sm text-slate-800 dark:text-zinc-200">{b.footprint.customers}</span>
+              <div className="rounded-lg border border-slate-300 bg-white p-2">
+                <span className="text-slate-600 block font-medium">Customers</span>
+                <span className="font-black num text-sm text-black">{b.footprint.customers}</span>
               </div>
-              <div className="rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                <span className="text-slate-400 block">Products</span>
-                <span className="font-bold num text-sm text-slate-800 dark:text-zinc-200">{b.footprint.items}</span>
+              <div className="rounded-lg border border-slate-300 bg-white p-2">
+                <span className="text-slate-600 block font-medium">Products</span>
+                <span className="font-black num text-sm text-black">{b.footprint.items}</span>
               </div>
-              <div className="rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                <span className="text-slate-400 block">Invoices</span>
-                <span className="font-bold num text-sm text-slate-800 dark:text-zinc-200">{b.footprint.invoices}</span>
+              <div className="rounded-lg border border-slate-300 bg-white p-2">
+                <span className="text-slate-600 block font-medium">Invoices</span>
+                <span className="font-black num text-sm text-black">{b.footprint.invoices}</span>
               </div>
-              <div className="rounded-lg border border-slate-200 p-2 dark:border-zinc-800">
-                <span className="text-slate-400 block">Journals</span>
-                <span className="font-bold num text-sm text-slate-800 dark:text-zinc-200">{b.footprint.journals}</span>
+              <div className="rounded-lg border border-slate-300 bg-white p-2">
+                <span className="text-slate-600 block font-medium">Journals</span>
+                <span className="font-black num text-sm text-black">{b.footprint.journals}</span>
               </div>
             </div>
           </div>
 
           {/* Team Members List */}
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-black mb-2">
               Authorized Team Members ({b.users.length})
             </h4>
-            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden dark:border-zinc-800 dark:divide-zinc-800">
+            <div className="rounded-lg border border-slate-300 divide-y divide-slate-200 overflow-hidden bg-white">
               {b.users.length === 0 ? (
-                <div className="p-3 text-xs text-slate-400">No users found.</div>
+                <div className="p-3 text-xs text-slate-600 font-medium">No users registered.</div>
               ) : (
                 b.users.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between p-3 text-xs">
+                  <div key={u.id} className="flex items-center justify-between p-3 text-xs bg-white">
                     <div>
-                      <div className="font-medium text-slate-900 dark:text-zinc-100">{u.name}</div>
-                      <div className="text-slate-400">{u.email} {u.phone ? `· ${u.phone}` : ''}</div>
+                      <div className="font-bold text-black">{u.name}</div>
+                      <div className="text-slate-600 font-medium">{u.email} {u.phone ? `· ${u.phone}` : ''}</div>
                     </div>
                     <div className="text-right">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                      <span className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-bold text-black">
                         {u.role}
                       </span>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {u.lastSignInAt ? `Last active ${dateTime(u.lastSignInAt)}` : 'Never signed in'}
+                      <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                        {u.lastSignInAt ? `Active ${dateTime(u.lastSignInAt)}` : 'Never signed in'}
                       </div>
                     </div>
                   </div>
@@ -1213,19 +1190,19 @@ function BusinessDetailSheet({
           {/* Recent Invoices Table */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-black">
                 Recent Billing Documents
               </h4>
-              <span className="text-xs font-bold num text-slate-700 dark:text-zinc-300">
+              <span className="text-xs font-black num text-black">
                 Total Invoiced: {ksh(b.invoicedTotal)}
               </span>
             </div>
-            <div className="rounded-lg border border-slate-200 overflow-hidden text-xs dark:border-zinc-800">
+            <div className="rounded-lg border border-slate-300 overflow-hidden text-xs bg-white">
               {b.invoices.length === 0 ? (
-                <div className="p-3 text-slate-400">No invoices created yet.</div>
+                <div className="p-3 text-slate-600 font-medium">No invoices created yet.</div>
               ) : (
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 dark:bg-zinc-800 dark:border-zinc-700">
+                <table className="w-full text-left bg-white">
+                  <thead className="bg-white border-b border-slate-300 text-black font-bold">
                     <tr>
                       <th className="py-2 px-3">Number</th>
                       <th className="py-2 px-3">Customer</th>
@@ -1233,14 +1210,14 @@ function BusinessDetailSheet({
                       <th className="py-2 px-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-slate-200 bg-white">
                     {b.invoices.map((inv) => (
-                      <tr key={inv.id}>
-                        <td className="py-2 px-3 font-mono font-medium">{inv.number}</td>
-                        <td className="py-2 px-3">{inv.customerName}</td>
-                        <td className="py-2 px-3 text-right font-medium num">{ksh(inv.total)}</td>
+                      <tr key={inv.id} className="bg-white">
+                        <td className="py-2 px-3 font-mono font-bold text-black">{inv.number}</td>
+                        <td className="py-2 px-3 font-medium text-black">{inv.customerName}</td>
+                        <td className="py-2 px-3 text-right font-bold num text-black">{ksh(inv.total)}</td>
                         <td className="py-2 px-3">
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium">
+                          <span className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-black">
                             {inv.status}
                           </span>
                         </td>
@@ -1253,27 +1230,27 @@ function BusinessDetailSheet({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-zinc-800">
+          <div className="flex items-center justify-between pt-4 border-t border-slate-300">
             {b.canWipe ? (
               <button
-                className="btn btn-ghost text-xs text-rose-600 hover:bg-rose-50"
+                className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-100"
                 onClick={() => {
                   onClose();
                   onWipe(b as any);
                 }}
               >
-                <Trash2 className="h-3.5 w-3.5" /> Purge Account Data
+                <Trash2 className="h-3.5 w-3.5 text-black" /> Purge Account Data
               </button>
             ) : (
-              <span className="text-xs text-slate-400">Protected Platform Tenant</span>
+              <span className="text-xs font-semibold text-slate-500">Root Platform Tenant</span>
             )}
 
             <div className="flex gap-2">
-              <button className="btn btn-secondary text-xs" onClick={onClose}>
+              <button className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50" onClick={onClose}>
                 Close
               </button>
               <button
-                className="btn btn-primary text-xs"
+                className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800"
                 onClick={() => {
                   onClose();
                   onEditPlan(b as any);
@@ -1290,7 +1267,7 @@ function BusinessDetailSheet({
 }
 
 // -----------------------------------------------------------------------------
-// Component: Traffic & Performance View with SVG Line Graphs
+// Component: Traffic & Performance View (White Background, Black Text)
 // -----------------------------------------------------------------------------
 function TrafficView({ health, error }: { health?: Health | null; error?: string | null }) {
   if (error) return <ErrorNote>{error}</ErrorNote>;
@@ -1308,18 +1285,18 @@ function TrafficView({ health, error }: { health?: Health | null; error?: string
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white text-black">
       {/* Subsystem Health Status Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center gap-3">
-          <StatusDot status={health.status} />
-          <span className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-black" />
+          <span className="text-sm font-bold text-black">
             {problems.length === 0
               ? 'All subsystems functioning normally'
               : `${problems.length} subsystem${problems.length === 1 ? '' : 's'} require verification`}
           </span>
         </div>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs font-semibold text-slate-600">
           Checked {dateTime(health.checkedAt)} · .NET {health.server.dotnet}
         </span>
       </div>
@@ -1329,70 +1306,70 @@ function TrafficView({ health, error }: { health?: Health | null; error?: string
         {health.checks.map((c) => (
           <div
             key={c.key}
-            className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] dark:border-zinc-800 dark:bg-zinc-900"
+            className="rounded-xl border border-slate-300 bg-white p-3.5 shadow-sm"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200">{c.name}</span>
+              <span className="text-xs font-bold text-black">{c.name}</span>
               <StatusBadge state={c.status === 'good' ? 'Resolved' : c.status === 'warn' ? 'InProgress' : 'Open'} />
             </div>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">{c.summary}</p>
+            <p className="mt-1 text-xs font-medium text-slate-700 leading-relaxed">{c.summary}</p>
           </div>
         ))}
       </div>
 
       {/* SVG Line Graph: Requests / Minute */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-slate-900 text-sm dark:text-zinc-100">
+            <h3 className="font-bold text-black text-sm">
               System Traffic (Requests / Minute)
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               {count(health.traffic.requests)} requests recorded in this telemetry window
             </p>
           </div>
-          <div className="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-zinc-400">
-            <span>Error rate: <b className="num text-slate-900 dark:text-zinc-100">{health.traffic.errorRate}%</b></span>
-            <span>95th percentile: <b className="num text-slate-900 dark:text-zinc-100">{health.traffic.p95} ms</b></span>
+          <div className="flex items-center gap-4 text-xs font-bold text-black">
+            <span>Error rate: <b className="num">{health.traffic.errorRate}%</b></span>
+            <span>95th percentile: <b className="num">{health.traffic.p95} ms</b></span>
           </div>
         </div>
 
         <SvgLineChart
           data={trafficSeries}
           height={190}
-          strokeColor="#0f172a"
+          strokeColor="#000000"
           fmt={(v) => `${count(v)} requests`}
         />
       </div>
 
       {/* SVG Line Graph: Latency Trend */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-slate-900 text-sm dark:text-zinc-100">
+            <h3 className="font-bold text-black text-sm">
               API Response Latency Trend (Average Milliseconds)
             </h3>
-            <p className="text-xs text-slate-500">P50: {health.traffic.p50}ms · P95: {health.traffic.p95}ms · P99: {health.traffic.p99}ms</p>
+            <p className="text-xs font-medium text-slate-600">P50: {health.traffic.p50}ms · P95: {health.traffic.p95}ms · P99: {health.traffic.p99}ms</p>
           </div>
         </div>
 
         <SvgLineChart
           data={latencySeries}
           height={170}
-          strokeColor="#475569"
+          strokeColor="#000000"
           fmt={(v) => `${v} ms`}
         />
       </div>
 
       {/* Slowest and Error Endpoints */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="mb-2 text-xs font-semibold text-slate-800 uppercase tracking-wider dark:text-zinc-200">
+        <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+          <p className="mb-2 text-xs font-bold text-black uppercase tracking-wider">
             Slowest API Endpoints
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 text-slate-400 dark:border-zinc-800">
+            <table className="w-full text-left text-xs bg-white">
+              <thead className="border-b border-slate-300 text-black font-bold">
                 <tr>
                   <th className="py-2">Route</th>
                   <th className="py-2 text-right">Calls</th>
@@ -1400,15 +1377,15 @@ function TrafficView({ health, error }: { health?: Health | null; error?: string
                   <th className="py-2 text-right">Max ms</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-slate-200">
                 {health.traffic.slowest.map((r, i) => (
                   <tr key={i}>
-                    <td className="py-2 font-mono text-slate-700 dark:text-zinc-300 truncate max-w-[12rem]">
+                    <td className="py-2 font-mono font-bold text-black truncate max-w-[12rem]">
                       {r.route}
                     </td>
-                    <td className="py-2 text-right num">{r.requests}</td>
-                    <td className="py-2 text-right num font-semibold">{r.avgMs}</td>
-                    <td className="py-2 text-right num text-slate-500">{r.maxMs}</td>
+                    <td className="py-2 text-right num font-semibold">{r.requests}</td>
+                    <td className="py-2 text-right num font-black text-black">{r.avgMs}</td>
+                    <td className="py-2 text-right num text-slate-700">{r.maxMs}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1416,32 +1393,32 @@ function TrafficView({ health, error }: { health?: Health | null; error?: string
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="mb-2 text-xs font-semibold text-slate-800 uppercase tracking-wider dark:text-zinc-200">
+        <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+          <p className="mb-2 text-xs font-bold text-black uppercase tracking-wider">
             Server Error Log
           </p>
           {health.traffic.failing.length === 0 ? (
-            <div className="flex h-32 items-center justify-center text-xs text-slate-400">
-              Zero 5xx server exceptions in active window.
+            <div className="flex h-32 items-center justify-center text-xs font-semibold text-black">
+              Zero 5xx server exceptions recorded.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-slate-100 text-slate-400 dark:border-zinc-800">
+              <table className="w-full text-left text-xs bg-white">
+                <thead className="border-b border-slate-300 text-black font-bold">
                   <tr>
                     <th className="py-2">Endpoint</th>
                     <th className="py-2 text-right">Errors</th>
                     <th className="py-2 text-right">Requests</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                <tbody className="divide-y divide-slate-200">
                   {health.traffic.failing.map((r, i) => (
                     <tr key={i}>
-                      <td className="py-2 font-mono text-slate-700 dark:text-zinc-300 truncate max-w-[12rem]">
+                      <td className="py-2 font-mono font-bold text-black truncate max-w-[12rem]">
                         {r.route}
                       </td>
-                      <td className="py-2 text-right font-bold text-rose-600 num">{r.errors}</td>
-                      <td className="py-2 text-right num text-slate-500">{r.requests}</td>
+                      <td className="py-2 text-right font-black text-black num">{r.errors}</td>
+                      <td className="py-2 text-right num font-semibold">{r.requests}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1455,7 +1432,7 @@ function TrafficView({ health, error }: { health?: Health | null; error?: string
 }
 
 // -----------------------------------------------------------------------------
-// Component: Growth & Analytics View with SVG Line Graph
+// Component: Growth & Analytics View (White Background, Black Text)
 // -----------------------------------------------------------------------------
 function GrowthView({
   analytics,
@@ -1483,9 +1460,9 @@ function GrowthView({
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white text-black">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-slate-900 text-sm dark:text-zinc-100">
+        <h2 className="font-bold text-black text-sm">
           Financial Growth & Platform Invoiced Volume
         </h2>
         <Chips
@@ -1529,13 +1506,13 @@ function GrowthView({
       </div>
 
       {/* SVG Line Graph: Daily Invoiced Volume */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-slate-900 text-sm dark:text-zinc-100">
+            <h3 className="font-bold text-black text-sm">
               Daily Invoiced Volume Across All Businesses (KES)
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               Total period volume: {ksh(analytics.volume.invoiceValue)}
             </p>
           </div>
@@ -1544,19 +1521,19 @@ function GrowthView({
         <SvgLineChart
           data={invoiceSeries}
           height={190}
-          strokeColor="#0f172a"
+          strokeColor="#000000"
           fmt={(v) => ksh(v)}
         />
       </div>
 
       {/* SVG Line Graph: Business Signups */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-300 bg-white p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-slate-900 text-sm dark:text-zinc-100">
+            <h3 className="font-bold text-black text-sm">
               New Business Signups Trend
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               {b.newInPeriod} new companies registered in this window
             </p>
           </div>
@@ -1565,19 +1542,19 @@ function GrowthView({
         <SvgLineChart
           data={signupSeries}
           height={160}
-          strokeColor="#475569"
+          strokeColor="#000000"
           fmt={(v) => `${v} businesses`}
         />
       </div>
 
       {/* Subscription Breakdown */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="mb-2 text-xs font-semibold text-slate-800 uppercase tracking-wider dark:text-zinc-200">
+      <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+        <p className="mb-2 text-xs font-bold text-black uppercase tracking-wider">
           Paying Tenants by Subscription Tier
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-100 text-slate-400 dark:border-zinc-800">
+          <table className="w-full text-left text-xs bg-white">
+            <thead className="border-b border-slate-300 text-black font-bold">
               <tr>
                 <th className="py-2">Tier Name</th>
                 <th className="py-2 text-center">Active Tenants</th>
@@ -1585,13 +1562,13 @@ function GrowthView({
                 <th className="py-2 text-right">MRR Contribution</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+            <tbody className="divide-y divide-slate-200">
               {b.byPlan.map((p) => (
                 <tr key={p.id}>
-                  <td className="py-2.5 font-medium text-slate-800 dark:text-zinc-200">{p.name}</td>
-                  <td className="py-2.5 text-center num">{p.businesses}</td>
-                  <td className="py-2.5 text-right num text-slate-500">{ksh(p.monthly)}</td>
-                  <td className="py-2.5 text-right font-semibold num text-slate-900 dark:text-zinc-100">
+                  <td className="py-2.5 font-bold text-black">{p.name}</td>
+                  <td className="py-2.5 text-center num font-semibold">{p.businesses}</td>
+                  <td className="py-2.5 text-right num font-medium text-slate-700">{ksh(p.monthly)}</td>
+                  <td className="py-2.5 text-right font-black num text-black">
                     {ksh(p.mrr)}
                   </td>
                 </tr>
@@ -1605,7 +1582,7 @@ function GrowthView({
 }
 
 // -----------------------------------------------------------------------------
-// Component: Support & Team Issues Desk
+// Component: Support & Team Issues Desk (White Background, Black Text)
 // -----------------------------------------------------------------------------
 function IssuesView({
   issues,
@@ -1648,18 +1625,18 @@ function IssuesView({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 bg-white text-black">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+          <h2 className="text-sm font-bold text-black">
             Cross-Tenant Customer & Team Inquiries
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs font-medium text-slate-600">
             Receive and respond directly to support requests raised by tenant teams across all companies.
           </p>
         </div>
         <button
-          className="btn btn-ghost text-xs border border-slate-200 dark:border-zinc-800"
+          className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-50"
           onClick={onReload}
         >
           <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} /> Refresh Tickets
@@ -1667,14 +1644,14 @@ function IssuesView({
       </div>
 
       {issues.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-xs text-slate-500 dark:border-zinc-800 dark:bg-zinc-900">
-          <MessageSquare className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+        <div className="rounded-xl border border-slate-300 bg-white p-12 text-center text-xs font-semibold text-slate-600 shadow-sm">
+          <MessageSquare className="mx-auto h-8 w-8 text-black mb-2" />
           No open support inquiries across tenants.
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
           {/* Issue Selector List */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800 max-h-[600px] overflow-y-auto">
+          <div className="rounded-xl border border-slate-300 bg-white overflow-hidden divide-y divide-slate-200 shadow-sm max-h-[600px] overflow-y-auto">
             {issues.map((i) => {
               const selected = activeIssue?.id === i.id;
               return (
@@ -1682,20 +1659,20 @@ function IssuesView({
                   key={i.id}
                   onClick={() => setSelectedIssueId(i.id)}
                   className={cn(
-                    'p-3.5 cursor-pointer transition text-xs',
+                    'p-3.5 cursor-pointer transition text-xs bg-white',
                     selected
-                      ? 'bg-slate-100/80 dark:bg-zinc-800'
-                      : 'hover:bg-slate-50 dark:hover:bg-zinc-800/40'
+                      ? 'border-l-4 border-l-black bg-slate-50'
+                      : 'hover:bg-slate-50'
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900 dark:text-zinc-100">{i.companyName}</span>
+                    <span className="font-bold text-black">{i.companyName}</span>
                     <StatusBadge state={i.status} />
                   </div>
-                  <div className="font-medium text-slate-700 mt-1 truncate dark:text-zinc-300">
+                  <div className="font-semibold text-slate-800 mt-1 truncate">
                     {i.subject}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1 flex justify-between">
+                  <div className="text-[11px] text-slate-600 font-medium mt-1 flex justify-between">
                     <span>{i.name}</span>
                     <span>{dateTime(i.createdAt)}</span>
                   </div>
@@ -1706,21 +1683,21 @@ function IssuesView({
 
           {/* Active Issue Conversation & Direct Reply Box */}
           {activeIssue && (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 flex flex-col justify-between dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-xl border border-slate-300 bg-white p-5 flex flex-col justify-between shadow-sm">
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-zinc-800">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
                   <div>
-                    <h3 className="font-bold text-slate-900 text-sm dark:text-zinc-100">
+                    <h3 className="font-bold text-black text-sm">
                       #{activeIssue.number}: {activeIssue.subject}
                     </h3>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs font-medium text-slate-700">
                       Company: <strong>{activeIssue.companyName}</strong> · Contact: {activeIssue.name} ({activeIssue.email || activeIssue.phone})
                     </p>
                   </div>
                   <StatusBadge state={activeIssue.status} />
                 </div>
 
-                {/* Conversation History */}
+                {/* Conversation History in White Cards */}
                 <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
                   {activeIssue.messages.map((m) => {
                     const isStaff = m.from === 'Staff' || m.from === 'Admin';
@@ -1728,17 +1705,17 @@ function IssuesView({
                       <div
                         key={m.id}
                         className={cn(
-                          'p-3 rounded-lg text-xs leading-relaxed max-w-[85%]',
+                          'p-3.5 rounded-lg text-xs leading-relaxed max-w-[85%] border shadow-sm',
                           isStaff
-                            ? 'ml-auto bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                            : 'bg-slate-100 text-slate-800 dark:bg-zinc-800 dark:text-zinc-200'
+                            ? 'ml-auto border-black bg-white text-black'
+                            : 'border-slate-300 bg-white text-black'
                         )}
                       >
-                        <div className="flex items-center justify-between gap-2 text-[10px] opacity-75 mb-1">
-                          <span>{m.author || (isStaff ? 'Platform Admin' : 'Customer Team')}</span>
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-slate-600 mb-1 border-b border-slate-200 pb-1">
+                          <span>{m.author || (isStaff ? 'Platform Admin (Rooney Kabuor)' : 'Customer Team')}</span>
                           <span>{dateTime(m.at)}</span>
                         </div>
-                        <p className="whitespace-pre-wrap">{m.body}</p>
+                        <p className="whitespace-pre-wrap font-medium text-black">{m.body}</p>
                       </div>
                     );
                   })}
@@ -1746,10 +1723,10 @@ function IssuesView({
               </div>
 
               {/* Direct Reply Composer */}
-              <form onSubmit={handleSendReply} className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 space-y-2">
+              <form onSubmit={handleSendReply} className="mt-4 pt-3 border-t border-slate-200 space-y-2">
                 {replyErr && <ErrorNote>{replyErr}</ErrorNote>}
                 <textarea
-                  className="field text-xs h-20"
+                  className="field text-xs h-20 bg-white text-black border border-slate-300 font-medium"
                   placeholder={`Reply to ${activeIssue.name} at ${activeIssue.companyName}...`}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
@@ -1757,12 +1734,12 @@ function IssuesView({
                   required
                 />
                 <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-600 font-medium">
                     Replies are logged in the tenant's inquiry ledger and dispatched via their channel.
                   </span>
                   <button
                     type="submit"
-                    className="btn btn-primary text-xs"
+                    className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800"
                     disabled={sending || !replyText.trim()}
                   >
                     {sending ? (
@@ -1786,7 +1763,7 @@ function IssuesView({
 }
 
 // -----------------------------------------------------------------------------
-// Component: Dedicated Delete Account / Data Purge View
+// Component: Dedicated Delete Account / Data Purge View (All White, Black Text)
 // -----------------------------------------------------------------------------
 function PurgeAccountView({
   businesses,
@@ -1836,32 +1813,32 @@ function PurgeAccountView({
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-6 bg-white text-black">
       <div>
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+        <h2 className="text-sm font-bold text-black">
           Permanent Tenant Deletion & KDPA / GDPR Compliance Purge
         </h2>
-        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+        <p className="text-xs font-medium text-slate-700 mt-1 leading-relaxed">
           Executes Section 40 Kenya Data Protection Act 2019 and GDPR Article 17 "Right to Erasure". Cascades across
           all 60+ domain tables (financial journals, invoices, payroll, stock, customer records, and user logins).
         </p>
       </div>
 
       {successMsg && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs font-medium text-slate-800 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+        <div className="rounded-xl border border-slate-300 bg-white p-4 text-xs font-bold text-black shadow-sm">
           ✓ {successMsg}
         </div>
       )}
 
       {err && <ErrorNote>{err}</ErrorNote>}
 
-      <form onSubmit={handleWipe} className="rounded-xl border border-slate-200 bg-white p-6 space-y-5 dark:border-zinc-800 dark:bg-zinc-900">
+      <form onSubmit={handleWipe} className="rounded-xl border border-slate-300 bg-white p-6 space-y-5 shadow-sm">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 dark:text-zinc-300">
+          <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5">
             Select Company / Tenant Account to Purge
           </label>
           <select
-            className="field text-xs"
+            className="field text-xs bg-white text-black border border-slate-300 font-semibold"
             value={selectedId}
             onChange={(e) => {
               setSelectedId(e.target.value);
@@ -1879,21 +1856,21 @@ function PurgeAccountView({
         </div>
 
         {targetBiz && targetBiz.name === 'Kabuor Builds' && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-zinc-800 dark:bg-zinc-800">
+          <div className="rounded-lg border border-slate-300 bg-white p-3 text-xs font-semibold text-black">
             🛡️ <strong>Kabuor Builds</strong> is the root platform tenant and cannot be wiped.
           </div>
         )}
 
         {targetBiz && canWipe && detail.data && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-2 text-xs dark:border-zinc-800 dark:bg-zinc-800/40">
-            <span className="font-semibold text-slate-800 dark:text-zinc-200">
+          <div className="rounded-lg border border-slate-300 bg-white p-4 space-y-2 text-xs">
+            <span className="font-bold text-black">
               Impact Analysis: Records Scheduled for Destruction
             </span>
-            <div className="grid grid-cols-2 gap-2 text-slate-600 dark:text-zinc-400 sm:grid-cols-4 pt-1">
-              <div>Users: <b className="num text-slate-900 dark:text-zinc-100">{detail.data.footprint.users}</b></div>
-              <div>Invoices: <b className="num text-slate-900 dark:text-zinc-100">{detail.data.footprint.invoices}</b></div>
-              <div>Customers: <b className="num text-slate-900 dark:text-zinc-100">{detail.data.footprint.customers}</b></div>
-              <div>Journals: <b className="num text-slate-900 dark:text-zinc-100">{detail.data.footprint.journals}</b></div>
+            <div className="grid grid-cols-2 gap-2 text-slate-800 font-medium sm:grid-cols-4 pt-1">
+              <div>Users: <b className="num font-black text-black">{detail.data.footprint.users}</b></div>
+              <div>Invoices: <b className="num font-black text-black">{detail.data.footprint.invoices}</b></div>
+              <div>Customers: <b className="num font-black text-black">{detail.data.footprint.customers}</b></div>
+              <div>Journals: <b className="num font-black text-black">{detail.data.footprint.journals}</b></div>
             </div>
           </div>
         )}
@@ -1901,11 +1878,11 @@ function PurgeAccountView({
         {canWipe && (
           <>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 dark:text-zinc-300">
+              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5">
                 Compliance & Audit Reason (Stored in Platform Audit Log)
               </label>
               <textarea
-                className="field text-xs h-20"
+                className="field text-xs h-20 bg-white text-black border border-slate-300 font-medium"
                 placeholder="e.g. Contract termination per customer request under Kenya Data Protection Act 2019 Section 40..."
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -1914,11 +1891,11 @@ function PurgeAccountView({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 dark:text-zinc-300">
-                Confirmation: Type <span className="font-mono text-slate-900 dark:text-zinc-100">{targetBiz?.name}</span> to authorize:
+              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5">
+                Confirmation: Type <span className="font-mono text-black font-black underline">{targetBiz?.name}</span> to authorize:
               </label>
               <input
-                className="field text-xs"
+                className="field text-xs bg-white text-black border border-slate-300 font-semibold"
                 placeholder={targetBiz?.name}
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
@@ -1929,7 +1906,7 @@ function PurgeAccountView({
             <div className="pt-2">
               <button
                 type="submit"
-                className="btn btn-primary text-xs w-full bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                className="btn btn-primary text-xs w-full border border-black bg-black text-white hover:bg-slate-800 font-bold"
                 disabled={wiping || !isConfirmed || reason.trim().length < 4}
               >
                 {wiping ? (
@@ -1949,7 +1926,7 @@ function PurgeAccountView({
 }
 
 // -----------------------------------------------------------------------------
-// Modal: Plan & Access Controller
+// Modal: Plan & Access Controller (All White Background, Black Text)
 // -----------------------------------------------------------------------------
 function PlanModal({
   business,
@@ -1988,12 +1965,12 @@ function PlanModal({
 
   return (
     <Sheet open onClose={onClose} title={`Subscription & Access: ${business.name}`}>
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs bg-white text-black">
         {err && <ErrorNote>{err}</ErrorNote>}
 
         <div>
-          <label className="block font-semibold mb-1">Plan Tier</label>
-          <select className="field text-xs" value={plan} onChange={(e) => setPlan(e.target.value)}>
+          <label className="block font-bold mb-1 text-black">Plan Tier</label>
+          <select className="field text-xs bg-white text-black border border-slate-300 font-semibold" value={plan} onChange={(e) => setPlan(e.target.value)}>
             <option value="starter">Starter — KSh 3,500/mo (up to 3 users)</option>
             <option value="growth">Growth — KSh 8,500/mo (up to 15 users, payroll, WhatsApp)</option>
             <option value="scale">Scale — KSh 18,500/mo (unlimited users, multi-branch, API)</option>
@@ -2001,10 +1978,10 @@ function PlanModal({
         </div>
 
         <div>
-          <label className="block font-semibold mb-1">Extend Trial / Grace (Days)</label>
+          <label className="block font-bold mb-1 text-black">Extend Trial / Grace (Days)</label>
           <input
             type="number"
-            className="field text-xs"
+            className="field text-xs bg-white text-black border border-slate-300 font-semibold"
             value={extendDays}
             onChange={(e) => setExtendDays(e.target.value)}
             min="0"
@@ -2013,24 +1990,22 @@ function PlanModal({
         </div>
 
         <div className="pt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex items-center gap-2 cursor-pointer font-bold text-black">
             <input
               type="checkbox"
               checked={lockTenant}
               onChange={(e) => setLockTenant(e.target.checked)}
-              className="rounded border-slate-300"
+              className="rounded border-slate-300 text-black"
             />
-            <span className="font-semibold text-slate-800 dark:text-zinc-200">
-              Lock Tenant Workspace (Prevent Editing)
-            </span>
+            <span>Lock Tenant Workspace (Prevent Editing)</span>
           </label>
         </div>
 
-        <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-zinc-800">
-          <button type="button" className="btn btn-secondary text-xs" onClick={onClose} disabled={saving}>
+        <div className="flex justify-end gap-2 pt-4 border-t border-slate-300">
+          <button type="button" className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="submit" className="btn btn-primary text-xs" disabled={saving}>
+          <button type="submit" className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800" disabled={saving}>
             {saving ? 'Saving...' : 'Apply Subscription'}
           </button>
         </div>
