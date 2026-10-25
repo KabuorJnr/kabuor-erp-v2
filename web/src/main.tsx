@@ -126,6 +126,7 @@ function App() {
         <Route path="reconcile" element={<Need p="finance"><Reconcile /></Need>} />
         <Route path="settings" element={<Need p="admin"><Settings /></Need>} />
         <Route path="platform" element={<Need p="admin"><Platform /></Need>} />
+        <Route path="admin" element={<Navigate to="/platform" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
