@@ -22,7 +22,7 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         if (ctx.UserId is not { } id) return (false, "Sign in first.");
         var u = await db.Users.IgnoreQueryFilters().Where(x => x.Id == id).Select(x => new { x.Email, x.TwoFactorEnabled, x.Active }).SingleOrDefaultAsync();
         if (u is null || !u.Active || !admins.Contains(u.Email.ToLowerInvariant())) return (false, "This login isn't a platform admin.");
-        if (!u.TwoFactorEnabled && !env.IsDevelopment()) return (false, "Turn on two-step sign-in (Security) to use the platform console.");
+        if (!u.TwoFactorEnabled && !env.IsDevelopment() && config.GetValue("Platform:Require2FA", false)) return (false, "Turn on two-step sign-in (Security) to use the platform console.");
         return (true, "");
     }
 
