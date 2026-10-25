@@ -1,12 +1,35 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build --prefix web",
-  "outputDirectory": "src/Kabuor.Erp.Api/wwwroot",
+  "services": {
+    "kabuor-erp": {
+      "root": ".",
+      "framework": "container",
+      "runtime": "container"
+    },
+    "web": {
+      "root": "web",
+      "framework": "vite"
+    }
+  },
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "kabuor-erp"
+      }
+    },
+    {
+      "source": "/l/(.*)",
+      "destination": {
+        "service": "kabuor-erp"
+      }
+    },
+    {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "web"
+      }
     }
   ],
   "headers": [
