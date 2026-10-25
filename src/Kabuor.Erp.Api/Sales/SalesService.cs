@@ -23,6 +23,8 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         var customer = await db.Customers.SingleOrDefaultAsync(c => c.Id == input.CustomerId) ?? throw new AppException("Choose a customer.");
         var company = await Company();
         var issue = input.IssueDate ?? Clock.Today;
+        if (input.Kind == SalesDocKind.Invoice && company.AccountingLockDate is { } lockDate && issue <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         var doc = new SalesDoc
         {
             Kind = input.Kind,
@@ -83,13 +85,17 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
     {
         var doc = await Get(id);
         if (doc.Status != SalesDocStatus.Draft) throw new AppException("Only drafts can be changed. Void this one and make a new one.");
+        var company = await Company();
+        var issue = input.IssueDate ?? doc.IssueDate;
+        if (doc.Kind == SalesDocKind.Invoice && company.AccountingLockDate is { } lockDate && issue <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         var customer = await db.Customers.SingleOrDefaultAsync(c => c.Id == input.CustomerId) ?? throw new AppException("Choose a customer.");
         doc.CustomerId = customer.Id;
-        doc.IssueDate = input.IssueDate ?? doc.IssueDate;
+        doc.IssueDate = issue;
         doc.DueDate = doc.IssueDate.AddDays(Math.Clamp(input.DueInDays ?? doc.DueDate.DayNumber - doc.IssueDate.DayNumber, 0, 365));
         doc.Notes = (input.Notes ?? "").Trim();
         db.SalesLines.RemoveRange(doc.Lines);
-        await SetLines(doc, input.Lines ?? [], (await Company()).VatRegistered, customer.PriceListId);
+        await SetLines(doc, input.Lines ?? [], company.VatRegistered, customer.PriceListId);
         await db.SaveChangesAsync();
         return doc;
     }
@@ -100,6 +106,9 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
     {
         var doc = await Get(id);
         if (doc.Status != SalesDocStatus.Draft) throw new AppException("This has already been sent.");
+        var company = await Company();
+        if (doc.Kind == SalesDocKind.Invoice && company.AccountingLockDate is { } lockDate && doc.IssueDate <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         if (doc.Kind == SalesDocKind.Invoice && doc.Customer!.CreditLimit > 0 && !overLimit)
         {
             var owes = await db.SalesDocs.Where(d => d.CustomerId == doc.CustomerId && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid)).SumAsync(d => d.Total - d.Paid);
@@ -112,7 +121,6 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
             await ledger.PostInvoice(doc);
             await TakeFromStock(doc);
             await Intelligence.InquiryService.OnInvoiceIssued(db, doc); // the inquiry that led here is won
-            var company = await Company();
             doc.EtimsStatus = company.VatRegistered ? EtimsStatus.Pending : EtimsStatus.NotRequired;
         }
         await db.SaveChangesAsync();
@@ -167,11 +175,14 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
     {
         var doc = await Get(id);
         if (doc.Status is SalesDocStatus.Void) throw new AppException("Already void.");
+        var company = await Company();
+        if (doc.Kind == SalesDocKind.Invoice && company.AccountingLockDate is { } lockDate && doc.IssueDate <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         if (doc.Paid > 0) throw new AppException("This invoice has payments on it. Move the payments to another invoice first.");
         if (doc.Kind == SalesDocKind.Invoice && doc.Status != SalesDocStatus.Draft)
         {
             // A signed invoice can only be cancelled at KRA with a credit note; if KRA refuses, nothing is voided.
-            try { await etims.CreditNote(await Company(), doc); }
+            try { await etims.CreditNote(company, doc); }
             catch (Exception e) { throw new AppException($"KRA eTIMS didn't accept the credit note, so {doc.Number} isn't voided yet: {e.Message}"); }
             await ledger.ReverseInvoice(doc, Clock.Today);
             await PutBackInStock(doc);

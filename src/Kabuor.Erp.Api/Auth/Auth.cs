@@ -140,7 +140,7 @@ public static class TokenIssuerChallenge
     }
 }
 
-public sealed record RegisterInput(string CompanyName, string OwnerName, string Email, string Phone, string Password, string? KraPin, bool? VatRegistered);
+public sealed record RegisterInput(string CompanyName, string OwnerName, string Email, string Phone, string Password, string? KraPin, bool? VatRegistered, string? Industry = null);
 /// <summary>Email, or (for employees) the phone number HR registered.</summary>
 public sealed record LoginInput(string Email, string Password, string? Device = null);
 public sealed record PasswordInput(string Current, string New);
@@ -172,7 +172,17 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         if (pin.Length > 0 && !SandboxEtimsClient.IsKraPin(pin)) throw new AppException("That KRA PIN doesn't look right (e.g. P051234567X).");
         if (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email)) throw new AppException("That email already has an account. Sign in instead.", 409);
 
-        var company = new Company { Name = name, KraPin = pin, Phone = phone, Email = email, VatRegistered = input.VatRegistered ?? pin.Length > 0 };
+        var industry = string.IsNullOrWhiteSpace(input.Industry) ? "general" : input.Industry.Trim().ToLowerInvariant();
+        var company = new Company
+        {
+            Name = name,
+            KraPin = pin,
+            Phone = phone,
+            Email = email,
+            VatRegistered = input.VatRegistered ?? pin.Length > 0,
+            Industry = industry,
+            PreventNegativeStock = industry is "distribution" or "retail"
+        };
         (ctx.CompanyId, ctx.Actor) = (company.Id, input.OwnerName!.Trim());
         var owner = new User { CompanyId = company.Id, Name = input.OwnerName.Trim(), Email = email, Phone = phone, Role = Role.Owner };
         owner.PasswordHash = Hasher.HashPassword(owner, input.Password);
@@ -382,5 +392,5 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
     Session Session(User u, Company c) => new(
         tokens.Issue(u),
         new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, permissions = Policies.For(u.Role) },
-        new { c.Id, c.Name, c.KraPin, c.VatRegistered });
+        new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate });
 }

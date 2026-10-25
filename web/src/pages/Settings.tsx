@@ -27,7 +27,18 @@ function Company() {
   const [state, setState] = useState({ busy: false, error: '', saved: false });
   const [copied, setCopied] = useState(false);
   useEffect(() => {
-    if (data) setF({ name: data.name, kraPin: data.kraPin, phone: data.phone, email: data.email, county: data.county, vatRegistered: data.vatRegistered, mpesaShortcode: data.mpesaShortcode, preventNegativeStock: data.preventNegativeStock ?? false });
+    if (data) setF({
+      name: data.name,
+      kraPin: data.kraPin,
+      phone: data.phone,
+      email: data.email,
+      county: data.county,
+      vatRegistered: data.vatRegistered,
+      mpesaShortcode: data.mpesaShortcode,
+      preventNegativeStock: data.preventNegativeStock ?? false,
+      industry: data.industry ?? 'general',
+      accountingLockDate: data.accountingLockDate ?? null,
+    });
   }, [data]);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!f) return <Loading />;
@@ -49,6 +60,21 @@ function Company() {
         <Field label="Business name">
           <input className="field" value={f.name} onChange={set('name')} required />
         </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Industry / Sector" hint="Workflow rules & module defaults.">
+            <select className="field" value={f.industry ?? 'general'} onChange={(e) => setF({ ...f, industry: e.target.value })}>
+              <option value="general">General Business & Trading</option>
+              <option value="distribution">Wholesale & Distribution</option>
+              <option value="manufacturing">Manufacturing & Processing</option>
+              <option value="transportation">Transport & Fleet Logistics</option>
+              <option value="retail">Retail & Supermarket</option>
+              <option value="services">Services & Consulting</option>
+            </select>
+          </Field>
+          <Field label="Accounting Period Lock Date" hint="Blocks backdating invoices & bills.">
+            <input type="date" className="field" value={f.accountingLockDate ?? ''} onChange={(e) => setF({ ...f, accountingLockDate: e.target.value || null })} />
+          </Field>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="KRA PIN" hint="Printed on invoices and used to sign them with eTIMS.">
             <input className="field uppercase" value={f.kraPin} onChange={set('kraPin')} maxLength={11} placeholder="P051234567X" />

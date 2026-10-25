@@ -1,17 +1,11 @@
 // Recruitment & Talent Desk: Manage open and closed job positions, review candidate portfolios and intensive questions.
 import { useState, useEffect } from 'react';
 import {
-  Briefcase,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   Mail,
   MessageCircle,
-  Plus,
-  Search,
-  SlidersHorizontal,
-  XCircle,
 } from 'lucide-react';
 import { Chips, Empty, PageHeader, SearchBox, Status } from '../components/ui';
 
@@ -267,7 +261,7 @@ export default function Recruitment() {
   }, []);
 
   const toggleJobStatus = (id: string) => {
-    const updated = jobs.map((j) => (j.id === id ? { ...j, status: j.status === 'open' ? 'closed' : 'open' as const } : j));
+    const updated: JobOpening[] = jobs.map((j) => (j.id === id ? { ...j, status: (j.status === 'open' ? 'closed' : 'open') as 'open' | 'closed' } : j));
     setJobs(updated);
     try {
       localStorage.setItem(ROLES_KEY, JSON.stringify(updated));
@@ -537,7 +531,7 @@ export default function Recruitment() {
           })}
 
           {!filteredCandidates.length && (
-            <Empty title="No applications yet" subtitle="When builders and volunteers apply on the public careers page, their submissions and portfolios will appear here." />
+            <Empty title="No applications yet">When builders and volunteers apply on the public careers page, their submissions and portfolios will appear here.</Empty>
           )}
         </div>
       )}

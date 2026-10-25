@@ -145,8 +145,17 @@ export function SignIn() {
   );
 }
 
+const INDUSTRIES = [
+  { id: 'distribution', label: 'Wholesale & Distribution', desc: 'Trade terms, price lists, dispatch trips' },
+  { id: 'manufacturing', label: 'Manufacturing & Processing', desc: 'Recipes, BOM & batch production' },
+  { id: 'transportation', label: 'Transport & Fleet Logistics', desc: 'Fleet, dispatch waybills & e-POD' },
+  { id: 'retail', label: 'Retail & Supermarket', desc: 'POS till, barcode scanning & cashiers' },
+  { id: 'services', label: 'Services & Consulting', desc: 'Milestones & project invoicing' },
+  { id: 'general', label: 'General Business & Trading', desc: 'Invoices, stock, eTIMS & payroll' },
+];
+
 export function SignUp() {
-  const [f, setF] = useState({ companyName: '', ownerName: '', email: '', phone: '', password: '', kraPin: '', vatRegistered: true });
+  const [f, setF] = useState({ companyName: '', ownerName: '', email: '', phone: '', password: '', kraPin: '', vatRegistered: true, industry: 'general' });
   const [state, setState] = useState({ busy: false, error: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const submit = async (e: FormEvent) => {
@@ -165,6 +174,25 @@ export function SignUp() {
       <form onSubmit={submit} className="mt-7 space-y-4">
         <Field label="Business name">
           <input className="field" required value={f.companyName} onChange={set('companyName')} placeholder="e.g. Mama Pili Sauces Ltd" />
+        </Field>
+        <Field label="Industry / Sector" hint="Tailors your workflow defaults (e.g. price lists, dispatch trips, or recipes).">
+          <div className="grid grid-cols-2 gap-2">
+            {INDUSTRIES.map((ind) => (
+              <button
+                key={ind.id}
+                type="button"
+                onClick={() => setF({ ...f, industry: ind.id })}
+                className={`flex flex-col items-start rounded-lg border p-2 text-left transition-all ${
+                  f.industry === ind.id
+                    ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 font-medium text-[var(--color-brand)] ring-1 ring-[var(--color-brand)]'
+                    : 'border-slate-200 hover:border-slate-300 dark:border-slate-800'
+                }`}
+              >
+                <span className="text-xs font-semibold leading-tight">{ind.label}</span>
+                <span className="mt-0.5 text-[10px] text-muted line-clamp-1">{ind.desc}</span>
+              </button>
+            ))}
+          </div>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Your name">

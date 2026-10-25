@@ -13,6 +13,8 @@ namespace Kabuor.Erp.Purchases;
 public sealed record PurchaseLineInput(Guid? ItemId, Guid? AccountId, string? Description, decimal Quantity, long? UnitCost, TaxType? TaxType, string? Unit = null, string? BatchNo = null, DateOnly? Expiry = null, string? Brand = null);
 public sealed record PurchaseInput(PurchaseKind Kind, Guid SupplierId, DateOnly? IssueDate, int? DueInDays, string? SupplierRef, Guid? LocationId, string? Notes, List<PurchaseLineInput> Lines);
 public sealed record SupplierPaymentInput(PaymentMethod Method, long Amount, string? Reference, DateTimeOffset? PaidAt);
+public sealed record LineMatchVariance(Guid? ItemId, string Description, decimal OrderQuantity, decimal BillQuantity, decimal QuantityDiff, long OrderUnitCost, long BillUnitCost, long CostDiff, string Status);
+public sealed record ThreeWayMatchResult(bool HasPurchaseOrder, string? OrderNumber, string BillNumber, bool Matched, long OrderTotal, long BillTotal, long TotalVariance, List<LineMatchVariance> Variances, string Summary);
 
 public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, InventoryService stock, RequestContext ctx)
 {
@@ -24,7 +26,10 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
     public async Task<PurchaseDoc> Create(PurchaseInput input)
     {
         var supplier = await db.Suppliers.SingleOrDefaultAsync(s => s.Id == input.SupplierId) ?? throw new AppException("Choose a supplier.");
+        var company = await Company();
         var issue = input.IssueDate ?? Clock.Today;
+        if (input.Kind == PurchaseKind.Bill && company.AccountingLockDate is { } lockDate && issue <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         var doc = new PurchaseDoc
         {
             Kind = input.Kind,
@@ -46,9 +51,13 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
     {
         var doc = await Get(id);
         if (doc.Status != PurchaseStatus.Draft) throw new AppException("Only drafts can be changed.");
+        var company = await Company();
+        var issue = input.IssueDate ?? doc.IssueDate;
+        if (doc.Kind == PurchaseKind.Bill && company.AccountingLockDate is { } lockDate && issue <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         var supplier = await db.Suppliers.SingleOrDefaultAsync(s => s.Id == input.SupplierId) ?? throw new AppException("Choose a supplier.");
         doc.SupplierId = supplier.Id;
-        doc.IssueDate = input.IssueDate ?? doc.IssueDate;
+        doc.IssueDate = issue;
         doc.DueDate = doc.IssueDate.AddDays(Math.Clamp(input.DueInDays ?? doc.DueDate.DayNumber - doc.IssueDate.DayNumber, 0, 365));
         doc.SupplierRef = (input.SupplierRef ?? "").Trim();
         doc.LocationId = (await stock.LocationOrDefault(input.LocationId)).Id;
@@ -107,6 +116,9 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
     {
         var doc = await Get(id);
         if (doc.Status != PurchaseStatus.Draft) throw new AppException("This has already been sent or posted.");
+        var company = await Company();
+        if (doc.Kind == PurchaseKind.Bill && company.AccountingLockDate is { } lockDate && doc.IssueDate <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         if (doc.Kind == PurchaseKind.Order)
         {
             doc.Status = PurchaseStatus.Sent;
@@ -153,6 +165,10 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
     {
         var bill = await Get(id);
         if (bill.Kind != PurchaseKind.Bill || bill.Status is PurchaseStatus.Draft or PurchaseStatus.Void) throw new AppException("Post the bill before paying it.");
+        var company = await Company();
+        var payDate = DateOnly.FromDateTime((input.PaidAt ?? DateTimeOffset.UtcNow).DateTime);
+        if (company.AccountingLockDate is { } lockDate && payDate <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         if (input.Amount <= 0) throw new AppException("Enter an amount above 0.");
         if (input.Amount > bill.Balance) throw new AppException($"Only {bill.Balance / 100m:N2} is left to pay on {bill.Number}.");
         var p = new SupplierPayment { PurchaseDocId = bill.Id, SupplierId = bill.SupplierId, Method = input.Method, Amount = input.Amount, Reference = (input.Reference ?? "").Trim().ToUpperInvariant(), PaidAt = input.PaidAt ?? DateTimeOffset.UtcNow, Actor = ctx.Actor };
@@ -168,6 +184,9 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
     {
         var doc = await Get(id);
         if (doc.Status == PurchaseStatus.Void) throw new AppException("Already void.");
+        var company = await Company();
+        if (doc.Kind == PurchaseKind.Bill && company.AccountingLockDate is { } lockDate && doc.IssueDate <= lockDate)
+            throw new AppException($"Accounting period on or before {lockDate:d MMM yyyy} is closed and locked.", 409);
         if (doc.Paid > 0) throw new AppException("This bill has payments on it, so it can't be voided.");
         if (doc.Kind == PurchaseKind.Bill && doc.Status != PurchaseStatus.Draft)
         {
@@ -182,5 +201,121 @@ public sealed class PurchaseService(ErpDb db, Ledger ledger, Numbers numbers, In
         doc.Status = PurchaseStatus.Void;
         await db.SaveChangesAsync();
         return doc;
+    }
+
+    /// <summary>
+    /// Performs 3-way matching between a supplier Bill and its source Purchase Order.
+    /// Verifies quantities received, invoiced, and unit costs to catch overbilling or discrepancy.
+    /// </summary>
+    public async Task<ThreeWayMatchResult> MatchCheck(Guid billId)
+    {
+        var bill = await Get(billId);
+        if (bill.Kind != PurchaseKind.Bill)
+            throw new AppException("Match check only applies to supplier bills.");
+
+        if (bill.FromOrderId is not { } orderId)
+        {
+            return new ThreeWayMatchResult(
+                HasPurchaseOrder: false,
+                OrderNumber: null,
+                BillNumber: bill.Number,
+                Matched: false,
+                OrderTotal: 0,
+                BillTotal: bill.Total,
+                TotalVariance: bill.Total,
+                Variances: [],
+                Summary: "No purchase order linked to this bill. Internal controls recommend raising a PO first."
+            );
+        }
+
+        var order = await Get(orderId);
+        var variances = new List<LineMatchVariance>();
+        var poLinesRemaining = order.Lines.ToList();
+        bool anyMismatch = false;
+
+        foreach (var bLine in bill.Lines)
+        {
+            var poLine = poLinesRemaining.FirstOrDefault(p =>
+                (bLine.ItemId != null && p.ItemId == bLine.ItemId) ||
+                (bLine.ItemId == null && string.Equals(p.Description.Trim(), bLine.Description.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+            if (poLine is null)
+            {
+                variances.Add(new LineMatchVariance(
+                    bLine.ItemId,
+                    bLine.Description,
+                    OrderQuantity: 0,
+                    BillQuantity: bLine.Quantity,
+                    QuantityDiff: bLine.Quantity,
+                    OrderUnitCost: 0,
+                    BillUnitCost: bLine.UnitCost,
+                    CostDiff: bLine.UnitCost,
+                    Status: "ExtraBillLine"
+                ));
+                anyMismatch = true;
+            }
+            else
+            {
+                poLinesRemaining.Remove(poLine);
+                var qtyDiff = bLine.Quantity - poLine.Quantity;
+                var costDiff = bLine.UnitCost - poLine.UnitCost;
+                string status = "Matched";
+                if (costDiff != 0)
+                {
+                    status = "PriceMismatch";
+                    anyMismatch = true;
+                }
+                else if (qtyDiff != 0)
+                {
+                    status = "QuantityMismatch";
+                    anyMismatch = true;
+                }
+
+                variances.Add(new LineMatchVariance(
+                    bLine.ItemId,
+                    bLine.Description,
+                    OrderQuantity: poLine.Quantity,
+                    BillQuantity: bLine.Quantity,
+                    QuantityDiff: qtyDiff,
+                    OrderUnitCost: poLine.UnitCost,
+                    BillUnitCost: bLine.UnitCost,
+                    CostDiff: costDiff,
+                    Status: status
+                ));
+            }
+        }
+
+        foreach (var remainingPo in poLinesRemaining)
+        {
+            variances.Add(new LineMatchVariance(
+                remainingPo.ItemId,
+                remainingPo.Description,
+                OrderQuantity: remainingPo.Quantity,
+                BillQuantity: 0,
+                QuantityDiff: -remainingPo.Quantity,
+                OrderUnitCost: remainingPo.UnitCost,
+                BillUnitCost: 0,
+                CostDiff: -remainingPo.UnitCost,
+                Status: "MissingLine"
+            ));
+            anyMismatch = true;
+        }
+
+        var totalVariance = bill.Total - order.Total;
+        var summary = !anyMismatch
+            ? $"Exact 3-way match: Bill {bill.Number} agrees with PO {order.Number} on all quantities and prices."
+            : $"Discrepancy detected: Bill {bill.Number} deviates from PO {order.Number} by {Money.Ksh(Math.Abs(totalVariance))} ({(totalVariance > 0 ? "Billed over PO" : "Billed under PO")}).";
+
+        return new ThreeWayMatchResult(
+            HasPurchaseOrder: true,
+            OrderNumber: order.Number,
+            BillNumber: bill.Number,
+            Matched: !anyMismatch,
+            OrderTotal: order.Total,
+            BillTotal: bill.Total,
+            TotalVariance: totalVariance,
+            Variances: variances,
+            Summary: summary
+        );
     }
 }

@@ -84,6 +84,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<StockCountLine> StockCountLines => Set<StockCountLine>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<AssetEvent> AssetEvents => Set<AssetEvent>();
+    public DbSet<DispatchTrip> DispatchTrips => Set<DispatchTrip>();
+    public DbSet<DeliveryItem> DeliveryItems => Set<DeliveryItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -180,6 +182,11 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<AssetEvent>().HasIndex(x => new { x.CompanyId, x.AssetId });
         b.Entity<StockCountLine>().HasIndex(x => new { x.CompanyId, x.ItemId, x.At });
         b.Entity<PortalCode>().HasIndex(x => new { x.CompanyId, x.Phone, x.ExpiresAt });
+        b.Entity<DispatchTrip>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<DispatchTrip>().HasIndex(x => new { x.CompanyId, x.TripNumber }).IsUnique();
+        b.Entity<DispatchTrip>().HasMany(x => x.Deliveries).WithOne().HasForeignKey(x => x.TripId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<DeliveryItem>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
+        b.Entity<DeliveryItem>().HasIndex(x => new { x.CompanyId, x.WaybillNumber });
 
         // Lookups the app does all the time, indexed with the company first.
         b.Entity<User>().HasIndex(x => x.Email).IsUnique().HasFilter("\"Email\" <> ''"); // one login per email across the platform

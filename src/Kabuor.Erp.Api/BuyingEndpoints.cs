@@ -140,6 +140,7 @@ public static class BuyingEndpoints
         buy.MapPost("/{id:guid}/receive", async (Guid id, PurchaseService svc) => await svc.ToBill(id)).RequireAuthorization(Policies.Stock);
         buy.MapPost("/{id:guid}/pay", async (Guid id, SupplierPaymentInput input, PurchaseService svc) => await svc.Pay(id, input)).RequireAuthorization(Policies.Finance);
         buy.MapPost("/{id:guid}/void", async (Guid id, PurchaseService svc) => await svc.Void(id)).RequireAuthorization(Policies.Finance);
+        buy.MapGet("/{id:guid}/match-check", async (Guid id, PurchaseService svc) => await svc.MatchCheck(id)).RequireAuthorization(Policies.BuyView);
 
         // Expense accounts a bill line can go to (the plain-words chart).
         api.MapGet("/expense-accounts", async (ErpDb db) =>

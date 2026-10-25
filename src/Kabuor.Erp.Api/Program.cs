@@ -116,6 +116,7 @@ builder.Services.AddHttpClient("webhooks", c => c.Timeout = TimeSpan.FromSeconds
 builder.Services.AddHttpClient("daraja", c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<Kabuor.Erp.Crm.CrmService>();
 builder.Services.AddScoped<Kabuor.Erp.Production.ProductionService>();
+builder.Services.AddScoped<Kabuor.Erp.Dispatch.DispatchService>();
 builder.Services.AddScoped<Kabuor.Erp.Marketing.MarketingService>();
 builder.Services.AddScoped<Kabuor.Erp.Agents.AgentService>();
 builder.Services.AddSingleton<Kabuor.Erp.Agents.AgentScheduler>();

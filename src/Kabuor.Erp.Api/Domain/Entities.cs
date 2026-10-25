@@ -36,6 +36,10 @@ public sealed class Company
     public string StkConsumerKey { get; set; } = "";
     public string StkConsumerSecret { get; set; } = "";
     public string StkPasskey { get; set; } = "";
+    /// <summary>Industry vertical selected during onboarding: distribution | manufacturing | retail | transportation | services | general</summary>
+    public string Industry { get; set; } = "general";
+    /// <summary>Accounting period lock date: no transaction on or before this date can be posted, modified, or voided (internal audit control).</summary>
+    public DateOnly? AccountingLockDate { get; set; }
     /// <summary>Subscription: "" while on the free trial, then starter | business | growth.</summary>
     public string Plan { get; set; } = "";
     public DateTimeOffset? TrialEndsAt { get; set; }
@@ -647,3 +651,43 @@ public sealed class PosSession : ICompanyOwned
     public DateTimeOffset OpenedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ClosedAt { get; set; }
 }
+
+public enum DispatchStatus { Draft, Dispatched, Delivered, Completed, Cancelled }
+
+/// <summary>A delivery trip / route dispatch carrying customer orders in a specific vehicle.</summary>
+public sealed class DispatchTrip : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public string TripNumber { get; set; } = "";
+    public string VehiclePlate { get; set; } = "";
+    public string DriverName { get; set; } = "";
+    public string DriverPhone { get; set; } = "";
+    public string RouteName { get; set; } = "";
+    public DispatchStatus Status { get; set; } = DispatchStatus.Draft;
+    public DateTimeOffset? DispatchedAt { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
+    public string Notes { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public List<DeliveryItem> Deliveries { get; set; } = [];
+}
+
+public enum DeliveryItemStatus { Pending, Dispatched, Delivered, PartialReturn, Failed }
+
+/// <summary>An individual consignment / order delivery on a dispatch trip, tracking proof of delivery.</summary>
+public sealed class DeliveryItem : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid TripId { get; set; }
+    public Guid? SalesDocId { get; set; }
+    public string WaybillNumber { get; set; } = "";
+    public string CustomerName { get; set; } = "";
+    public string DeliveryAddress { get; set; } = "";
+    public string ContactPhone { get; set; } = "";
+    public DeliveryItemStatus Status { get; set; } = DeliveryItemStatus.Pending;
+    public string RecipientName { get; set; } = "";
+    public string PodNotes { get; set; } = "";
+    public DateTimeOffset? PodConfirmedAt { get; set; }
+}
+
