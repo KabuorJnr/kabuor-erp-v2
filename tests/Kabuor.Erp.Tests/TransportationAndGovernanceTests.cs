@@ -252,4 +252,37 @@ public class TransportationAndGovernanceTests(ErpFactory factory) : IClassFixtur
         var completedTrip = await Ok(await c.PostAsync($"/api/dispatch/trips/{tripId}/complete", null));
         Assert.Equal("Completed", completedTrip.GetProperty("status").GetString());
     }
+
+    [Fact]
+    public async Task A_delivery_business_is_asked_for_its_vehicles_and_a_returned_drop_can_go_out_again()
+    {
+        var (c, _) = await Owner("transportation");
+        static JsonElement Step(JsonElement status) => status.GetProperty("steps").EnumerateArray().Single(s => s.GetProperty("key").GetString() == "fleet");
+        Assert.False(Step(await Ok(await c.GetAsync("/api/onboarding/status"))).GetProperty("done").GetBoolean());
+        var lorry = (await Ok(await c.PostAsJsonAsync("/api/assets", new { name = "Isuzu FRR", category = "VEH", serialNumber = "KCA 123B" }))).GetProperty("items")[0];
+        Assert.True(Step(await Ok(await c.GetAsync("/api/onboarding/status"))).GetProperty("done").GetBoolean());
+
+        var cust = Id(await Ok(await c.PostAsJsonAsync("/api/customers", new { name = "Ahero Hardware" })));
+        var item = Id(await Ok(await c.PostAsJsonAsync("/api/items", new { name = "Cement 50kg", price = 850_00 })));
+        var inv = Id(await Ok(await c.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = cust, lines = new[] { new { itemId = item, quantity = 10 } } })));
+        await Ok(await c.PostAsync($"/api/sales/{inv}/issue", null));
+        Assert.Contains((await Ok(await c.GetAsync("/api/dispatch/to-deliver"))).EnumerateArray(), i => Id(i) == inv);
+
+        var trip = await Ok(await c.PostAsJsonAsync("/api/dispatch/trips", new { vehicleId = Id(lorry), driverName = "Peter Owino", routeName = "Ahero", deliveries = new[] { new { salesDocId = inv } } }));
+        Assert.Equal("KCA 123B", trip.GetProperty("vehiclePlate").GetString());
+        // On a trip: not waiting any more, can't go on a second one, and the lorry can't be sent out twice.
+        Assert.DoesNotContain((await Ok(await c.GetAsync("/api/dispatch/to-deliver"))).EnumerateArray(), i => Id(i) == inv);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/dispatch/trips", new { vehiclePlate = "KDD 456Y", driverName = "Other Driver", routeName = "Ahero", deliveries = new[] { new { salesDocId = inv } } })).StatusCode);
+        await Ok(await c.PostAsync($"/api/dispatch/trips/{Id(trip)}/dispatch", null));
+        var second = await Ok(await c.PostAsJsonAsync("/api/dispatch/trips", new { vehicleId = Id(lorry), driverName = "Peter Owino", routeName = "Kondele", deliveries = new[] { new { customerName = "Kondele Builders", deliveryAddress = "Kondele" } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync($"/api/dispatch/trips/{Id(second)}/dispatch", null)).StatusCode);
+
+        // The shop was closed: it came back, so the invoice is waiting to go out again.
+        var drop = trip.GetProperty("deliveries")[0];
+        await Ok(await c.PostAsJsonAsync($"/api/dispatch/deliveries/{Id(drop)}/pod", new { recipientName = "", podNotes = "Shop closed", status = "Failed" }));
+        await Ok(await c.PostAsync($"/api/dispatch/trips/{Id(trip)}/complete", null));
+        Assert.Contains((await Ok(await c.GetAsync("/api/dispatch/to-deliver"))).EnumerateArray(), i => Id(i) == inv);
+        var fleet = await Ok(await c.GetAsync("/api/dispatch/fleet"));
+        Assert.Equal("available", fleet.GetProperty("vehicles")[0].GetProperty("state").GetString());
+    }
 }

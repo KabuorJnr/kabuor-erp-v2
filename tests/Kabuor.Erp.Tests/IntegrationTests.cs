@@ -39,6 +39,7 @@ public sealed class IntegrationFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Erp", ErpFactory.Pg is null ? $"Data Source={_db}" : $"{ErpFactory.Pg};Database=kabuor_erp_api_{Guid.NewGuid():N}");
         builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
         builder.UseSetting("Agents:Disabled", "true");
+        builder.UseSetting("Billing:PayToStart", "false");
         builder.UseSetting("Webhooks:Disabled", "true"); // the test sends them itself
         builder.ConfigureTestServices(s => s.AddHttpClient("webhooks").ConfigurePrimaryHttpMessageHandler(() => Receiver));
     }

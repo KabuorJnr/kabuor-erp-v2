@@ -286,7 +286,7 @@ public sealed class PeopleService(ErpDb db, Ledger ledger, Numbers numbers, Requ
         var run = await GetRun(runId);
         var staff = await db.Employees.Where(e => run.Payslips.Select(p => p.EmployeeId).Contains(e.Id)).ToDictionaryAsync(e => e.Id);
         static string K(long c) => (c / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-        static string Q(string s) => s.Contains(',') || s.Contains('"') ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
+        static string Q(string s) => CsvCell.Of(s);
         var sb = new StringBuilder("KRA PIN,Employee name,Basic salary,Allowances and other pay,Gross pay,NSSF,SHIF,Housing Levy,Taxable pay,Tax charged,Personal relief,PAYE\n");
         foreach (var s in run.Payslips.OrderBy(p => p.EmployeeName))
             sb.AppendLine(string.Join(',', Q(staff.GetValueOrDefault(s.EmployeeId)?.KraPin ?? ""), Q(s.EmployeeName), K(s.Basic), K(s.TaxableAllowances + s.ExtraEarnings), K(s.Gross), K(s.NssfEmployee), K(s.Shif), K(s.HousingLevyEmployee), K(s.Taxable), K(s.PayeBeforeRelief), K(s.PersonalRelief), K(s.Paye)));

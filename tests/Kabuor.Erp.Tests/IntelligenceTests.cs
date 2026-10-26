@@ -28,7 +28,7 @@ public class IntelligenceTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         var made = await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = "Mercy Achieng", email, role = "Sales", password = "another-long-password" }));
         var sales = factory.CreateClient();
-        var login = await Ok(await sales.PostAsJsonAsync("/api/auth/login", new { email, password = "another-long-password" }));
+        var login = await TestSignIn.First(sales, email, "another-long-password");
         sales.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("token").GetString());
         var portal = await Ok(await owner.PutAsJsonAsync("/api/settings/portal", new { enabled = true }));
         return (owner, sales, login.GetProperty("user").GetProperty("id").GetGuid(), portal.GetProperty("slug").GetString()!);

@@ -26,7 +26,7 @@ public class AccessTests(ErpFactory factory) : IClassFixture<ErpFactory>
             var email = $"{Guid.NewGuid():N}@example.com";
             await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = $"{role} Person", email, role, password = "another-long-password" }));
             var c = factory.CreateClient();
-            var session = await Ok(await c.PostAsJsonAsync("/api/auth/login", new { email, password = "another-long-password" }));
+            var session = await TestSignIn.First(c, email, "another-long-password");
             c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.GetProperty("token").GetString());
             return (c, session);
         }

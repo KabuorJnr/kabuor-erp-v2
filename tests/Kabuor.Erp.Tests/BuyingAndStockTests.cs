@@ -201,7 +201,7 @@ public class BuyingAndStockTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = "Store Keeper", email, phone = "0700 333 444", role = "Storekeeper", password = "storekeeper-pass" }));
         var sk = factory.CreateClient();
-        var login = await Ok(await sk.PostAsJsonAsync("/api/auth/login", new { email, password = "storekeeper-pass" }));
+        var login = await TestSignIn.First(sk, email, "storekeeper-pass");
         sk.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("token").GetString());
 
         await Ok(await sk.PostAsJsonAsync("/api/purchases", new { kind = "Order", supplierId = supplier, lines = new[] { new { itemId = item, quantity = 5, unitCost = 11600 } } }));

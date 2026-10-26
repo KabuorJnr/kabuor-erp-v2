@@ -183,8 +183,10 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             Industry = industry,
             PreventNegativeStock = industry is "distribution" or "retail"
         };
+        // Paying to start: the account opens with the first M-Pesa payment, and there's no free trial to run out.
+        if (Billing.Plans.PayToStart(config)) (company.AwaitingFirstPayment, company.TrialEndsAt) = (true, company.CreatedAt);
         (ctx.CompanyId, ctx.Actor) = (company.Id, input.OwnerName!.Trim());
-        var owner = new User { CompanyId = company.Id, Name = input.OwnerName.Trim(), Email = email, Phone = phone, Role = Role.Owner };
+        var owner = new User { CompanyId = company.Id, Name = input.OwnerName.Trim(), Email = email, Phone = phone, Role = Role.Owner, LastSignInAt = DateTimeOffset.UtcNow };
         owner.PasswordHash = Hasher.HashPassword(owner, input.Password);
         ctx.UserId = owner.Id;
         db.Companies.Add(company);
@@ -231,7 +233,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
             await db.SaveChangesAsync();
             return new { needsCode = true, challenge = tokens.Challenge(user) };
         }
-        (user.FailedLogins, user.LockedUntil) = (0, null);
+        (user.FailedLogins, user.LockedUntil, user.LastSignInAt) = (0, null, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync();
         var company = await db.Companies.SingleAsync(c => c.Id == user.CompanyId);
         return Session(user, company);
@@ -260,7 +262,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
                 ? "Your two-step setup can't be read after a server change, so app codes won't work. Sign in with one of your recovery codes, then turn two-step sign-in off and on again in Security."
                 : "That code isn't right. Use the 6 digits in your authenticator app now, or a recovery code.", 401);
         }
-        (user.FailedLogins, user.LockedUntil) = (0, null);
+        (user.FailedLogins, user.LockedUntil, user.LastSignInAt) = (0, null, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync();
         var session = Session(user, await db.Companies.SingleAsync(c => c.Id == user.CompanyId));
         return input.Remember == true ? session with { Device = tokens.Device(user) } : session;
@@ -317,7 +319,8 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The owner adds a colleague with a role and a starting password they'll share privately.</summary>
+    /// <summary>The owner adds a colleague with a role and a starting password they'll share privately (and that only
+    /// works once: they choose their own at first sign-in).</summary>
     public async Task<User> AddUser(string name, string email, string phone, Role role, string password)
     {
         email = CleanEmail(email);
@@ -328,11 +331,82 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         var plan = Billing.Plans.All(config).FirstOrDefault(p => p.Id == company.Plan);
         if (plan is not null && await db.Users.CountAsync(x => x.Active && x.Role != Role.Employee) >= plan.Users)
             throw new AppException($"The {plan.Name} plan has room for {plan.Users} users. Choose a bigger plan in Settings → Plan to add more.");
-        var u = new User { Name = name!.Trim(), Email = email, Phone = Phones.ToMsisdn(phone) ?? "", Role = role };
+        if (role == Role.Employee) throw new AppException("Employees get their app access from their record in People (Give app access).");
+        // The starting password is known to whoever typed it: they replace it with their own when they first sign in.
+        var u = new User { Name = name!.Trim(), Email = email, Phone = Phones.ToMsisdn(phone) ?? "", Role = role, MustChangePassword = true };
         u.PasswordHash = Hasher.HashPassword(u, password);
         db.Users.Add(u);
         await db.SaveChangesAsync();
         return u;
+    }
+
+    // ---------- the owner looking after the team ----------
+
+    async Task<User> Colleague(Guid id)
+    {
+        var u = await db.Users.SingleOrDefaultAsync(x => x.Id == id) ?? throw new AppException("Not found.", 404);
+        if (u.Role == Role.Employee) throw new AppException($"{u.Name} signs in to the staff portal: manage that from their record in People.");
+        return u;
+    }
+
+    /// <summary>Someone always has to be able to run the business: the last active owner can't be demoted or switched off.</summary>
+    async Task KeepAnOwner(User u)
+    {
+        if (u.Role == Role.Owner && u.Active && !await db.Users.AnyAsync(x => x.Id != u.Id && x.Role == Role.Owner && x.Active))
+            throw new AppException($"{u.Name} is the only owner. Make someone else an owner first.");
+    }
+
+    /// <summary>A new role takes effect at once: their sessions end and they sign in again with the new menu.</summary>
+    public async Task<User> ChangeRole(Guid id, Role role)
+    {
+        var u = await Colleague(id);
+        if (role == Role.Employee) throw new AppException("Employees get their app access from their record in People.");
+        if (u.Role == role) return u;
+        if (role != Role.Owner) await KeepAnOwner(u);
+        u.Role = role;
+        u.TokenVersion++;
+        await db.SaveChangesAsync();
+        return u;
+    }
+
+    /// <summary>Switching a login off ends its sessions; nothing they did is removed. Switching it on again counts
+    /// against the plan's users.</summary>
+    public async Task<User> SetActive(Guid id, bool active)
+    {
+        var u = await Colleague(id);
+        if (u.Active == active) return u;
+        if (!active)
+        {
+            if (u.Id == ctx.UserId) throw new AppException("You can't switch off your own login.");
+            await KeepAnOwner(u);
+            u.TokenVersion++;
+        }
+        else
+        {
+            var company = await db.Companies.SingleAsync(c => c.Id == db.CompanyId);
+            var plan = Billing.Plans.All(config).FirstOrDefault(p => p.Id == company.Plan);
+            if (plan is not null && await db.Users.CountAsync(x => x.Active && x.Role != Role.Employee) >= plan.Users)
+                throw new AppException($"The {plan.Name} plan has room for {plan.Users} users. Choose a bigger plan, or switch someone else off first.");
+            (u.FailedLogins, u.LockedUntil) = (0, null);
+        }
+        u.Active = active;
+        await db.SaveChangesAsync();
+        return u;
+    }
+
+    /// <summary>A forgotten password: a one-time one, shown once, that they must replace when they sign in. Their other
+    /// sessions end and a lockout is lifted.</summary>
+    public async Task<AccessGrant> ResetPassword(Guid id)
+    {
+        var u = await Colleague(id);
+        if (u.Id == ctx.UserId) throw new AppException("Change your own password from Sign-in security.");
+        if (!u.Active) throw new AppException($"Switch {u.Name}'s login on first.");
+        var password = NewPassword();
+        u.PasswordHash = Hasher.HashPassword(u, password);
+        (u.MustChangePassword, u.FailedLogins, u.LockedUntil) = (true, 0, null);
+        u.TokenVersion++;
+        await db.SaveChangesAsync();
+        return new AccessGrant(u.Email, password, true);
     }
 
     /// <summary>HR gives an employee a self-service login (or resets it): their phone and a one-time password
@@ -392,5 +466,5 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
     Session Session(User u, Company c) => new(
         tokens.Issue(u),
         new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, permissions = Policies.For(u.Role) },
-        new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate });
+        new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate, c.AwaitingFirstPayment });
 }

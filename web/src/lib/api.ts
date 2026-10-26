@@ -12,7 +12,7 @@ const KEY = 'kerp-session';
 export type Session = {
   token: string;
   user: { id: string; name: string; email: string; role: Role; language: 'en' | 'sw'; employeeId?: string | null; mustChangePassword?: boolean; twoFactorEnabled?: boolean; permissions?: Permission[] };
-  company: { id: string; name: string; kraPin: string; vatRegistered: boolean; industry?: string; accountingLockDate?: string | null };
+  company: { id: string; name: string; kraPin: string; vatRegistered: boolean; industry?: string; accountingLockDate?: string | null; awaitingFirstPayment?: boolean };
 };
 export type Role = 'Owner' | 'Accountant' | 'Sales' | 'Storekeeper' | 'Viewer' | 'HR' | 'Employee' | 'Procurement';
 
@@ -58,6 +58,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     return undefined as T;
   }
   const data = await res.json().catch(() => ({}));
+  // The account hasn't been paid for yet (or no longer is, on a stale page): show the payment screen.
+  if (res.status === 402 && data.code === 'pay-to-start' && s && !s.company.awaitingFirstPayment) setSession({ ...s, company: { ...s.company, awaitingFirstPayment: true } });
   if (!res.ok) throw new ApiError(res.status, data.error ?? (res.status === 403 ? 'You don’t have access to this.' : 'Network problem. Check your connection.'));
   if (method !== 'GET') {
     clearApiCache();

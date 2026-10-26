@@ -10,6 +10,20 @@ public sealed class AppException(string message, int status = 400) : Exception(m
     public int Status { get; } = status;
 }
 
+/// <summary>One cell of a CSV file someone will open in Excel. Text that starts like a formula (=, +, -, @, a tab)
+/// gets a leading apostrophe so Excel shows it instead of running it: names typed by customers in the public shop end
+/// up in the VAT and payroll files. Numbers (including negative amounts) are left as they are.</summary>
+public static class CsvCell
+{
+    public static string Of(string? value)
+    {
+        var s = value ?? "";
+        if (s.Length > 0 && "=+-@\t\r".Contains(s[0]) && !decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out _))
+            s = "'" + s;
+        return s.Contains(',') || s.Contains('"') || s.Contains('\n') || s.Contains('\r') ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
+    }
+}
+
 public static class Clock
 {
     /// <summary>Today in Kenya (EAT, UTC+3; no daylight saving).</summary>

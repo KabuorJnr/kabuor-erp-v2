@@ -17,7 +17,7 @@ namespace Kabuor.Erp.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -412,6 +412,9 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("CheckoutId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -558,10 +561,71 @@ namespace Kabuor.Erp.Data.Migrations
                     b.ToTable("CampaignRecipients");
                 });
 
+            modelBuilder.Entity("Kabuor.Erp.Domain.Candidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly?>("InterviewOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OpeningId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RejectReason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("StageChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "OpeningId", "Stage");
+
+                    b.ToTable("Candidates");
+                });
+
             modelBuilder.Entity("Kabuor.Erp.Domain.Company", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("AccountingLockDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("AwaitingFirstPayment")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("County")
                         .IsRequired()
@@ -571,6 +635,10 @@ namespace Kabuor.Erp.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Industry")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -726,6 +794,120 @@ namespace Kabuor.Erp.Data.Migrations
                     b.HasIndex("CompanyId", "Phone");
 
                     b.ToTable("Customers");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.DeliveryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactPhone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeliveryAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("PodConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PodNotes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SalesDocId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TripId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WaybillNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TripId");
+
+                    b.HasIndex("CompanyId", "SalesDocId");
+
+                    b.HasIndex("CompanyId", "WaybillNumber");
+
+                    b.ToTable("DeliveryItems");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.DispatchTrip", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DriverName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DriverPhone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RouteName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TripNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VehiclePlate")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "TripNumber")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "VehicleId", "Status");
+
+                    b.ToTable("DispatchTrips");
                 });
 
             modelBuilder.Entity("Kabuor.Erp.Domain.Employee", b =>
@@ -1249,6 +1431,51 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ItemUnits");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.JobOpening", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Department")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Open")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Positions")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JobOpenings");
                 });
 
             modelBuilder.Entity("Kabuor.Erp.Domain.JournalEntry", b =>
@@ -2412,6 +2639,7 @@ namespace Kabuor.Erp.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<int>("Next")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.HasKey("CompanyId", "Key");
@@ -2543,6 +2771,7 @@ namespace Kabuor.Erp.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Quantity")
+                        .IsConcurrencyToken()
                         .HasColumnType("numeric");
 
                     b.Property<DateOnly>("ReceivedOn")
@@ -2608,6 +2837,7 @@ namespace Kabuor.Erp.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Quantity")
+                        .IsConcurrencyToken()
                         .HasColumnType("numeric");
 
                     b.HasKey("CompanyId", "ItemId", "LocationId");
@@ -2846,6 +3076,9 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("LastSignInAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("LockedUntil")
                         .HasColumnType("timestamp with time zone");
 
@@ -3078,6 +3311,15 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Kabuor.Erp.Domain.DeliveryItem", b =>
+                {
+                    b.HasOne("Kabuor.Erp.Domain.DispatchTrip", null)
+                        .WithMany("Deliveries")
+                        .HasForeignKey("TripId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Kabuor.Erp.Domain.InquiryMessage", b =>
                 {
                     b.HasOne("Kabuor.Erp.Domain.Inquiry", null)
@@ -3191,6 +3433,11 @@ namespace Kabuor.Erp.Data.Migrations
             modelBuilder.Entity("Kabuor.Erp.Domain.Campaign", b =>
                 {
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.DispatchTrip", b =>
+                {
+                    b.Navigation("Deliveries");
                 });
 
             modelBuilder.Entity("Kabuor.Erp.Domain.Inquiry", b =>

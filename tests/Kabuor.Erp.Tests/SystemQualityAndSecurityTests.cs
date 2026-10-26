@@ -121,19 +121,11 @@ public class SystemQualityAndSecurityTests(ErpFactory factory) : IClassFixture<E
         }));
 
         // Sign in as Storekeeper
-        var skSession = await Ok(await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
-        {
-            email = storekeeperEmail,
-            password = "store-keeper-password-123"
-        }));
+        var skSession = await TestSignIn.First(factory.CreateClient(), storekeeperEmail, "store-keeper-password-123");
         var skClient = WithToken(skSession.GetProperty("token").GetString()!);
 
         // Sign in as Viewer
-        var vwSession = await Ok(await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
-        {
-            email = viewerEmail,
-            password = "viewer-secure-password-123"
-        }));
+        var vwSession = await TestSignIn.First(factory.CreateClient(), viewerEmail, "viewer-secure-password-123");
         var vwClient = WithToken(vwSession.GetProperty("token").GetString()!);
 
         // RBAC Enforcement 1: Storekeeper cannot modify company settings or period lock date -> 403 Forbidden

@@ -7,6 +7,7 @@ import { reportError, startMonitoring } from './lib/monitoring';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
+import Activate from './pages/Activate';
 import Today from './pages/Today';
 import { InvoiceList } from './pages/Invoices';
 import InvoiceEditor from './pages/InvoiceEditor';
@@ -21,6 +22,7 @@ import PurchaseView from './pages/PurchaseView';
 import { SupplierList, SupplierView } from './pages/Suppliers';
 import Stock from './pages/Stock';
 import Assets from './pages/Assets';
+import Fleet from './pages/Fleet';
 import { EmployeeList, EmployeeView } from './pages/Employees';
 import Leave from './pages/Leave';
 import { PayrollList, PayrollRun } from './pages/Payroll';
@@ -66,6 +68,14 @@ function App() {
       </Routes>
     );
   if (session.user.mustChangePassword) return <ChooseOwnPassword session={session} />;
+  if (session.company.awaitingFirstPayment)
+    return (
+      <Routes>
+        <Route path="privacy" element={<Privacy />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="*" element={<Activate session={session} />} />
+      </Routes>
+    );
   return (
     <Routes>
       <Route path="privacy" element={<Privacy />} />
@@ -102,6 +112,7 @@ function App() {
         <Route path="suppliers/:id" element={<Need p="buy.view"><SupplierView /></Need>} />
         <Route path="stock" element={<Need p="stock.view"><Stock /></Need>} />
         <Route path="assets" element={<Need p="stock.view"><Assets /></Need>} />
+        <Route path="fleet" element={<Need p="stock.view"><Fleet /></Need>} />
         <Route path="people" element={<Need p="people"><EmployeeList /></Need>} />
         <Route path="people/:id" element={<Need p="people"><EmployeeView /></Need>} />
         <Route path="recruitment" element={<Need p="people"><Recruitment /></Need>} />
