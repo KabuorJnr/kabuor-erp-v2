@@ -8,8 +8,8 @@ namespace Kabuor.Erp.Data;
 
 public static class EnterpriseDemoSeeder
 {
-    static readonly PasswordHasher<User> Hasher = new();
     const string DefaultPassword = "Password1234!";
+    static readonly string PrecomputedPasswordHash = new PasswordHasher<User>().HashPassword(null!, DefaultPassword);
 
     public static async Task SeedEnterpriseNetwork(ErpDb db)
     {
@@ -21,16 +21,6 @@ public static class EnterpriseDemoSeeder
 
             var companiesDef = GetCompaniesDefinition();
             var employeeTemplates = GetEmployeeTemplates();
-
-            var companiesToAdd = new List<Company>();
-            var accountsToAdd = new List<Account>();
-            var locationsToAdd = new List<Location>();
-            var employeesToAdd = new List<Employee>();
-            var usersToAdd = new List<User>();
-            var customersToAdd = new List<Customer>();
-            var itemsToAdd = new List<Item>();
-            var docsToAdd = new List<SalesDoc>();
-            var paymentsToAdd = new List<Payment>();
 
             for (int i = 0; i < companiesDef.Length; i++)
             {
@@ -56,10 +46,10 @@ public static class EnterpriseDemoSeeder
                     PaidUntil = DateTimeOffset.UtcNow.AddMonths(12 + (i % 6)),
                     TrialEndsAt = DateTimeOffset.UtcNow.AddMonths(12 + (i % 6))
                 };
-                companiesToAdd.Add(company);
+                db.Companies.Add(company);
 
                 // Chart of Accounts
-                accountsToAdd.AddRange(SystemAccounts.Starter(company.Id));
+                db.Accounts.AddRange(SystemAccounts.Starter(company.Id));
 
                 // Default Location
                 var loc = new Location
@@ -70,7 +60,7 @@ public static class EnterpriseDemoSeeder
                     IsDefault = true,
                     Active = true
                 };
-                locationsToAdd.Add(loc);
+                db.Locations.Add(loc);
 
                 // 20 Employees and 20 Users each
                 for (int j = 0; j < 20; j++)
@@ -107,7 +97,7 @@ public static class EnterpriseDemoSeeder
                         AnnualLeaveDays = 21,
                         CreatedAt = DateTimeOffset.UtcNow.AddDays(-180 - (j * 10))
                     };
-                    employeesToAdd.Add(emp);
+                    db.Employees.Add(emp);
 
                     var user = new User
                     {
@@ -118,13 +108,13 @@ public static class EnterpriseDemoSeeder
                         Email = empEmail,
                         Phone = empPhone,
                         Role = empTpl.Role,
+                        PasswordHash = PrecomputedPasswordHash,
                         Active = true,
                         TwoFactorEnabled = false,
                         CreatedAt = DateTimeOffset.UtcNow.AddDays(-180 - (j * 10)),
                         LastSignInAt = DateTimeOffset.UtcNow.AddHours(-(i * 3 + j * 2) % 48)
                     };
-                    user.PasswordHash = Hasher.HashPassword(user, DefaultPassword);
-                    usersToAdd.Add(user);
+                    db.Users.Add(user);
                 }
 
                 // 2 Customers per company
@@ -148,8 +138,7 @@ public static class EnterpriseDemoSeeder
                     Phone = $"0733{((i * 41) % 900000 + 100000):D6}",
                     KraPin = $"P05{((i * 53) % 9000000 + 1000000):D7}W"
                 };
-                customersToAdd.Add(cust1);
-                customersToAdd.Add(cust2);
+                db.Customers.AddRange(cust1, cust2);
 
                 // 2 Items tailored to sector
                 var (itemName1, itemPrice1) = def.Item1;
@@ -173,8 +162,7 @@ public static class EnterpriseDemoSeeder
                     Active = true,
                     TaxType = TaxType.B_Standard16
                 };
-                itemsToAdd.Add(item1);
-                itemsToAdd.Add(item2);
+                db.Items.AddRange(item1, item2);
 
                 // Active Invoices & Payments to generate realistic enterprise transaction volume
                 var inv1Total = (long)(itemPrice1 * 15 * 1.16m);
@@ -196,10 +184,10 @@ public static class EnterpriseDemoSeeder
                     EtimsStatus = EtimsStatus.Signed,
                     CreatedAt = DateTimeOffset.UtcNow.AddDays(-7 - (i % 14))
                 };
-                docsToAdd.Add(doc1);
+                db.SalesDocs.Add(doc1);
 
                 var paymentId = Guid.Parse($"9{i + 1:D3}0000-0000-0000-0000-000000000001");
-                paymentsToAdd.Add(new Payment
+                db.Payments.Add(new Payment
                 {
                     Id = paymentId,
                     CompanyId = company.Id,
@@ -241,27 +229,13 @@ public static class EnterpriseDemoSeeder
                     EtimsStatus = EtimsStatus.Signed,
                     CreatedAt = DateTimeOffset.UtcNow.AddDays(-2)
                 };
-                docsToAdd.Add(doc2);
-            }
+                db.SalesDocs.Add(doc2);
 
-            if (companiesToAdd.Count > 0)
-            {
-                db.Companies.AddRange(companiesToAdd);
-                await db.SaveChangesAsync();
-
-                db.Accounts.AddRange(accountsToAdd);
-                db.Locations.AddRange(locationsToAdd);
-                db.Customers.AddRange(customersToAdd);
-                db.Items.AddRange(itemsToAdd);
-                await db.SaveChangesAsync();
-
-                db.Employees.AddRange(employeesToAdd);
-                db.Users.AddRange(usersToAdd);
-                await db.SaveChangesAsync();
-
-                db.SalesDocs.AddRange(docsToAdd);
-                db.Payments.AddRange(paymentsToAdd);
-                await db.SaveChangesAsync();
+                // Save in batches of 5 to avoid big memory footprint
+                if ((i + 1) % 5 == 0 || i == companiesDef.Length - 1)
+                {
+                    await db.SaveChangesAsync();
+                }
             }
         }
         catch (Exception ex)
