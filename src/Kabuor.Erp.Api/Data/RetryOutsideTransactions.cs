@@ -11,11 +11,11 @@ namespace Kabuor.Erp.Data;
 public sealed class RetryOutsideTransactions(ExecutionStrategyDependencies dependencies)
     : NpgsqlRetryingExecutionStrategy(dependencies, maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)
 {
+    // Only asked once a statement runs. RetriesOnFailure stays as it is: EF reads it while it is still building the
+    // context's services, and asking the context about its transaction from there builds them again, forever.
     bool InTransaction => Dependencies.CurrentContext.Context.Database.CurrentTransaction is not null;
 
-    public override bool RetriesOnFailure => base.RetriesOnFailure && !InTransaction;
-
-    protected override bool ShouldRetryOn(Exception exception) => !InTransaction && base.ShouldRetryOn(exception);
+    protected override bool ShouldRetryOn(Exception? exception) => !InTransaction && base.ShouldRetryOn(exception);
 
     // The base class refuses to start inside a transaction; here that just means "don't retry".
     protected override void OnFirstExecution()
