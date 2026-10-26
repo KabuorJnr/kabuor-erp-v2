@@ -34,6 +34,9 @@ public sealed class OnboardingService(
         var hasItem = await db.Items.AnyAsync();
         var hasInvoice = await db.SalesDocs.AnyAsync(s => s.Kind == SalesDocKind.Invoice);
         var hasTeam = await db.Users.CountAsync(u => u.Role != Role.Employee) > 1;
+        // Businesses that deliver their own goods start with their vehicles.
+        var delivers = company.Industry is "transportation" or "distribution";
+        var hasVehicle = delivers && await db.Assets.AnyAsync(a => a.Category == "VEH");
 
         int total = 4;
         int completed = 0;
@@ -51,6 +54,8 @@ public sealed class OnboardingService(
             new("invoice", "Send your first invoice", "Signed for KRA and shared on WhatsApp in a minute.", hasInvoice, "/invoices/new", "New invoice"),
             new("team", "Invite your team", "Each person gets their own login and sees only what their role needs.", hasTeam, "/settings?tab=team", "Add a person"),
         };
+        if (delivers)
+            steps.Insert(4, new("fleet", "Add your vehicles", "Lorries, vans and motorbikes with their number plates, so trips and waybills can go out.", hasVehicle, "/fleet?view=vehicles", "Add vehicles"));
         var done = steps.Count(x => x.Done);
 
         string nextAction = steps.FirstOrDefault(x => !x.Done)?.Title ?? "You're all set! Ready to transact and grow.";

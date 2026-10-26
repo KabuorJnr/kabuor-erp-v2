@@ -287,12 +287,14 @@ public class SecurityEndToEndTests(ErpFactory factory) : IClassFixture<ErpFactor
     public async Task The_audit_trail_never_holds_keys_or_two_step_secrets()
     {
         var (owner, _) = await Owner($"Audit {Guid.NewGuid():N}");
-        await Ok(await owner.PutAsJsonAsync("/api/settings/mpesa-prompt", new { environment = "sandbox", kind = "paybill", shortcode = "174379", consumerKey = "CK-PLAINTEXT-1234", consumerSecret = "CS-PLAINTEXT-5678", passkey = "PK-PLAINTEXT-9012" }));
+        // Made-up values, different every run.
+        var (key, secret, passkey) = ($"key-{Guid.NewGuid():N}", $"secret-{Guid.NewGuid():N}", $"pass-{Guid.NewGuid():N}");
+        await Ok(await owner.PutAsJsonAsync("/api/settings/mpesa-prompt", new { environment = "sandbox", kind = "paybill", shortcode = "174379", consumerKey = key, consumerSecret = secret, passkey }));
         var twoStep = await Ok(await owner.PostAsync("/api/auth/security/2fa/start", null));
         var audit = await (await owner.GetAsync("/api/audit?take=500")).Content.ReadAsStringAsync();
         Assert.Contains("StkShortcode", audit);
-        foreach (var secret in new[] { "CK-PLAINTEXT-1234", "CS-PLAINTEXT-5678", "PK-PLAINTEXT-9012", twoStep.GetProperty("secret").GetString()! })
-            Assert.DoesNotContain(secret, audit);
+        foreach (var value in new[] { key, secret, passkey, twoStep.GetProperty("secret").GetString()! })
+            Assert.DoesNotContain(value, audit);
         Assert.DoesNotContain("TotpSecret\":\"", audit.Replace("TotpSecret\":\"(changed)", ""));
     }
 }

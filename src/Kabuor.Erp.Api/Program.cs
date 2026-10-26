@@ -76,7 +76,8 @@ builder.Services.AddDbContext<ErpDb>(o =>
     {
         o.UseNpgsql(cs, npgsql =>
         {
-            npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+            // Brief network drops are retried, except inside a transaction the code opened itself (see the class).
+            npgsql.ExecutionStrategy(d => new RetryOutsideTransactions(d));
             npgsql.CommandTimeout(30);
         });
     }
