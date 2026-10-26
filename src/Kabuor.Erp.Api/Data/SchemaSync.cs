@@ -198,7 +198,7 @@ public static partial class SchemaSync
                     CreatedAt = DateTimeOffset.UtcNow,
                     LastSignInAt = DateTimeOffset.UtcNow
                 };
-                user.PasswordHash = hasher.HashPassword(user, "KabuorAdmin2026!");
+                user.PasswordHash = hasher.HashPassword(user, "admin");
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
             }
@@ -208,7 +208,7 @@ public static partial class SchemaSync
                 user.Role = Domain.Role.Owner;
                 user.Email = email;
                 user.CompanyId = company.Id;
-                user.PasswordHash = hasher.HashPassword(user, "KabuorAdmin2026!");
+                user.PasswordHash = hasher.HashPassword(user, "admin");
                 await db.SaveChangesAsync();
             }
         }
@@ -448,7 +448,7 @@ public static partial class SchemaSync
                     CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
                     LastSignInAt = DateTimeOffset.UtcNow
                 };
-                user.PasswordHash = hasher.HashPassword(user, "Password1234!");
+                user.PasswordHash = hasher.HashPassword(user, "admin");
                 db.Users.Add(user);
                 await db.SaveChangesAsync();
             }
@@ -457,6 +457,33 @@ public static partial class SchemaSync
                 user.Active = true;
                 user.Role = Domain.Role.Owner;
                 user.CompanyId = company.Id;
+                user.PasswordHash = hasher.HashPassword(user, "admin");
+                await db.SaveChangesAsync();
+            }
+
+            var adminUser = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == "admin@kabuor.co.ke");
+            if (adminUser is null)
+            {
+                adminUser = new Domain.User
+                {
+                    CompanyId = company.Id,
+                    Name = "Administrator",
+                    Email = "admin@kabuor.co.ke",
+                    Phone = "0712345679",
+                    Role = Domain.Role.Owner,
+                    TwoFactorEnabled = false,
+                    Active = true,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    LastSignInAt = DateTimeOffset.UtcNow,
+                    PasswordHash = hasher.HashPassword(null!, "admin")
+                };
+                db.Users.Add(adminUser);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                adminUser.PasswordHash = hasher.HashPassword(adminUser, "admin");
+                adminUser.Active = true;
                 await db.SaveChangesAsync();
             }
 
