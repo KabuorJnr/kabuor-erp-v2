@@ -318,6 +318,11 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
     {
         var now = DateTimeOffset.UtcNow;
         var companies = await db.Companies.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        if (companies.Count < 50)
+        {
+            await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
+            companies = await db.Companies.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        }
         var users = await db.Users.IgnoreQueryFilters().Select(u => new { u.CompanyId, u.LastSignInAt, u.Role, u.Active }).ToListAsync();
         var docs = await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && Issued.Contains(d.Status)).Select(d => new { d.CompanyId, d.Total, d.IssueDate }).ToListAsync();
 
@@ -600,6 +605,9 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
                 GC.Collect(2, GCCollectionMode.Forced, true, true);
                 GC.WaitForPendingFinalizers();
                 return new { action, status = "ok", message = "Garbage collection completed. LOH compacted." };
+            case "seed-demo":
+                await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
+                return new { action, status = "ok", message = "Enterprise demo network seeded successfully." };
             default:
                 throw new AppException($"Unknown action '{action}'.", 400);
         }

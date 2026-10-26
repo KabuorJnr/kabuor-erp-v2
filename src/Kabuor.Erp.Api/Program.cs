@@ -214,6 +214,17 @@ using (var scope = app.Services.CreateScope())
     await SchemaSync.Prepare(db); // migrations on PostgreSQL; EnsureCreated + new tables/columns on SQLite
 }
 
+_ = Task.Run(async () =>
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ErpDb>();
+        await Kabuor.Erp.Data.EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
+    }
+    catch { /* best effort background seed */ }
+});
+
 app.UseForwardedHeaders();
 app.Use(async (ctx, next) =>
 {

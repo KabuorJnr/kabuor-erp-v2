@@ -19,6 +19,7 @@ public static class EnterpriseDemoSeeder
             var count = await db.Companies.IgnoreQueryFilters().CountAsync();
             if (count >= 50) return;
 
+            var existingIds = (await db.Companies.IgnoreQueryFilters().Select(c => c.Id).ToListAsync()).ToHashSet();
             var companiesDef = GetCompaniesDefinition();
             var employeeTemplates = GetEmployeeTemplates();
 
@@ -28,8 +29,7 @@ public static class EnterpriseDemoSeeder
                 var companyId = Guid.Parse($"b0000000-0000-0000-0000-{(i + 1):D12}");
 
                 // Check if this company already exists
-                var existing = await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == companyId || c.Name == def.Name);
-                if (existing is not null) continue;
+                if (existingIds.Contains(companyId)) continue;
 
                 var company = new Company
                 {
@@ -47,9 +47,6 @@ public static class EnterpriseDemoSeeder
                     TrialEndsAt = DateTimeOffset.UtcNow.AddMonths(12 + (i % 6))
                 };
                 db.Companies.Add(company);
-
-                // Chart of Accounts
-                db.Accounts.AddRange(SystemAccounts.Starter(company.Id));
 
                 // Default Location
                 var loc = new Location
@@ -231,8 +228,8 @@ public static class EnterpriseDemoSeeder
                 };
                 db.SalesDocs.Add(doc2);
 
-                // Save in batches of 5 to avoid big memory footprint
-                if ((i + 1) % 5 == 0 || i == companiesDef.Length - 1)
+                // Save in batches of 25 to minimize network roundtrips
+                if ((i + 1) % 25 == 0 || i == companiesDef.Length - 1)
                 {
                     await db.SaveChangesAsync();
                 }
