@@ -20,6 +20,7 @@ public static partial class SchemaSync
 
         await SeedPlatformAdmin(db);
         await SeedDemoBusiness(db);
+        await SeedOdhiamboBusiness(db);
     }
 
     static async Task Migrate(ErpDb db)
@@ -388,6 +389,127 @@ public static partial class SchemaSync
                 });
 
                 db.Inquiries.AddRange(inq1, inq2);
+                await db.SaveChangesAsync();
+            }
+        }
+        catch { /* best-effort bootstrap */ }
+    }
+
+    public static readonly Guid OdhiamboCompanyId = Guid.Parse("c73e0159-264e-4ff6-a640-4cfab9ccf8fa");
+    public static readonly Guid OdhiamboUserId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+
+    static async Task SeedOdhiamboBusiness(ErpDb db)
+    {
+        try
+        {
+            const string email = "rooneyodhiambo2004@gmail.com";
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == OdhiamboCompanyId || c.Email == email || c.Name == "Odhiambo Enterprises");
+            if (company is null)
+            {
+                company = new Domain.Company
+                {
+                    Id = OdhiamboCompanyId,
+                    Name = "Odhiambo Enterprises",
+                    Email = email,
+                    Phone = "0712345678",
+                    County = "Nairobi",
+                    KraPin = "P059876543Z",
+                    VatRegistered = true,
+                    Plan = "growth",
+                    Industry = "general",
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
+                    PaidUntil = DateTimeOffset.UtcNow.AddYears(5),
+                    TrialEndsAt = DateTimeOffset.UtcNow.AddYears(5)
+                };
+                db.Companies.Add(company);
+                await db.SaveChangesAsync();
+            }
+
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
+            var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == email || u.Id == OdhiamboUserId);
+            if (user is null)
+            {
+                user = new Domain.User
+                {
+                    Id = OdhiamboUserId,
+                    CompanyId = company.Id,
+                    Name = "Rooney Odhiambo",
+                    Email = email,
+                    Phone = "0712345678",
+                    Role = Domain.Role.Owner,
+                    TwoFactorEnabled = false,
+                    Active = true,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
+                    LastSignInAt = DateTimeOffset.UtcNow
+                };
+                user.PasswordHash = hasher.HashPassword(user, "Password1234!");
+                db.Users.Add(user);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                user.Active = true;
+                user.Role = Domain.Role.Owner;
+                user.CompanyId = company.Id;
+                await db.SaveChangesAsync();
+            }
+
+            // Starter Accounts
+            var hasAccounts = await db.Accounts.IgnoreQueryFilters().AnyAsync(a => a.CompanyId == company.Id);
+            if (!hasAccounts)
+            {
+                db.Accounts.AddRange(Accounting.SystemAccounts.Starter(company.Id));
+                await db.SaveChangesAsync();
+            }
+
+            // Default Location
+            var hasLocation = await db.Locations.IgnoreQueryFilters().AnyAsync(l => l.CompanyId == company.Id);
+            if (!hasLocation)
+            {
+                db.Locations.Add(new Domain.Location { CompanyId = company.Id, Name = "Main store", IsDefault = true });
+                await db.SaveChangesAsync();
+            }
+
+            // Starter Customer
+            var customer = await db.Customers.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.CompanyId == company.Id);
+            if (customer is null)
+            {
+                customer = new Domain.Customer
+                {
+                    CompanyId = company.Id,
+                    Number = "C-0001",
+                    Name = "Lake Basin Supplies Ltd",
+                    Phone = "0722334455",
+                    Email = "procurement@lakebasin.co.ke",
+                    Address = "Upper Hill, Nairobi",
+                    CreditLimit = 200_000_00,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-20)
+                };
+                db.Customers.Add(customer);
+                await db.SaveChangesAsync();
+            }
+
+            // Starter Invoice
+            var hasInvoices = await db.SalesDocs.IgnoreQueryFilters().AnyAsync(d => d.CompanyId == company.Id);
+            if (!hasInvoices)
+            {
+                var doc = new Domain.SalesDoc
+                {
+                    CompanyId = company.Id,
+                    Kind = Domain.SalesDocKind.Invoice,
+                    Number = "INV-1001",
+                    CustomerId = customer.Id,
+                    IssueDate = Common.Clock.Today.AddDays(-7),
+                    DueDate = Common.Clock.Today.AddDays(23),
+                    Net = 45_000_00,
+                    Tax = 7_200_00,
+                    Total = 52_200_00,
+                    Paid = 52_200_00,
+                    Status = Domain.SalesDocStatus.Paid,
+                    EtimsStatus = Domain.EtimsStatus.Signed,
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-7)
+                };
+                db.SalesDocs.Add(doc);
                 await db.SaveChangesAsync();
             }
         }

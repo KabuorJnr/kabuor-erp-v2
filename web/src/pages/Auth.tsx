@@ -69,7 +69,12 @@ export function SignIn() {
       if ('needsCode' in r) {
         setChallenge(r.challenge);
         setState({ busy: false, error: '' });
-      } else setSession(r);
+      } else {
+        setSession(r);
+        if (!r.user.isPlatformAdmin && window.location.pathname.startsWith('/platform')) {
+          window.location.href = '/';
+        }
+      }
     } catch (err) {
       setState({ busy: false, error: (err as Error).message });
     }
@@ -81,6 +86,9 @@ export function SignIn() {
       const r = await api<Session & { device?: string }>('/auth/login/code', { body: { challenge, code, remember } });
       if (r.device) rememberDevice(f.email, r.device);
       setSession(r);
+      if (!r.user.isPlatformAdmin && window.location.pathname.startsWith('/platform')) {
+        window.location.href = '/';
+      }
     } catch (err) {
       const message = (err as Error).message;
       if (/password again|too long/i.test(message)) setChallenge(null);
@@ -162,7 +170,9 @@ export function SignUp() {
     e.preventDefault();
     setState({ busy: true, error: '' });
     try {
-      setSession(await api<Session>('/auth/register', { body: { ...f, kraPin: f.kraPin.trim().toUpperCase() } }));
+      const sess = await api<Session>('/auth/register', { body: { ...f, kraPin: f.kraPin.trim().toUpperCase() } });
+      setSession(sess);
+      window.location.href = '/';
     } catch (err) {
       setState({ busy: false, error: (err as Error).message });
     }

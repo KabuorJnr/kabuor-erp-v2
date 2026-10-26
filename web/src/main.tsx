@@ -128,8 +128,8 @@ function App() {
         <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />
         <Route path="reconcile" element={<Need p="finance"><Reconcile /></Need>} />
         <Route path="settings" element={<Need p="admin"><Settings /></Need>} />
-        <Route path="platform" element={<Need p="admin"><Platform /></Need>} />
-        <Route path="admin" element={<Navigate to="/platform" replace />} />
+        <Route path="platform" element={session.user.isPlatformAdmin ? <Platform /> : <Navigate to="/" replace />} />
+        <Route path="admin" element={session.user.isPlatformAdmin ? <Navigate to="/platform" replace /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
