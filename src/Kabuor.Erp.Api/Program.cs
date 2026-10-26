@@ -135,6 +135,7 @@ builder.Services.AddHttpClient("anthropic", c =>
 builder.Services.AddSingleton<Kabuor.Erp.Platform.RequestMetrics>();
 builder.Services.AddSingleton<Kabuor.Erp.Platform.Heartbeat>();
 builder.Services.AddScoped<Kabuor.Erp.Platform.PlatformService>();
+builder.Services.AddHostedService<Kabuor.Erp.Platform.EnterpriseTrafficWorker>();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

@@ -21,6 +21,7 @@ public static partial class SchemaSync
         await SeedPlatformAdmin(db);
         await SeedDemoBusiness(db);
         await SeedOdhiamboBusiness(db);
+        await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
     }
 
     static async Task Migrate(ErpDb db)

@@ -31,28 +31,67 @@ const KES = (cents) => `KSh ${(Math.round(cents) / 100).toLocaleString('en-KE', 
 const rnd = (lo, hi) => Math.floor(Math.random() * (hi - lo + 1)) + lo;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// 20 realistic Kenyan companies across commerce, wholesale, agriculture, healthcare and manufacturing
+// 50 realistic Kenyan companies across commerce, wholesale, agriculture, healthcare, logistics and manufacturing
 const ENTERPRISE_COMPANIES = [
-  { name: 'Nairobi Mega Supermarket Ltd', sector: 'Retail & Supermarket', tier: 'Tier-1 High Volume', dailyQuota: 65000, shortcode: '522101', city: 'Nairobi' },
-  { name: 'Amani FMCG Distributors Ltd', sector: 'Wholesale Beverages & Dry Goods', tier: 'Tier-1 High Volume', dailyQuota: 55000, shortcode: '522102', city: 'Nairobi' },
-  { name: 'Pwani Fresh Seafoods Ltd', sector: 'Cold-Chain Wholesale', tier: 'Tier-2 Medium Volume', dailyQuota: 30000, shortcode: '522103', city: 'Mombasa' },
-  { name: 'Rift Valley Agrochem Ltd', sector: 'Fertilizers & Veterinary Supplies', tier: 'Tier-2 Medium Volume', dailyQuota: 28000, shortcode: '522104', city: 'Nakuru' },
-  { name: 'Equator Pharmaceuticals Ltd', sector: 'Pharmacy Chain & Medical Supplies', tier: 'Tier-1 High Volume', dailyQuota: 45000, shortcode: '522105', city: 'Kisumu' },
-  { name: 'Highland Hardware & Cement Ltd', sector: 'Building Materials & Timber', tier: 'Tier-2 Medium Volume', dailyQuota: 25000, shortcode: '522106', city: 'Eldoret' },
-  { name: 'Savannah Solar & Energy Ltd', sector: 'Renewable Power Equipment', tier: 'Tier-3 Specialty B2B', dailyQuota: 12000, shortcode: '522107', city: 'Nairobi' },
-  { name: 'Lakeview Fish Processors Ltd', sector: 'Freshwater Wholesale', tier: 'Tier-3 Specialty B2B', dailyQuota: 14000, shortcode: '522108', city: 'Kisumu' },
-  { name: 'Mount Kenya Dairy Hub Ltd', sector: 'Dairy Processing & Packaging', tier: 'Tier-2 Medium Volume', dailyQuota: 32000, shortcode: '522109', city: 'Nyeri' },
-  { name: 'Kilifi Agro-Exporters Ltd', sector: 'Cashew & Coconut Processing', tier: 'Tier-3 Specialty B2B', dailyQuota: 10000, shortcode: '522110', city: 'Kilifi' },
-  { name: 'Apex Auto Spares Wholesale Ltd', sector: 'Automotive Parts & Lubricants', tier: 'Tier-2 Medium Volume', dailyQuota: 22000, shortcode: '522111', city: 'Nairobi' },
-  { name: 'Metro Stationery & IT Supplies Ltd', sector: 'Office Supplies & Computer Hardware', tier: 'Tier-2 Medium Volume', dailyQuota: 20000, shortcode: '522112', city: 'Nairobi' },
-  { name: 'Victoria Grain Millers Ltd', sector: 'Maize & Wheat Flour Milling', tier: 'Tier-1 High Volume', dailyQuota: 40000, shortcode: '522113', city: 'Kisumu' },
-  { name: 'Mara Safari Provisions Ltd', sector: 'Hospitality Supplies & Foodservice', tier: 'Tier-3 Specialty B2B', dailyQuota: 12000, shortcode: '522114', city: 'Narok' },
-  { name: 'Kipevu Logistics & Bonded Store Ltd', sector: 'Freight & Port Warehousing', tier: 'Tier-3 Specialty B2B', dailyQuota: 11000, shortcode: '522115', city: 'Mombasa' },
-  { name: 'Great Lakes Animal Feeds Ltd', sector: 'Poultry & Cattle Feeds Mill', tier: 'Tier-2 Medium Volume', dailyQuota: 24000, shortcode: '522116', city: 'Naivasha' },
-  { name: 'Turkana Energy Logistics Ltd', sector: 'Industrial Supply & Fuel Dist', tier: 'Tier-3 Specialty B2B', dailyQuota: 9000, shortcode: '522117', city: 'Lodwar' },
-  { name: 'Crown Paints & Coatings Depot Ltd', sector: 'Industrial & Decorative Paint', tier: 'Tier-3 Specialty B2B', dailyQuota: 16000, shortcode: '522118', city: 'Machakos' },
-  { name: 'Thika Fruit Juices & Packaging Ltd', sector: 'Beverage Packaging & Bottling', tier: 'Tier-2 Medium Volume', dailyQuota: 22000, shortcode: '522119', city: 'Thika' },
-  { name: 'Eldoret Cereals Trading Hub Ltd', sector: 'Grain Commodities & Pulses', tier: 'Tier-3 Specialty B2B', dailyQuota: 18000, shortcode: '522120', city: 'Eldoret' },
+  { name: 'Rift Express Hauliers Ltd', sector: 'Transport & Fleet Logistics', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522101', city: 'Nakuru' },
+  { name: 'Coast Container Haulage Ltd', sector: 'Transport & Fleet Logistics', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522102', city: 'Mombasa' },
+  { name: 'Mara Overland Freight Ltd', sector: 'Transport & Fleet Logistics', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522103', city: 'Narok' },
+  { name: 'Great Lakes Bulk Carriers Ltd', sector: 'Transport & Fleet Logistics', tier: 'Tier-1 High Volume', dailyQuota: 8000, shortcode: '522104', city: 'Kisumu' },
+  { name: 'Simba Metro Courier Fleet Ltd', sector: 'Transport & Fleet Logistics', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522105', city: 'Nairobi' },
+
+  { name: 'Lake Basin FMCG Wholesalers Ltd', sector: 'Wholesale & FMCG Distribution', tier: 'Tier-1 High Volume', dailyQuota: 9500, shortcode: '522106', city: 'Kisumu' },
+  { name: 'Mount Kenya Agro-Vet Supplies Ltd', sector: 'Wholesale & FMCG Distribution', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522107', city: 'Nyeri' },
+  { name: 'Athi Distribution Depot Ltd', sector: 'Wholesale & FMCG Distribution', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522108', city: 'Machakos' },
+  { name: 'Eldoret Grain & Millers Ltd', sector: 'Wholesale & FMCG Distribution', tier: 'Tier-1 High Volume', dailyQuota: 8000, shortcode: '522109', city: 'Eldoret' },
+  { name: 'Savannah Food Provisions Ltd', sector: 'Wholesale & FMCG Distribution', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522110', city: 'Nairobi' },
+
+  { name: 'Thika Fruit Juices & Canning Ltd', sector: 'Manufacturing & Processing', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522111', city: 'Thika' },
+  { name: 'Naivasha Polymer Packaging Ltd', sector: 'Manufacturing & Processing', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522112', city: 'Naivasha' },
+  { name: 'Athi River Steel Fabricators Ltd', sector: 'Manufacturing & Processing', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522113', city: 'Athi River' },
+  { name: 'Rift Valley Creameries Ltd', sector: 'Manufacturing & Processing', tier: 'Tier-1 High Volume', dailyQuota: 8000, shortcode: '522114', city: 'Eldoret' },
+  { name: 'Highland Tea & Beverage Processors Ltd', sector: 'Manufacturing & Processing', tier: 'Tier-1 High Volume', dailyQuota: 7000, shortcode: '522115', city: 'Kericho' },
+
+  { name: 'QuickMart Highlands Supermarkets Ltd', sector: 'Retail & Supermarket', tier: 'Tier-1 High Volume', dailyQuota: 12000, shortcode: '522116', city: 'Nairobi' },
+  { name: 'Apex Hypermarket Kenya Ltd', sector: 'Retail & Supermarket', tier: 'Tier-1 High Volume', dailyQuota: 11000, shortcode: '522117', city: 'Mombasa' },
+  { name: 'Victoria Lake Superstores Ltd', sector: 'Retail & Supermarket', tier: 'Tier-2 Medium Volume', dailyQuota: 7000, shortcode: '522118', city: 'Kisumu' },
+  { name: 'Central Hardware & Grocers Ltd', sector: 'Retail & Supermarket', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522119', city: 'Nyeri' },
+  { name: 'Kilimani Gourmet Fresh Foods Ltd', sector: 'Retail & Supermarket', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522120', city: 'Nairobi' },
+
+  { name: 'Nairobi Central Plaza Chemist Ltd', sector: 'Healthcare & Pharmaceuticals', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522121', city: 'Nairobi' },
+  { name: 'Pwani Specialized Diagnostics Ltd', sector: 'Healthcare & Pharmaceuticals', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522122', city: 'Mombasa' },
+  { name: 'Rift Valley Surgical & Pharma Ltd', sector: 'Healthcare & Pharmaceuticals', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522123', city: 'Nakuru' },
+  { name: 'Lake Victoria Medical Supplies Ltd', sector: 'Healthcare & Pharmaceuticals', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522124', city: 'Kisumu' },
+  { name: 'Mount Kenya Regional Laboratories Ltd', sector: 'Healthcare & Pharmaceuticals', tier: 'Tier-2 Medium Volume', dailyQuota: 5500, shortcode: '522125', city: 'Embu' },
+
+  { name: 'Naivasha Fresh Cut Flowers Ltd', sector: 'Agriculture & Horticulture Export', tier: 'Tier-1 High Volume', dailyQuota: 8000, shortcode: '522126', city: 'Naivasha' },
+  { name: 'Central Highlands Coffee Millers Ltd', sector: 'Agriculture & Horticulture Export', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522127', city: 'Muranga' },
+  { name: 'Meru Macadamia & Nut Exporters Ltd', sector: 'Agriculture & Horticulture Export', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522128', city: 'Meru' },
+  { name: 'Trans-Nzoia Grain Silos & Milling Ltd', sector: 'Agriculture & Horticulture Export', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522129', city: 'Kitale' },
+  { name: 'Kitengela Livestock & Poultry Farm Ltd', sector: 'Agriculture & Horticulture Export', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522130', city: 'Kitengela' },
+
+  { name: 'Apex Concrete & Quarry Products Ltd', sector: 'Construction & Hardware', tier: 'Tier-1 High Volume', dailyQuota: 7000, shortcode: '522131', city: 'Athi River' },
+  { name: 'Mombasa Cement Distributors Ltd', sector: 'Construction & Hardware', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522132', city: 'Mombasa' },
+  { name: 'Nairobi Structural Engineering Ltd', sector: 'Construction & Hardware', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522133', city: 'Nairobi' },
+  { name: 'Kisumu Commercial Glazing & Tiles Ltd', sector: 'Construction & Hardware', tier: 'Tier-2 Medium Volume', dailyQuota: 5500, shortcode: '522134', city: 'Kisumu' },
+  { name: 'Rift Civil & Road Contractors Ltd', sector: 'Construction & Hardware', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522135', city: 'Nakuru' },
+
+  { name: 'Mara Wilderness Safari Lodges Ltd', sector: 'Hospitality & Catering', tier: 'Tier-2 Medium Volume', dailyQuota: 4500, shortcode: '522136', city: 'Maasai Mara' },
+  { name: 'Diani Coastal Beach Resorts Ltd', sector: 'Hospitality & Catering', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522137', city: 'Diani' },
+  { name: 'Lake Naivasha Conference Suites Ltd', sector: 'Hospitality & Catering', tier: 'Tier-2 Medium Volume', dailyQuota: 5500, shortcode: '522138', city: 'Naivasha' },
+  { name: 'Great Rift Country Hotel Ltd', sector: 'Hospitality & Catering', tier: 'Tier-2 Medium Volume', dailyQuota: 4500, shortcode: '522139', city: 'Naivasha' },
+  { name: 'Nairobi Capital Event Caterers Ltd', sector: 'Hospitality & Catering', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522140', city: 'Nairobi' },
+
+  { name: 'Kilimani Digital Cloud Solutions Ltd', sector: 'Technology & Professional Services', tier: 'Tier-2 Medium Volume', dailyQuota: 6500, shortcode: '522141', city: 'Nairobi' },
+  { name: 'Upper Hill Financial Advisors Ltd', sector: 'Technology & Professional Services', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522142', city: 'Nairobi' },
+  { name: 'Westlands Enterprise Analytics Ltd', sector: 'Technology & Professional Services', tier: 'Tier-2 Medium Volume', dailyQuota: 5500, shortcode: '522143', city: 'Nairobi' },
+  { name: 'Mara Fintech Systems Ltd', sector: 'Technology & Professional Services', tier: 'Tier-1 High Volume', dailyQuota: 8500, shortcode: '522144', city: 'Nairobi' },
+  { name: 'Portside Marine Automation Ltd', sector: 'Technology & Professional Services', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522145', city: 'Mombasa' },
+
+  { name: 'Great Rift Solar & Renewables Ltd', sector: 'Energy & Fuel Distribution', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522146', city: 'Nakuru' },
+  { name: 'Equator Petroleum Logistics Ltd', sector: 'Energy & Fuel Distribution', tier: 'Tier-1 High Volume', dailyQuota: 9000, shortcode: '522147', city: 'Kisumu' },
+  { name: 'Highland Biomass Energy Ltd', sector: 'Energy & Fuel Distribution', tier: 'Tier-2 Medium Volume', dailyQuota: 5000, shortcode: '522148', city: 'Eldoret' },
+  { name: 'Coast Liquefied Gas Depot Ltd', sector: 'Energy & Fuel Distribution', tier: 'Tier-1 High Volume', dailyQuota: 7500, shortcode: '522149', city: 'Mombasa' },
+  { name: 'Nairobi Clean Energy Hub Ltd', sector: 'Energy & Fuel Distribution', tier: 'Tier-2 Medium Volume', dailyQuota: 6000, shortcode: '522150', city: 'Nairobi' },
 ];
 
 const totalDailyTarget = ENTERPRISE_COMPANIES.reduce((sum, c) => sum + c.dailyQuota, 0);
