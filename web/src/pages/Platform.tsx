@@ -1192,7 +1192,7 @@ function BusinessDetailSheet({
   const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'invoices'>('profile');
 
   return (
-    <Sheet open onClose={onClose} title={b ? b.name : 'Loading business...'}>
+    <Sheet open onClose={onClose} wide title={b ? b.name : 'Loading business...'}>
       {detail.error ? (
         <ErrorNote>{detail.error}</ErrorNote>
       ) : !b ? (
@@ -1200,11 +1200,11 @@ function BusinessDetailSheet({
       ) : (
         <div className="space-y-6 text-sm bg-white text-black">
           {/* Header Summary Card */}
-          <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="font-black text-black text-lg">{b.name}</h3>
-                <p className="text-xs text-slate-500 font-mono">Company ID: {b.id}</p>
+                <h3 className="font-black text-black text-xl">{b.name}</h3>
+                <p className="text-xs text-slate-500 font-mono break-all mt-0.5">Company ID: {b.id}</p>
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge state={b.state} />
@@ -1214,30 +1214,32 @@ function BusinessDetailSheet({
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-medium text-slate-800 sm:grid-cols-3">
-              <div>
+            <div className="mt-4 grid grid-cols-1 gap-3 text-xs font-medium text-slate-800 sm:grid-cols-3 border-t border-slate-100 pt-3.5">
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Email</span>
-                <span className="text-black font-semibold">{b.email || 'None'}</span>
+                <span className="text-black font-semibold block truncate" title={b.email || 'None'}>
+                  {b.email || 'None'}
+                </span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Phone</span>
-                <span className="text-black font-semibold">{b.phone || 'None'}</span>
+                <span className="text-black font-semibold block truncate">{b.phone || 'None'}</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">County</span>
-                <span className="text-black font-semibold">{b.county || 'Nairobi'}</span>
+                <span className="text-black font-semibold block truncate">{b.county || 'Nairobi'}</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">KRA PIN</span>
-                <span className="font-mono font-bold text-black">{b.kraPin || 'Unset'}</span>
+                <span className="font-mono font-bold text-black block truncate">{b.kraPin || 'Unset'}</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">VAT Registered</span>
-                <span className="text-black font-semibold">{b.vatRegistered ? 'Yes' : 'No'}</span>
+                <span className="text-black font-semibold block truncate">{b.vatRegistered ? 'Yes' : 'No'}</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Joined</span>
-                <span className="text-black font-semibold">{dateTime(b.createdAt)}</span>
+                <span className="text-black font-semibold block truncate">{dateTime(b.createdAt)}</span>
               </div>
             </div>
           </div>
@@ -1247,25 +1249,25 @@ function BusinessDetailSheet({
             <h4 className="text-xs font-black uppercase tracking-wider text-black mb-2">
               Storage Footprint
             </h4>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-5">
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
-                <span className="text-slate-500 block font-semibold">Users</span>
+            <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5">
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
+                <span className="text-slate-500 block font-semibold text-[11px] truncate">Users</span>
                 <span className="font-black num text-base text-black">{b.footprint.users}</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
-                <span className="text-slate-500 block font-semibold">Customers</span>
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
+                <span className="text-slate-500 block font-semibold text-[11px] truncate">Customers</span>
                 <span className="font-black num text-base text-black">{b.footprint.customers}</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
-                <span className="text-slate-500 block font-semibold">Products</span>
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
+                <span className="text-slate-500 block font-semibold text-[11px] truncate">Products</span>
                 <span className="font-black num text-base text-black">{b.footprint.items}</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
-                <span className="text-slate-500 block font-semibold">Invoices</span>
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
+                <span className="text-slate-500 block font-semibold text-[11px] truncate">Invoices</span>
                 <span className="font-black num text-base text-black">{b.footprint.invoices}</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs">
-                <span className="text-slate-500 block font-semibold">Journals</span>
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0 col-span-2 sm:col-span-1">
+                <span className="text-slate-500 block font-semibold text-[11px] truncate">Journals</span>
                 <span className="font-black num text-base text-black">{b.footprint.journals}</span>
               </div>
             </div>
@@ -1311,20 +1313,20 @@ function BusinessDetailSheet({
           {/* Drawer Tab 1: Profile & Metadata */}
           {activeTab === 'profile' && (
             <div className="space-y-3 text-xs">
-              <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                <div className="flex justify-between">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 shadow-xs">
+                <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-medium">Industry Classification:</span>
                   <span className="font-bold text-black uppercase">{b.industry || 'General Trade'}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-medium">M-Pesa Shortcode:</span>
                   <span className="font-mono font-bold text-black">{b.mpesaShortcode || 'None'}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center py-1 border-b border-slate-100">
                   <span className="text-slate-600 font-medium">Paid Until Date:</span>
                   <span className="font-bold text-black">{b.paidUntil ? dateTime(b.paidUntil) : 'N/A'}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center py-1">
                   <span className="text-slate-600 font-medium">Trial End Date:</span>
                   <span className="font-bold text-black">{b.trialEndsAt ? dateTime(b.trialEndsAt) : 'N/A'}</span>
                 </div>
