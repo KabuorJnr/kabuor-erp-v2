@@ -77,7 +77,7 @@ public static class EnterpriseDemoSeeder
                 {
                     var empTpl = employeeTemplates[j];
                     var empId = Guid.Parse($"e{i + 1:D3}0000-0000-0000-0000-{(j + 1):D12}");
-                    var userId = Guid.Parse($"u{i + 1:D3}0000-0000-0000-0000-{(j + 1):D12}");
+                    var userId = Guid.Parse($"1{i + 1:D3}0000-0000-0000-0000-{(j + 1):D12}");
 
                     var empEmail = $"{empTpl.FirstName.ToLowerInvariant()}.{empTpl.LastName.ToLowerInvariant()}@{def.Domain}";
                     var empPhone = $"07{((i * 17 + j * 13) % 90 + 10):D2}{((j * 37 + i * 29) % 900000 + 100000):D6}";

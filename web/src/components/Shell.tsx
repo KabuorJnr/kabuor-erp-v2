@@ -39,17 +39,7 @@ export default function Shell({ session }: { session: Session }) {
   const isPlatformAdmin = session.user.isPlatformAdmin === true;
   const isEmployee = session.user.role === 'Employee';
 
-  const groups: { title: string; links: (Link | false)[] }[] = isPlatformAdmin
-    ? [
-        {
-          title: 'Platform Management',
-          links: [
-            { to: '/platform', label: 'Platform Console', icon: Activity },
-            { to: '/security', label: 'Sign-in security', icon: ShieldCheck },
-          ],
-        },
-      ]
-    : isEmployee
+  const groups: { title: string; links: (Link | false)[] }[] = isEmployee
     ? [
         {
           title: 'Self Service',
@@ -57,6 +47,16 @@ export default function Shell({ session }: { session: Session }) {
         },
       ]
     : [
+        ...(isPlatformAdmin
+          ? [
+              {
+                title: 'Platform Administration',
+                links: [
+                  { to: '/platform', label: 'Platform Console (50 Enterprises)', icon: Activity },
+                ],
+              },
+            ]
+          : []),
         {
           title: '',
           links: [
