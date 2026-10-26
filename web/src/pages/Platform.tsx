@@ -21,6 +21,7 @@ import {
   Server,
   ShieldAlert,
   Trash2,
+  Users,
   Zap,
 } from 'lucide-react';
 import { api, useApi } from '../lib/api';
@@ -495,10 +496,10 @@ export default function Platform() {
   return <Console />;
 }
 
-type Tab = 'resources' | 'businesses' | 'traffic' | 'growth' | 'issues' | 'purge';
+type Tab = 'businesses' | 'growth' | 'issues' | 'traffic' | 'resources' | 'purge';
 
 function Console() {
-  const [tab, setTab] = useState<Tab>('resources');
+  const [tab, setTab] = useState<Tab>('businesses');
   const [actionMsg, setActionMsg] = useState<{ text: string; tone: 'good' | 'bad' } | null>(null);
   const [acting, setActing] = useState(false);
 
@@ -552,22 +553,31 @@ function Console() {
   const problems = h?.checks.filter((c) => c.status !== 'good') ?? [];
   const openIssuesCount = issues.data?.filter((i) => i.status === 'Open' || i.status === 'InProgress').length ?? 0;
 
+  // Real-time founder startup metrics
+  const bList = businesses.data ?? [];
+  const totalBusinesses = bList.length;
+  const payingBusinesses = bList.filter((b) => b.state === 'paying').length;
+  const trialBusinesses = bList.filter((b) => b.state === 'trial').length;
+  const totalUsers = bList.reduce((sum, b) => sum + b.usersCount, 0);
+  const totalInvoiced = bList.reduce((sum, b) => sum + b.invoiceValue, 0);
+  const mrrAmount = analytics.data?.revenue.mrr || (payingBusinesses * 12_500_00);
+
   return (
     <div className="space-y-6 bg-white min-h-screen text-black pb-12">
-      {/* Executive Header & Quick Telemetry Bar */}
+      {/* Executive Founder Header */}
       <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-black tracking-tight text-black sm:text-3xl">
-              Platform Admin Console
+              Founder Command Center
             </h1>
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-black">
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-black">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live
+              Live Platform
             </span>
           </div>
           <p className="mt-1 text-xs font-semibold text-slate-600">
-            System administration for Rooney Kabuor · Vercel Container Engine · .NET 8 AOT Runtime
+            Real-time client monitoring, business analytics & platform traction across Kenya · Kabuor ERP Founder
           </p>
         </div>
 
@@ -599,21 +609,37 @@ function Console() {
         </div>
       )}
 
+      {/* Founder Executive Startup Overview Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Onboarded Clients"
+          value={count(totalBusinesses)}
+          subtitle={`${payingBusinesses} paying · ${trialBusinesses} on trial`}
+          icon={<Building2 className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Monthly Recurring Revenue (MRR)"
+          value={ksh(mrrAmount)}
+          subtitle={`${ksh(mrrAmount * 12)} projected annual run rate`}
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Active Client Headcount"
+          value={count(totalUsers)}
+          subtitle="Registered employees & users across clients"
+          icon={<Users className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Platform Commerce Volume"
+          value={ksh(totalInvoiced)}
+          subtitle="Gross transaction value invoiced via Kabuor"
+          icon={<FileText className="h-4 w-4" />}
+        />
+      </div>
+
       {/* Segmented Tab Pill Navigation in Pure White */}
       <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-xs overflow-x-auto">
         <nav className="flex space-x-1 min-w-max" aria-label="Tabs">
-          <button
-            onClick={() => setTab('resources')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'resources'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Server className="h-3.5 w-3.5" /> Resources & Scaling
-          </button>
-
           <button
             onClick={() => setTab('businesses')}
             className={cn(
@@ -623,7 +649,7 @@ function Console() {
                 : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
             )}
           >
-            <Building2 className="h-3.5 w-3.5" /> Businesses & Demo
+            <Building2 className="h-3.5 w-3.5" /> Client Directory
             {businesses.data && (
               <span
                 className={cn(
@@ -637,28 +663,6 @@ function Console() {
           </button>
 
           <button
-            onClick={() => setTab('traffic')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'traffic'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Activity className="h-3.5 w-3.5" /> Traffic & Health
-            {problems.length > 0 && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                  tab === 'traffic' ? 'bg-white text-black' : 'bg-rose-100 text-rose-800'
-                )}
-              >
-                {problems.length}
-              </span>
-            )}
-          </button>
-
-          <button
             onClick={() => setTab('growth')}
             className={cn(
               'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
@@ -667,7 +671,7 @@ function Console() {
                 : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
             )}
           >
-            <BarChart3 className="h-3.5 w-3.5" /> Growth & Revenue
+            <BarChart3 className="h-3.5 w-3.5" /> Startup Analytics & MRR
           </button>
 
           <button
@@ -679,7 +683,7 @@ function Console() {
                 : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
             )}
           >
-            <MessageSquare className="h-3.5 w-3.5" /> Support & Issues
+            <MessageSquare className="h-3.5 w-3.5" /> Support & Client Inquiries
             {openIssuesCount > 0 && (
               <span
                 className={cn(
@@ -693,6 +697,40 @@ function Console() {
           </button>
 
           <button
+            onClick={() => setTab('traffic')}
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
+              tab === 'traffic'
+                ? 'bg-black text-white shadow-xs'
+                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
+            )}
+          >
+            <Activity className="h-3.5 w-3.5" /> Platform Traffic & Health
+            {problems.length > 0 && (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-0.2 text-[10px] font-black',
+                  tab === 'traffic' ? 'bg-white text-black' : 'bg-rose-100 text-rose-800'
+                )}
+              >
+                {problems.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setTab('resources')}
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
+              tab === 'resources'
+                ? 'bg-black text-white shadow-xs'
+                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
+            )}
+          >
+            <Server className="h-3.5 w-3.5" /> Server Infrastructure
+          </button>
+
+          <button
             onClick={() => setTab('purge')}
             className={cn(
               'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
@@ -701,7 +739,7 @@ function Console() {
                 : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
             )}
           >
-            <Trash2 className="h-3.5 w-3.5" /> Delete Account / Purge
+            <Trash2 className="h-3.5 w-3.5" /> Account Purge & Wipes
           </button>
         </nav>
       </div>

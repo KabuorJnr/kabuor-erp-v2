@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  Activity, Armchair, BarChart3, Bot, Brain, Briefcase, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Activity, Armchair, BarChart3, Bot, Brain, Briefcase, Building2, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -50,9 +50,9 @@ export default function Shell({ session }: { session: Session }) {
         ...(isPlatformAdmin
           ? [
               {
-                title: 'Platform Administration',
+                title: 'Founder & Platform',
                 links: [
-                  { to: '/platform', label: 'Platform Console (50 Enterprises)', icon: Activity },
+                  { to: '/platform', label: 'Founder Command Center', icon: Building2 },
                 ],
               },
             ]
