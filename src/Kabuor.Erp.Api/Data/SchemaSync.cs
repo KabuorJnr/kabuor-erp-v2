@@ -403,25 +403,31 @@ public static partial class SchemaSync
         try
         {
             const string email = "rooneyodhiambo2004@gmail.com";
-            var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == OdhiamboCompanyId || c.Email == email || c.Name == "Odhiambo Enterprises");
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == OdhiamboCompanyId || c.Email == email || c.Name == "Odhiambo Enterprises" || c.Name.StartsWith("Driver"));
             if (company is null)
             {
                 company = new Domain.Company
                 {
                     Id = OdhiamboCompanyId,
-                    Name = "Odhiambo Enterprises",
+                    Name = "Driver Logistics Ltd",
                     Email = email,
                     Phone = "0712345678",
                     County = "Nairobi",
                     KraPin = "P059876543Z",
                     VatRegistered = true,
                     Plan = "growth",
-                    Industry = "general",
+                    Industry = "transportation",
                     CreatedAt = DateTimeOffset.UtcNow.AddDays(-30),
                     PaidUntil = DateTimeOffset.UtcNow.AddYears(5),
                     TrialEndsAt = DateTimeOffset.UtcNow.AddYears(5)
                 };
                 db.Companies.Add(company);
+                await db.SaveChangesAsync();
+            }
+            else if (company.Name == "Odhiambo Enterprises")
+            {
+                company.Name = "Driver Logistics Ltd";
+                company.Industry = "transportation";
                 await db.SaveChangesAsync();
             }
 
