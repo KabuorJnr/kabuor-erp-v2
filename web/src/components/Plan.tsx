@@ -1,7 +1,7 @@
 // The subscription. The owner is deciding "which plan, for how long, and is it worth it now?", so each plan shows
 // whether today's team fits, the total for the chosen length (and what paying for a year saves), and when the
 // paid time would run to. The trial banner in the frame says how many days are left before anything changes.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Check, Loader2, Smartphone } from 'lucide-react';
 import { api, useApi } from '../lib/api';
@@ -11,7 +11,7 @@ import { ErrorNote, Field, Loading, Status } from './ui';
 type Plan = { id: string; name: string; monthly: number; yearly: number; users: number; staff: number; includes: string[] };
 type Billing = {
   plan: string; planName: string; paidUntil: string | null; trialEnds: string; daysLeft: number; onTrial: boolean; locked: boolean; graceDays: number;
-  users: number; staff: number; plans: Plan[]; testMode: boolean;
+  users: number; staff: number; plans: Plan[]; testMode: boolean; canPay: boolean; payTo: string; phone: string;
   payments: { id: string; plan: string; months: number; amount: number; status: string; receipt: string; test: boolean; createdAt: string; note: string }[];
 };
 
@@ -22,8 +22,25 @@ export default function PlanSettings() {
   const { data, error, loading, reload } = useApi<Billing>('/billing');
   const [choice, setChoice] = useState<string | null>(null);
   const [months, setMonths] = useState<number>(12);
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState<string | null>(null);
   const [state, setState] = useState({ busy: false, error: '', done: '' });
+  const [waiting, setWaiting] = useState<string | null>(null);
+  // A prompt is on the phone: follow it until M-Pesa says paid or not, then show the new plan.
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await api<{ payment: { status: string; note: string; receipt: string } }>(`/billing/payments/${waiting}/check`, { body: {} });
+        if (r.payment.status === 'Pending') return;
+        setWaiting(null);
+        setState({ busy: false, error: r.payment.status === 'Failed' ? `Not paid: ${r.payment.note || 'M-Pesa didn’t confirm it'}. Nothing was charged.` : '', done: r.payment.status === 'Paid' ? `Paid${r.payment.receipt ? ` (${r.payment.receipt})` : ''}. Your plan is updated.` : '' });
+        reload();
+      } catch {
+        /* try again on the next tick */
+      }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [waiting, reload]);
   if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorNote>{error ?? 'Couldn’t load your plan.'}</ErrorNote>;
 
@@ -32,11 +49,13 @@ export default function PlanSettings() {
   runsTo.setMonth(runsTo.getMonth() + months);
   const tooSmall = data.users > picked.users || data.staff > picked.staff;
 
+  const number = phone ?? data.phone ?? '';
   const pay = async () => {
     setState({ busy: true, error: '', done: '' });
     try {
-      const r = await api<any>('/billing/pay', { body: { plan: picked.id, months, phone } });
-      setState({ busy: false, error: '', done: r.status === 'Paid' ? `Paid. You’re on ${picked.name} until ${dayYear(runsTo.toISOString())}.` : `Check ${phone} for the M-Pesa prompt and enter your PIN. This page updates once it’s paid.` });
+      const r = await api<any>('/billing/pay', { body: { plan: picked.id, months, phone: number } });
+      if (r.status === 'Pending') setWaiting(r.id);
+      setState({ busy: false, error: '', done: r.status === 'Paid' ? `Paid. You’re on ${picked.name} until ${dayYear(runsTo.toISOString())}.` : `Check ${number} for the M-Pesa prompt and enter your PIN. This updates by itself once it’s paid.` });
       reload();
     } catch (e) {
       setState({ busy: false, error: (e as Error).message, done: '' });
@@ -52,7 +71,7 @@ export default function PlanSettings() {
         </div>
         <p className="text-sm">
           {data.locked ? (
-            <b className="text-bad">Trial ended. You can still see and download everything; choose a plan to add and change records again.</b>
+            <b className="text-bad">{data.paidUntil ? 'Plan ran out' : 'Trial ended'}. You can still see and download everything; {data.paidUntil ? 'renew' : 'choose a plan'} to add and change records again.</b>
           ) : data.onTrial ? (
             <><b>{Math.max(data.daysLeft, 0)} days</b> of the free trial left (ends {dayYear(data.trialEnds)}), then {data.graceDays} days’ grace.</>
           ) : (
@@ -94,7 +113,7 @@ export default function PlanSettings() {
             </div>
           </Field>
           <Field label="M-Pesa number" hint="The prompt goes to this phone.">
-            <input className="field w-48" inputMode="tel" placeholder="07xx xxx xxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input className="field w-48" inputMode="tel" placeholder="07xx xxx xxx" value={number} onChange={(e) => setPhone(e.target.value)} />
           </Field>
         </div>
         <p className="text-sm">
@@ -103,11 +122,13 @@ export default function PlanSettings() {
           , running to <b>{dayYear(runsTo.toISOString())}</b>.
         </p>
         {tooSmall && <p className="text-sm text-warn">{picked.name} has room for {picked.users} users and {picked.staff} staff; you have {data.users} and {data.staff}. Choose a bigger plan or remove users in <Link className="underline" to="/settings?tab=team">Team</Link>.</p>}
-        {data.testMode && <p className="text-xs text-muted">Test mode: this server has no M-Pesa keys, so payments are recorded as test payments and no money moves.</p>}
+        {data.payTo && <p className="text-xs text-muted">Paid to Kabuor · {data.payTo}. The prompt shows that name on your phone before you enter your PIN.</p>}
+        {!data.canPay && <ErrorNote>M-Pesa payments aren’t switched on for this server yet. Call or WhatsApp Kabuor to renew.</ErrorNote>}
+        {data.canPay && data.testMode && <p className="text-xs text-muted">Test mode: this server has no M-Pesa keys, so payments are recorded as test payments and no money moves.</p>}
         {state.error && <ErrorNote>{state.error}</ErrorNote>}
         {state.done && <p className="rounded-md bg-good-soft px-4 py-2.5 text-sm font-medium text-good">{state.done}</p>}
-        <button className="btn btn-primary" disabled={state.busy || tooSmall || phone.replace(/\D/g, '').length < 9} onClick={pay}>
-          {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} Pay {ksh(total(picked, months))} by M-Pesa
+        <button className="btn btn-mpesa" disabled={state.busy || Boolean(waiting) || !data.canPay || tooSmall || number.replace(/\D/g, '').length < 9} onClick={pay}>
+          {state.busy || waiting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} {waiting ? 'Waiting for your PIN…' : `Pay ${ksh(total(picked, months))} by M-Pesa`}
         </button>
       </section>
 
@@ -131,16 +152,26 @@ export default function PlanSettings() {
   );
 }
 
-/** Shown in the frame to owners in the last 10 days of the trial, and once it has ended. */
+/** Shown in the frame to owners in the last 10 days of the trial or the last week of paid time, and once it has ended. */
 export function TrialBanner() {
   const { data } = useApi<Billing>('/billing');
-  if (!data || !data.onTrial || (!data.locked && data.daysLeft > 10)) return null;
+  if (!data) return null;
+  if (!data.onTrial && !data.locked) {
+    if (!data.paidUntil || data.daysLeft > 7) return null;
+    return (
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-warn-soft px-4 py-2.5 text-sm text-warn">
+        <span className="font-medium">Your {data.planName} plan runs out {data.daysLeft <= 0 ? 'today' : `in ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'}`} ({dayYear(data.paidUntil)}). After that, records become read-only until it’s renewed.</span>
+        <Link to="/settings?tab=plan" className="font-semibold underline">Renew</Link>
+      </div>
+    );
+  }
+  if (!data.locked && data.daysLeft > 10) return null;
   return (
     <div className={cn('mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md px-4 py-2.5 text-sm', data.locked ? 'bg-bad-soft text-bad' : 'bg-warn-soft text-warn')}>
       <span className="font-medium">
-        {data.locked ? 'Your free trial has ended. Everything is still here to see and download; choose a plan to keep working.' : data.daysLeft > 0 ? `${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left on your free trial.` : `Trial over: ${data.graceDays + data.daysLeft} days of grace left before records become read-only.`}
+        {data.locked ? `${data.paidUntil ? 'Your plan has run out' : 'Your free trial has ended'}. Everything is still here to see and download; ${data.paidUntil ? 'renew' : 'choose a plan'} to keep working.` : data.daysLeft > 0 ? `${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left on your free trial.` : `Trial over: ${data.graceDays + data.daysLeft} days of grace left before records become read-only.`}
       </span>
-      <Link to="/settings?tab=plan" className="font-semibold underline">Choose a plan</Link>
+      <Link to="/settings?tab=plan" className="font-semibold underline">{data.paidUntil ? 'Renew' : 'Choose a plan'}</Link>
     </div>
   );
 }

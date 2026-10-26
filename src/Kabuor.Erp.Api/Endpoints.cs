@@ -19,6 +19,7 @@ public sealed record CompanyInput(string Name, string? KraPin, string? Phone, st
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
 public sealed record UserInput(string Name, string Email, string? Phone, Role Role, string Password);
+public sealed record RoleInput(Role Role);
 public sealed record AllocateInput(List<AllocationInput> Allocations);
 
 public static class Endpoints
@@ -44,16 +45,22 @@ public static class Endpoints
         me.MapPost("/sign-out-everywhere", async (AuthService s) => { await s.SignOutEverywhere(); return Results.NoContent(); });
 
         // Safaricom's answer to a subscription prompt (the secret in the URL is ours, from configuration).
-        api.MapPost("/billing/mpesa/{secret}", async (string secret, System.Text.Json.Nodes.JsonObject body, IConfiguration config, Kabuor.Erp.Billing.BillingService s) =>
+        api.MapPost("/billing/mpesa/{secret}", async (string secret, System.Text.Json.Nodes.JsonObject body, Kabuor.Erp.Billing.BillingMpesa mpesa, Kabuor.Erp.Billing.BillingService s) =>
         {
-            if (string.IsNullOrEmpty(config["Billing:Mpesa:CallbackSecret"]) || secret != config["Billing:Mpesa:CallbackSecret"]) return Results.NotFound();
+            if (!mpesa.SecretMatches(secret)) return Results.NotFound();
             await s.Callback(body);
             return MpesaAck();
         });
 
         // Public: who to contact about privacy, and where the data lives (for the privacy notice and terms).
         // Public settings the web app needs before sign-in: where to report browser errors (empty = off).
-        api.MapGet("/client-config", (IConfiguration config) => new { sentryDsn = config["Sentry:BrowserDsn"] ?? config["Sentry:Dsn"] ?? "", environment = config["Sentry:Environment"] ?? "production" });
+        // And what opening an account costs, so sign-up can say so before anyone starts.
+        api.MapGet("/client-config", (IConfiguration config) => new
+        {
+            sentryDsn = config["Sentry:BrowserDsn"] ?? config["Sentry:Dsn"] ?? "", environment = config["Sentry:Environment"] ?? "production",
+            payToStart = Kabuor.Erp.Billing.Plans.PayToStart(config),
+            plans = Kabuor.Erp.Billing.Plans.All(config).Select(p => new { p.Id, p.Name, p.Monthly }),
+        });
         api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "21 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
@@ -328,7 +335,8 @@ public static class Endpoints
         // ---------- subscription ----------
         var billing = app_.MapGroup("/billing").RequireAuthorization(Policies.Admin);
         billing.MapGet("", (Kabuor.Erp.Billing.BillingService s) => s.Status());
-        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, $"{req.Scheme}://{req.Host}"));
+        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, $"{req.Scheme}://{req.Host}")).RequireRateLimiting("prompts");
+        billing.MapPost("/payments/{id:guid}/check", (Guid id, Kabuor.Erp.Billing.BillingService s) => s.Check(id));
 
         // ---------- moving in: CSV from Excel, QuickBooks, Sage, Zoho ----------
         var import = app_.MapGroup("/import").RequireAuthorization(Policies.Admin);
@@ -368,7 +376,12 @@ public static class Endpoints
             await db.SaveChangesAsync();
             return Results.NoContent();
         }).RequireAuthorization(Policies.Admin);
-        settings.MapGet("/users", async (ErpDb db) => await db.Users.OrderBy(u => u.Name).Select(u => new { u.Id, u.Name, u.Email, u.Phone, Role = u.Role.ToString(), u.Active }).ToListAsync()).RequireAuthorization(Policies.Admin);
+        settings.MapGet("/users", async (ErpDb db) => await db.Users.OrderBy(u => u.Name)
+            .Select(u => new { u.Id, u.Name, u.Email, u.Phone, Role = u.Role.ToString(), u.Active, u.TwoFactorEnabled, u.MustChangePassword, u.LastSignInAt, u.LockedUntil, u.CreatedAt }).ToListAsync()).RequireAuthorization(Policies.Admin);
+        settings.MapPut("/users/{id:guid}/role", async (Guid id, RoleInput input, AuthService s) => { var u = await s.ChangeRole(id, input.Role); return new { u.Id, Role = u.Role.ToString() }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/deactivate", async (Guid id, AuthService s) => { var u = await s.SetActive(id, false); return new { u.Id, u.Active }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/activate", async (Guid id, AuthService s) => { var u = await s.SetActive(id, true); return new { u.Id, u.Active }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/reset-password", (Guid id, AuthService s) => s.ResetPassword(id)).RequireAuthorization(Policies.Admin);
         settings.MapPost("/users", async (UserInput input, AuthService s) =>
         {
             var u = await s.AddUser(input.Name, input.Email, input.Phone ?? "", input.Role, input.Password);
@@ -392,6 +405,7 @@ public static class Endpoints
         SearchEndpoints.Map(app_);
         ProductionEndpoints.Map(app_);
         DispatchEndpoints.Map(app_);
+        RecruitmentEndpoints.Map(app_);
         Assistant.AssistantEndpoints.Map(app_);
     }
 

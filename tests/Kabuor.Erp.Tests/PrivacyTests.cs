@@ -70,7 +70,7 @@ public class PrivacyTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         await Ok(await c.PostAsJsonAsync("/api/settings/users", new { name = "Sales Person", email, role = "Sales", password = "Sales-password-2026" }));
         var sales = factory.CreateClient();
-        var t = await Ok(await sales.PostAsJsonAsync("/api/auth/login", new { email, password = "Sales-password-2026" }));
+        var t = await TestSignIn.First(sales, email, "Sales-password-2026");
         sales.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", t.GetProperty("token").GetString());
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.GetAsync($"/api/customers/{who}/data-export")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.PostAsJsonAsync($"/api/customers/{who}/erase", new { reason = "test" })).StatusCode);

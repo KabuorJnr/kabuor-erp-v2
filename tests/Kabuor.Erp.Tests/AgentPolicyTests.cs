@@ -58,6 +58,7 @@ public sealed class StudioFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Erp", ErpFactory.Pg is null ? $"Data Source={_db}" : $"{ErpFactory.Pg};Database=kabuor_erp_studio_{Guid.NewGuid():N}");
         builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
         builder.UseSetting("Agents:Disabled", "true");
+        builder.UseSetting("Billing:PayToStart", "false");
         builder.UseSetting("Anthropic:ApiKey", "test-key");
         builder.ConfigureTestServices(s => s.AddHttpClient("anthropic", c => c.BaseAddress = new Uri("https://claude.test/")).ConfigurePrimaryHttpMessageHandler(() => Claude));
     }

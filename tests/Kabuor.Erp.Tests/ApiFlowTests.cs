@@ -13,7 +13,7 @@ namespace Kabuor.Erp.Tests;
 /// <summary>The app on a throwaway database: a SQLite file by default, or a fresh PostgreSQL database when
 /// ERP_TEST_PG is set (e.g. "Host=localhost;Username=postgres;Password=postgres"), as in CI. On PostgreSQL the
 /// schema comes from the EF migrations, so every test also checks the migrations.</summary>
-public sealed class ErpFactory : WebApplicationFactory<Program>
+public class ErpFactory : WebApplicationFactory<Program>
 {
     public static readonly string? Pg = Environment.GetEnvironmentVariable("ERP_TEST_PG") is { Length: > 0 } pg ? pg : null;
     readonly string _name = $"kabuor_erp_test_{Guid.NewGuid():N}";
@@ -26,7 +26,11 @@ public sealed class ErpFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Erp", ConnectionString);
         builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
         builder.UseSetting("Agents:Disabled", "true"); // tests run agents explicitly
+        // Most tests start working straight after signing up; paying to start has its own tests (PayToStartTests).
+        builder.UseSetting("Billing:PayToStart", PayToStart ? "true" : "false");
     }
+
+    protected virtual bool PayToStart => false;
 
     protected override void Dispose(bool disposing)
     {
@@ -165,7 +169,7 @@ public class ApiFlowTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = "Juma Sales", email, phone = "0700 111 222", role = "Sales", password = "another-long-password" }));
         var sales = factory.CreateClient();
-        var login = await Ok(await sales.PostAsJsonAsync("/api/auth/login", new { email, password = "another-long-password" }));
+        var login = await TestSignIn.First(sales, email, "another-long-password");
         sales.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("token").GetString());
 
         await Ok(await sales.PostAsJsonAsync("/api/customers", new { name = "Walk-in customer" }));

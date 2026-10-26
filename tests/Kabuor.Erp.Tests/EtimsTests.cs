@@ -60,6 +60,7 @@ public sealed class EtimsFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Erp", ErpFactory.Pg is null ? $"Data Source={_db}" : $"{ErpFactory.Pg};Database=kabuor_erp_etims_{Guid.NewGuid():N}");
         builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
         builder.UseSetting("Agents:Disabled", "true");
+        builder.UseSetting("Billing:PayToStart", "false");
         builder.ConfigureTestServices(s => s.AddHttpClient("kra-etims").ConfigurePrimaryHttpMessageHandler(() => Kra));
     }
 }

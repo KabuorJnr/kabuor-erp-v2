@@ -25,7 +25,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 /** Filter chips that show how many each one returns, before it's tapped. */
 export function Chips<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: [T, string, number?][]; label: string }) {
   return (
-    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label={label}>
+    <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label={label}>
       <div className="flex w-max gap-1.5">
         {options.map(([id, text, n]) => (
           <button

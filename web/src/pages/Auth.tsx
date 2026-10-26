@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { Check, Loader2 } from 'lucide-react';
-import { api, setSession, type Session } from '../lib/api';
+import { api, setSession, useApi, type Session } from '../lib/api';
+import { cn, ksh } from '../lib/format';
 import { ErrorNote, Field } from '../components/ui';
 
-function Frame({ children }: { children: React.ReactNode }) {
+export function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-svh lg:grid-cols-[1fr_1.1fr]">
       <section className="relative hidden overflow-hidden bg-ink p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -154,7 +155,11 @@ const INDUSTRIES = [
   { id: 'general', label: 'General Business & Trading', desc: 'Invoices, stock, eTIMS & payroll' },
 ];
 
+type ClientConfig = { payToStart: boolean; plans: { id: string; name: string; monthly: number }[] };
+
 export function SignUp() {
+  const { data: cfg } = useApi<ClientConfig>('/client-config');
+  const from = cfg?.plans.length ? Math.min(...cfg.plans.map((p) => p.monthly)) : null;
   const [f, setF] = useState({ companyName: '', ownerName: '', email: '', phone: '', password: '', kraPin: '', vatRegistered: true, industry: 'general' });
   const [state, setState] = useState({ busy: false, error: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
@@ -170,30 +175,32 @@ export function SignUp() {
   return (
     <Frame>
       <h1 className="font-display text-3xl font-bold tracking-tight">Open your business account</h1>
-      <p className="mt-1 text-sm text-muted">Two minutes. You can add your team after.</p>
+      <p className="mt-1 text-sm text-muted">
+        {cfg?.payToStart ? <>Two minutes. Next you choose a plan{from ? <> (from {ksh(from)} a month)</> : ''} and pay by M-Pesa, then add your team.</> : 'Two minutes. You can add your team after.'}
+      </p>
       <form onSubmit={submit} className="mt-7 space-y-4">
         <Field label="Business name">
           <input className="field" required value={f.companyName} onChange={set('companyName')} placeholder="e.g. Mama Pili Sauces Ltd" />
         </Field>
-        <Field label="Industry / Sector" hint="Tailors your workflow defaults (e.g. price lists, dispatch trips, or recipes).">
-          <div className="grid grid-cols-2 gap-2">
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-semibold">What does the business do?</legend>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="What does the business do?">
             {INDUSTRIES.map((ind) => (
               <button
                 key={ind.id}
                 type="button"
+                role="radio"
+                aria-checked={f.industry === ind.id}
                 onClick={() => setF({ ...f, industry: ind.id })}
-                className={`flex flex-col items-start rounded-lg border p-2 text-left transition-all ${
-                  f.industry === ind.id
-                    ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 font-medium text-[var(--color-brand)] ring-1 ring-[var(--color-brand)]'
-                    : 'border-slate-200 hover:border-slate-300 dark:border-slate-800'
-                }`}
+                className={cn('flex flex-col items-start rounded-md bg-white px-3 py-2 text-left ring-1 transition', f.industry === ind.id ? 'bg-brand-soft ring-2 ring-brand' : 'ring-line hover:ring-faint')}
               >
-                <span className="text-xs font-semibold leading-tight">{ind.label}</span>
-                <span className="mt-0.5 text-[10px] text-muted line-clamp-1">{ind.desc}</span>
+                <span className={cn('text-[13px] leading-tight font-semibold', f.industry === ind.id && 'text-brand')}>{ind.label}</span>
+                <span className="mt-0.5 line-clamp-1 text-[11px] text-muted">{ind.desc}</span>
               </button>
             ))}
           </div>
-        </Field>
+          <p className="mt-1 text-xs text-muted">Sets sensible defaults (price lists, dispatch, recipes). You can change it later.</p>
+        </fieldset>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Your name">
             <input className="field" required autoComplete="name" value={f.ownerName} onChange={set('ownerName')} />
@@ -217,10 +224,10 @@ export function SignUp() {
         </label>
         {state.error && <ErrorNote>{state.error}</ErrorNote>}
         <button className="btn btn-primary w-full py-3" disabled={state.busy}>
-          {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Open my account
+          {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} {cfg?.payToStart ? 'Continue to payment' : 'Open my account'}
         </button>
         <p className="text-center text-xs text-muted">
-          30 days free, no payment details needed. By opening an account you agree to the <Link className="underline" to="/terms">terms</Link> and <Link className="underline" to="/privacy">privacy notice</Link>.
+          {cfg?.payToStart ? 'Nothing is charged until you confirm the M-Pesa prompt on your phone. ' : '30 days free, no payment details needed. '}By opening an account you agree to the <Link className="underline" to="/terms">terms</Link> and <Link className="underline" to="/privacy">privacy notice</Link>.
         </p>
       </form>
       <p className="mt-6 text-center text-sm text-muted">

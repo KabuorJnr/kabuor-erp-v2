@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
+DotEnv.Load(); // a local .env, if there is one; never overrides real environment variables
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
@@ -100,6 +101,7 @@ builder.Services.AddScoped<WithholdingService>();
 builder.Services.AddScoped<StatementService>();
 builder.Services.AddScoped<Kabuor.Erp.Import.ImportService>();
 builder.Services.AddScoped<Kabuor.Erp.Billing.BillingService>();
+builder.Services.AddSingleton<Kabuor.Erp.Billing.BillingMpesa>();
 builder.Services.AddScoped<Kabuor.Erp.Payments.StkService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.LinkService>();
 builder.Services.AddScoped<Kabuor.Erp.Intelligence.InquiryService>();
@@ -117,6 +119,7 @@ builder.Services.AddHttpClient("daraja", c => c.Timeout = TimeSpan.FromSeconds(3
 builder.Services.AddScoped<Kabuor.Erp.Crm.CrmService>();
 builder.Services.AddScoped<Kabuor.Erp.Production.ProductionService>();
 builder.Services.AddScoped<Kabuor.Erp.Dispatch.DispatchService>();
+builder.Services.AddScoped<Kabuor.Erp.Recruitment.RecruitmentService>();
 builder.Services.AddScoped<Kabuor.Erp.Marketing.MarketingService>();
 builder.Services.AddScoped<Kabuor.Erp.Agents.AgentService>();
 builder.Services.AddSingleton<Kabuor.Erp.Agents.AgentScheduler>();
@@ -162,6 +165,8 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = 429;
     o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(15) }));
     o.AddPolicy("assistant", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.User.FindFirst("sub")?.Value ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(10) }));
+    // M-Pesa prompts land on someone's phone: a few an hour per business is plenty for paying, too few to pester anyone.
+    o.AddPolicy("prompts", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.User.FindFirst("cid")?.Value ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromHours(1) }));
 
     // Global flood protection across all API routes
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
@@ -262,8 +267,11 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
 app.UseCors("dev");
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.UseRateLimiter();
+// Limits come after reading the sign-in token, so the per-person and per-business ones (the assistant, M-Pesa
+// prompts) count each person or business on its own instead of everyone together; floods are still cut before
+// any database work.
 app.UseAuthentication();
+app.UseRateLimiter();
 
 // Who is asking: the company and person from the sign-in token, used by the database's company filter.
 app.Use(async (http, next) =>
@@ -281,24 +289,38 @@ app.Use(async (http, next) =>
         // A session ends when the person is switched off, or their sessions were ended (password, sign out everywhere).
         var tv = int.TryParse(u.FindFirst("tv")?.Value, out var v) ? v : 0;
         var db = http.RequestServices.GetRequiredService<ErpDb>();
-        var current = await db.Users.IgnoreQueryFilters().Where(x => x.Id == ctx.UserId).Select(x => new { x.Active, x.TokenVersion, x.Role }).SingleOrDefaultAsync();
+        var current = await db.Users.IgnoreQueryFilters().Where(x => x.Id == ctx.UserId).Select(x => new { x.Active, x.TokenVersion, x.Role, x.MustChangePassword }).SingleOrDefaultAsync();
         if (current is null || !current.Active || current.TokenVersion != tv || current.Role != ctx.Role)
         {
             http.Response.StatusCode = 401;
             await http.Response.WriteAsJsonAsync(new { error = "Your session has ended. Please sign in again." });
             return;
         }
-        // Trial over and nothing paid: everything stays readable and downloadable; adding and changing waits for a plan.
+        // A password someone else chose (a new login, a reset, staff portal access) opens nothing but choosing your own.
+        if (current.MustChangePassword && !(http.Request.Path.Value ?? "").StartsWith("/api/auth/"))
+        {
+            http.Response.StatusCode = 403;
+            await http.Response.WriteAsJsonAsync(new { error = "Choose your own password first.", code = "set-password" });
+            return;
+        }
         var method = http.Request.Method;
         var path = http.Request.Path.Value ?? "";
-        if (method is not ("GET" or "HEAD" or "OPTIONS") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth") && !path.StartsWith("/api/me"))
+        if (path.StartsWith("/api/") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth"))
         {
-            var company = await db.Companies.Where(c => c.Id == cid).Select(c => new { c.CreatedAt, c.TrialEndsAt, c.PaidUntil }).SingleAsync();
-            var probe = new Company { Name = "", CreatedAt = company.CreatedAt, TrialEndsAt = company.TrialEndsAt, PaidUntil = company.PaidUntil };
-            if (Kabuor.Erp.Billing.Plans.Locked(probe, DateTimeOffset.UtcNow))
+            var company = await db.Companies.Where(c => c.Id == cid).Select(c => new { c.CreatedAt, c.TrialEndsAt, c.PaidUntil, c.AwaitingFirstPayment }).SingleAsync();
+            // Signed up, not paid yet: only the plan and payment screens answer until the first payment arrives.
+            if (company.AwaitingFirstPayment)
             {
                 http.Response.StatusCode = 402;
-                await http.Response.WriteAsJsonAsync(new { error = "Your free trial has ended. Choose a plan (Settings → Plan) to keep adding and changing records. Everything you have is still here." });
+                await http.Response.WriteAsJsonAsync(new { error = "Pay for a plan by M-Pesa to open your account.", code = "pay-to-start" });
+                return;
+            }
+            // Paid time (or the old free trial) over: everything stays readable and downloadable; adding and changing waits for a plan.
+            var probe = new Company { Name = "", CreatedAt = company.CreatedAt, TrialEndsAt = company.TrialEndsAt, PaidUntil = company.PaidUntil };
+            if (method is not ("GET" or "HEAD" or "OPTIONS") && Kabuor.Erp.Billing.Plans.Locked(probe, DateTimeOffset.UtcNow))
+            {
+                http.Response.StatusCode = 402;
+                await http.Response.WriteAsJsonAsync(new { error = "Your plan has run out. Renew it (Settings → Plan & billing) to keep adding and changing records. Everything you have is still here.", code = "renew" });
                 return;
             }
         }

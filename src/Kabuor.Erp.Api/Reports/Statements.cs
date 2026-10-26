@@ -1,3 +1,4 @@
+using Kabuor.Erp.Common;
 // The statements an accountant signs off: balance sheet and cash flow, both straight from the ledger, and the
 // sales and purchases registers in the column order of KRA's VAT3 return (to paste into the iTax template).
 using System.Globalization;
@@ -60,11 +61,7 @@ public sealed partial class ReportService
         return new { from, to, opening, rows, moneyIn = period.Sum(m => m.Debit), moneyOut = period.Sum(m => m.Credit), net, closing = opening + net };
     }
 
-    static string Csv(params object?[] cells) => string.Join(',', cells.Select(c =>
-    {
-        var s = Convert.ToString(c, CultureInfo.InvariantCulture) ?? "";
-        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
-    }));
+    static string Csv(params object?[] cells) => string.Join(',', cells.Select(c => CsvCell.Of(Convert.ToString(c, CultureInfo.InvariantCulture))));
     static string Ksh(long cents) => (cents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
     static string D(DateOnly d) => d.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 

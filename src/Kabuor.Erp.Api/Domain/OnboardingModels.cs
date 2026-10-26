@@ -13,8 +13,12 @@ public sealed record OnboardingStatus(
     int CompletedSteps,
     int CompletionPercentage,
     bool IsReadyToTransact,
-    string NextRecommendedAction
+    string NextRecommendedAction,
+    List<OnboardingStep>? Steps = null
 );
+
+/// <summary>One thing to set up, where to do it, and whether it's done (the app's setup checklist).</summary>
+public sealed record OnboardingStep(string Key, string Title, string Detail, bool Done, string Href, string Action);
 
 public sealed record QuickstartCustomerInput(
     string Name,
