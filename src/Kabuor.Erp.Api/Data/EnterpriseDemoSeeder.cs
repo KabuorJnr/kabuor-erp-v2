@@ -15,6 +15,9 @@ public static class EnterpriseDemoSeeder
     {
         try
         {
+            // Demo businesses seeded before on "scale", which isn't a plan, so MRR left them out.
+            await db.Companies.IgnoreQueryFilters().Where(c => c.Plan == "scale").ExecuteUpdateAsync(s => s.SetProperty(c => c.Plan, "business"));
+
             // If already seeded at least 50 companies, do not duplicate
             var count = await db.Companies.IgnoreQueryFilters().CountAsync();
             if (count >= 50) return;
@@ -40,7 +43,7 @@ public static class EnterpriseDemoSeeder
                     County = def.County,
                     KraPin = def.KraPin,
                     VatRegistered = true,
-                    Plan = i % 2 == 0 ? "scale" : "growth",
+                    Plan = i % 2 == 0 ? "business" : "growth",
                     Industry = def.Industry,
                     CreatedAt = DateTimeOffset.UtcNow.AddDays(-120 - (i % 60)),
                     PaidUntil = DateTimeOffset.UtcNow.AddMonths(12 + (i % 6)),

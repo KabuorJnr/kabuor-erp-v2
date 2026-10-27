@@ -1,7 +1,9 @@
 // The platform console for Kabuor Builds: is the system healthy, and how is the business of Kabuor itself doing?
-// It reads across every company, so it shows only counts and totals per business, never a business's customers,
-// and only to the emails in Platform:Admins (with two-step sign-in on, outside Development).
+// It reads across every company: counts and totals per business, plus the inquiries desk and a business's latest
+// invoices for support. Only the emails in Platform:Admins get in (with two-step sign-in on when Platform:Require2FA).
 using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json;
 using Kabuor.Erp.Billing;
 using Kabuor.Erp.Common;
 using Kabuor.Erp.Data;
@@ -15,21 +17,57 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
 {
     static readonly SalesDocStatus[] Issued = [SalesDocStatus.Sent, SalesDocStatus.PartPaid, SalesDocStatus.Paid];
 
+    /// <summary>Is this email listed in Platform:Admins? The one list, for the console and for the sign-in.</summary>
+    public static bool IsAdmin(IConfiguration config, string email) =>
+        (config["Platform:Admins"] ?? "").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries).Any(e => e.Trim().Equals(email.Trim(), StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Platform admins: listed by email in Platform:Admins, and (outside Development) using two-step sign-in.</summary>
     public async Task<(bool Allowed, string Why)> Access()
     {
-        var admins = (config["Platform:Admins"] ?? "").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries).Select(e => e.Trim().ToLowerInvariant()).ToHashSet();
         if (ctx.UserId is not { } id) return (false, "Sign in first.");
         var u = await db.Users.IgnoreQueryFilters().Where(x => x.Id == id).Select(x => new { x.Email, x.TwoFactorEnabled, x.Active }).SingleOrDefaultAsync();
-        if (u is null || !u.Active || (!admins.Contains(u.Email.ToLowerInvariant()) && !u.Email.StartsWith("admin@") && !u.Email.Equals("admin", StringComparison.OrdinalIgnoreCase))) return (false, "This login isn't a platform admin.");
+        if (u is null || !u.Active || !IsAdmin(config, u.Email)) return (false, "This login isn't a platform admin.");
         if (!u.TwoFactorEnabled && !env.IsDevelopment() && config.GetValue("Platform:Require2FA", false)) return (false, "Turn on two-step sign-in (Security) to use the platform console.");
         return (true, "");
+    }
+
+    /// <summary>Demo businesses come from EnterpriseDemoSeeder, with ids b0000000-0000-0000-0000-…</summary>
+    public static bool IsDemo(Guid id) => id.ToString().StartsWith("b0000000-0000-0000-0000-", StringComparison.Ordinal);
+
+    // Paying while paid up; then the trial; then a grace week; then read-only. AccessEnds is when the current state
+    // ends (for a locked business, when it locked).
+    static string StateOf(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created, DateTimeOffset now)
+    {
+        var trial = trialEnds ?? created.AddDays(Plans.TrialDays);
+        return paidUntil > now ? "paying" : now <= trial ? "trial" : now <= trial.AddDays(Plans.GraceDays) ? "grace" : "locked";
+    }
+
+    static DateTimeOffset AccessEnds(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created, DateTimeOffset now)
+    {
+        var trial = trialEnds ?? created.AddDays(Plans.TrialDays);
+        return StateOf(paidUntil, trialEnds, created, now) switch
+        {
+            "paying" => paidUntil!.Value,
+            "trial" => trial,
+            _ => paidUntil > trial.AddDays(Plans.GraceDays) ? paidUntil.Value : trial.AddDays(Plans.GraceDays),
+        };
+    }
+
+    /// <summary>Works on another business as that business, so the tenant guard allows it and its own audit log
+    /// shows the change, signed by the admin as Kabuor support.</summary>
+    async Task<T> AsBusiness<T>(Guid companyId, Func<Task<T>> work)
+    {
+        var (company, actor) = (ctx.CompanyId, ctx.Actor);
+        (ctx.CompanyId, ctx.Actor) = (companyId, $"{actor} (Kabuor support)");
+        try { return await work(); }
+        finally { (ctx.CompanyId, ctx.Actor) = (company, actor); }
     }
 
     // ------------------------------------------------------------------ health
     sealed record Check(string Key, string Name, string Status, string Summary, object? Detail = null);
 
-    public async Task<object> Health()
+    /// <summary>The checks always judge real requests; with demo = true the traffic charts add the simulated demo load.</summary>
+    public async Task<object> Health(bool demo = false)
     {
         var checks = new List<Check>();
 
@@ -121,10 +159,11 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         checks.Add(new("billing", "Subscription payments", stuck > 0 ? "warn" : "good", stuck > 0 ? $"{stuck} payment(s) waiting over 15 minutes" : "None stuck"));
 
         // Requests
-        dynamic traffic = metrics.Snapshot();
-        double errorRate = traffic.errorRate;
-        checks.Add(new("requests", "Requests (last hour)", errorRate >= 5 ? "bad" : errorRate >= 1 || (double)traffic.p95 > 1000 ? "warn" : "good",
-            $"{traffic.requests} requests, {errorRate}% server errors, 95% under {traffic.p95} ms"));
+        dynamic real = metrics.Snapshot();
+        double errorRate = real.errorRate;
+        checks.Add(new("requests", "Requests (last hour)", errorRate >= 5 ? "bad" : errorRate >= 1 || (double)real.p95 > 1000 ? "warn" : "good",
+            $"{real.requests} requests, {errorRate}% server errors, 95% under {real.p95} ms"));
+        var traffic = demo ? metrics.Snapshot(includeDemo: true) : (object)real;
 
         var process = Process.GetCurrentProcess();
         var configured = new
@@ -146,12 +185,14 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
                 memoryMb = Math.Round(process.WorkingSet64 / 1048576.0), heapMb = Math.Round(GC.GetTotalMemory(false) / 1048576.0), threads = process.Threads.Count,
                 dotnet = Environment.Version.ToString(), os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
             },
-            configured, checks, traffic,
+            configured, checks, traffic, demoTraffic = demo,
         };
     }
 
     // ------------------------------------------------------------------ analytics
-    public async Task<object> Analytics(int days)
+    /// <summary>Growth across businesses. With demo = false the seeded demo businesses are left out of every figure,
+    /// so the numbers are Kabuor's real ones.</summary>
+    public async Task<object> Analytics(int days, bool demo = true)
     {
         days = Math.Clamp(days, 7, 365);
         var now = DateTimeOffset.UtcNow;
@@ -160,22 +201,23 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         var fromDate = Clock.Today.AddDays(1 - days);
         var plans = Plans.All(config).ToDictionary(p => p.Id, p => p);
 
-        var companies = await db.Companies.Select(c => new { c.Id, c.Name, c.Plan, c.TrialEndsAt, c.PaidUntil, c.CreatedAt, c.County }).ToListAsync();
-        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) =>
-            paidUntil > now ? "paying" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)) ? "trial" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)).AddDays(Plans.GraceDays) ? "grace" : "locked";
+        var companies = (await db.Companies.Select(c => new { c.Id, c.Name, c.Plan, c.TrialEndsAt, c.PaidUntil, c.CreatedAt, c.County }).ToListAsync())
+            .Where(c => demo || !IsDemo(c.Id)).ToList();
+        var counted = companies.Select(c => c.Id).ToHashSet();
+        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) => StateOf(paidUntil, trialEnds, created, now);
         var states = companies.Select(c => new { c.Id, state = State(c.PaidUntil, c.TrialEndsAt, c.CreatedAt), c.Plan }).ToList();
         var paying = states.Where(s => s.state == "paying").ToList();
         var mrr = paying.Sum(s => plans.TryGetValue(s.Plan, out var p) ? p.Monthly : 0);
 
-        var users = await db.Users.IgnoreQueryFilters().Where(u => u.Active).Select(u => new { u.CompanyId, u.LastSignInAt, u.Role }).ToListAsync();
-        var docs = await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && !d.Opening && Issued.Contains(d.Status) && d.IssueDate >= DateOnly.FromDateTime(prevFrom.UtcDateTime))
-            .Select(d => new { d.CompanyId, d.IssueDate, d.Total }).ToListAsync();
-        var payments = (await db.Payments.IgnoreQueryFilters().Select(p => new { p.CompanyId, p.ReceivedAt, p.Amount }).ToListAsync()).Where(p => p.ReceivedAt >= prevFrom).ToList();
-        var revenue = (await db.BillingPayments.IgnoreQueryFilters().Where(p => p.Status == BillingStatus.Paid && !p.Test).Select(p => new { p.Amount, p.PaidAt }).ToListAsync())
-            .Where(p => p.PaidAt >= from).Sum(p => p.Amount);
-        var inquiries = (await db.Inquiries.IgnoreQueryFilters().Select(i => i.CreatedAt).ToListAsync()).Count(t => t >= from);
-        var assets = await db.Assets.IgnoreQueryFilters().CountAsync();
-        var agentTasks = (await db.AgentTasks.IgnoreQueryFilters().Select(t => t.CreatedAt).ToListAsync()).Count(t => t >= from);
+        var users = (await db.Users.IgnoreQueryFilters().Where(u => u.Active).Select(u => new { u.CompanyId, u.LastSignInAt, u.Role }).ToListAsync()).Where(u => counted.Contains(u.CompanyId)).ToList();
+        var docs = (await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && !d.Opening && Issued.Contains(d.Status) && d.IssueDate >= DateOnly.FromDateTime(prevFrom.UtcDateTime))
+            .Select(d => new { d.CompanyId, d.IssueDate, d.Total }).ToListAsync()).Where(d => counted.Contains(d.CompanyId)).ToList();
+        var payments = (await db.Payments.IgnoreQueryFilters().Select(p => new { p.CompanyId, p.ReceivedAt, p.Amount }).ToListAsync()).Where(p => p.ReceivedAt >= prevFrom && counted.Contains(p.CompanyId)).ToList();
+        var revenue = (await db.BillingPayments.IgnoreQueryFilters().Where(p => p.Status == BillingStatus.Paid && !p.Test).Select(p => new { p.CompanyId, p.Amount, p.PaidAt }).ToListAsync())
+            .Where(p => p.PaidAt >= from && counted.Contains(p.CompanyId)).Sum(p => p.Amount);
+        var inquiries = (await db.Inquiries.IgnoreQueryFilters().Select(i => new { i.CompanyId, i.CreatedAt }).ToListAsync()).Count(i => i.CreatedAt >= from && counted.Contains(i.CompanyId));
+        var assets = (await db.Assets.IgnoreQueryFilters().Select(a => a.CompanyId).ToListAsync()).Count(counted.Contains);
+        var agentTasks = (await db.AgentTasks.IgnoreQueryFilters().Select(t => new { t.CompanyId, t.CreatedAt }).ToListAsync()).Count(t => t.CreatedAt >= from && counted.Contains(t.CompanyId));
 
         var periodDocs = docs.Where(d => d.IssueDate >= fromDate).ToList();
         var prevDocs = docs.Where(d => d.IssueDate < fromDate).ToList();
@@ -234,6 +276,8 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         var proc = Process.GetCurrentProcess();
         var workingSetMb = Math.Round(proc.WorkingSet64 / 1048576.0, 1);
         var heapMb = Math.Round(GC.GetTotalMemory(false) / 1048576.0, 1);
+        // What the runtime may use: the container's memory limit when there is one, else the machine's memory.
+        var limitMb = Math.Round(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1048576.0);
         ThreadPool.GetAvailableThreads(out int availWorkers, out int availIo);
         ThreadPool.GetMaxThreads(out int maxWorkers, out int maxIo);
         var busyWorkers = maxWorkers - availWorkers;
@@ -258,10 +302,10 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         string scalingStatus = "optimal";
         var reasons = new List<string>();
 
-        if (workingSetMb > 1200)
+        if (limitMb > 0 && workingSetMb > 0.85 * limitMb)
         {
             scalingStatus = "scale_up_recommended";
-            reasons.Add($"Container RAM is high ({workingSetMb} MB). Recommend scaling memory from 1GB to 2GB or 4GB.");
+            reasons.Add($"Memory is at {Math.Round(100 * workingSetMb / limitMb)}% of the {limitMb:0} MB limit. Give the server more memory.");
         }
         if (p95 > 800)
         {
@@ -275,7 +319,7 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         }
         if (reasons.Count == 0)
         {
-            reasons.Add("Optimal: System resources, memory, and database responsiveness are operating well within capacity.");
+            reasons.Add("Memory, response times and errors are all well within limits.");
         }
 
         return new
@@ -283,13 +327,14 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
             scaling = new
             {
                 status = scalingStatus,
-                summary = scalingStatus == "optimal" ? "System capacity is optimal" : "Scale-up recommended",
+                summary = scalingStatus switch { "optimal" => "Enough capacity", "attention_needed" => "Needs attention", _ => "Scale up recommended" },
                 recommendations = reasons,
             },
             memory = new
             {
                 workingSetMb,
                 heapMb,
+                limitMb,
                 gen0 = GC.CollectionCount(0),
                 gen1 = GC.CollectionCount(1),
                 gen2 = GC.CollectionCount(2),
@@ -314,45 +359,42 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
     }
 
     // ------------------------------------------------------------------ businesses & governance
+    public object PlanList() => Plans.All(config).Select(p => new { p.Id, p.Name, p.Monthly, p.Users, p.Staff });
+
     public async Task<object> Businesses()
     {
         var now = DateTimeOffset.UtcNow;
         var companies = await db.Companies.OrderByDescending(c => c.CreatedAt).ToListAsync();
-        if (companies.Count < 50)
+        // The demo network appears the first time the console opens on a database without it. Only then: a demo
+        // business that was erased stays erased.
+        if (!companies.Any(c => IsDemo(c.Id)))
         {
-            await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
+            await Seed();
             companies = await db.Companies.OrderByDescending(c => c.CreatedAt).ToListAsync();
         }
-        var users = await db.Users.IgnoreQueryFilters().Select(u => new { u.CompanyId, u.LastSignInAt, u.Role, u.Active }).ToListAsync();
-        var docs = await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && Issued.Contains(d.Status)).Select(d => new { d.CompanyId, d.Total, d.IssueDate }).ToListAsync();
+        var users = (await db.Users.IgnoreQueryFilters().Select(u => new { u.CompanyId, u.LastSignInAt }).ToListAsync()).ToLookup(u => u.CompanyId);
+        var docs = (await db.SalesDocs.IgnoreQueryFilters().Where(d => d.Kind == SalesDocKind.Invoice && Issued.Contains(d.Status)).Select(d => new { d.CompanyId, d.Total, d.IssueDate }).ToListAsync()).ToLookup(d => d.CompanyId);
 
-        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) =>
-            paidUntil > now ? "paying" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)) ? "trial" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)).AddDays(Plans.GraceDays) ? "grace" : "locked";
-
-        var list = companies.Select(c =>
+        return companies.Select(c => new
         {
-            var cUsers = users.Where(u => u.CompanyId == c.Id).ToList();
-            var cDocs = docs.Where(d => d.CompanyId == c.Id).ToList();
-            return new
-            {
-                c.Id,
-                c.Name,
-                c.Email,
-                c.Phone,
-                c.County,
-                c.Plan,
-                c.CreatedAt,
-                c.TrialEndsAt,
-                c.PaidUntil,
-                state = State(c.PaidUntil, c.TrialEndsAt, c.CreatedAt),
-                usersCount = cUsers.Count,
-                invoicesCount = cDocs.Count,
-                invoiceValue = cDocs.Sum(d => d.Total),
-                lastActive = cUsers.Max(u => u.LastSignInAt)
-            };
+            c.Id,
+            c.Name,
+            c.Email,
+            c.Phone,
+            c.County,
+            c.Plan,
+            c.CreatedAt,
+            c.TrialEndsAt,
+            c.PaidUntil,
+            state = StateOf(c.PaidUntil, c.TrialEndsAt, c.CreatedAt, now),
+            accessEndsAt = AccessEnds(c.PaidUntil, c.TrialEndsAt, c.CreatedAt, now),
+            isDemo = IsDemo(c.Id),
+            usersCount = users[c.Id].Count(),
+            invoicesCount = docs[c.Id].Count(),
+            invoiceValue = docs[c.Id].Sum(d => d.Total),
+            lastInvoiceOn = docs[c.Id].Select(d => (DateOnly?)d.IssueDate).Max(),
+            lastActive = users[c.Id].Max(u => u.LastSignInAt),
         }).ToList();
-
-        return list;
     }
 
     public async Task<object> BusinessDetail(Guid id)
@@ -399,9 +441,6 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         };
 
         var now = DateTimeOffset.UtcNow;
-        string State(DateTimeOffset? paidUntil, DateTimeOffset? trialEnds, DateTimeOffset created) =>
-            paidUntil > now ? "paying" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)) ? "trial" : now <= (trialEnds ?? created.AddDays(Plans.TrialDays)).AddDays(Plans.GraceDays) ? "grace" : "locked";
-
         return new
         {
             company.Id,
@@ -417,7 +456,9 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
             company.CreatedAt,
             company.TrialEndsAt,
             company.PaidUntil,
-            state = State(company.PaidUntil, company.TrialEndsAt, company.CreatedAt),
+            state = StateOf(company.PaidUntil, company.TrialEndsAt, company.CreatedAt, now),
+            accessEndsAt = AccessEnds(company.PaidUntil, company.TrialEndsAt, company.CreatedAt, now),
+            isDemo = IsDemo(company.Id),
             users,
             invoices = docs,
             invoicedTotal = docs.Sum(d => d.total),
@@ -461,47 +502,62 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
         }).ToList();
     }
 
+    /// <summary>Answers in the business's own thread (the customer sees it in the shop portal), as the business's
+    /// staff would, signed by the admin as Kabuor support.</summary>
     public async Task<object> ReplyIssue(Guid id, ReplyIssueInput input)
     {
         var msg = (input.Message ?? "").Trim();
-        if (msg.Length < 2) throw new AppException("Message cannot be empty.", 400);
+        if (msg.Length is < 2 or > 4000) throw new AppException("Write the reply (up to 4,000 characters).");
 
         var inq = await db.Inquiries.IgnoreQueryFilters().Include(i => i.Messages).FirstOrDefaultAsync(i => i.Id == id)
             ?? throw new AppException("Issue not found.", 404);
 
-        inq.Messages.Add(new InquiryMessage
+        return await AsBusiness(inq.CompanyId, async () =>
         {
-            CompanyId = inq.CompanyId,
-            From = "staff",
-            Author = "Rooney Kabuor (Platform Admin)",
-            Text = msg,
-            At = DateTimeOffset.UtcNow
+            inq.Messages.Add(new InquiryMessage { InquiryId = inq.Id, CompanyId = inq.CompanyId, From = "staff", Author = ctx.Actor, Text = msg });
+            inq.FirstResponseAt ??= DateTimeOffset.UtcNow;
+            if (inq.Status == InquiryStatus.Open) inq.Status = InquiryStatus.Answered;
+            await db.SaveChangesAsync();
+            return new { inq.Id, status = inq.Status.ToString() };
         });
-        inq.Status = InquiryStatus.Answered;
-        inq.FirstResponseAt ??= DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-
-        return new { success = true, inq.Id, status = inq.Status.ToString() };
     }
 
+    /// <summary>Change the plan; give access for some days (from today, or from the paid-up date if later); or lock
+    /// the business now (read-only until access is given again).</summary>
     public async Task<object> UpdatePlan(Guid id, UpdatePlanInput input)
     {
         var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == id) ?? throw new AppException("Business not found.", 404);
-        if (!string.IsNullOrWhiteSpace(input.Plan)) company.Plan = input.Plan.Trim().ToLowerInvariant();
-        if (input.ExtendDays.HasValue && input.ExtendDays.Value > 0)
+        var plans = Plans.All(config);
+        if (input.Plan is { Length: > 0 } wanted)
+            company.Plan = plans.FirstOrDefault(p => p.Id == wanted.Trim().ToLowerInvariant())?.Id
+                ?? throw new AppException($"There's no '{wanted}' plan. Choose {string.Join(", ", plans.Select(p => p.Id))}.");
+        if (input.ExtendDays is < 0 or > 366) throw new AppException("Give access for 1 to 366 days.");
+
+        var now = DateTimeOffset.UtcNow;
+        if (input.Lock == true) (company.PaidUntil, company.TrialEndsAt) = (now.AddDays(-1), now.AddDays(-Plans.GraceDays - 1));
+        else if (input.ExtendDays is > 0 and var days) company.PaidUntil = (company.PaidUntil > now ? company.PaidUntil.Value : now).AddDays(days);
+        await AsBusiness(id, () => db.SaveChangesAsync());
+
+        return new
         {
-            var baseDate = company.PaidUntil > DateTimeOffset.UtcNow ? company.PaidUntil.Value : DateTimeOffset.UtcNow;
-            company.PaidUntil = baseDate.AddDays(input.ExtendDays.Value);
-        }
-        if (input.Lock == true)
-        {
-            company.PaidUntil = DateTimeOffset.UtcNow.AddDays(-1);
-            company.TrialEndsAt = DateTimeOffset.UtcNow.AddDays(-10);
-        }
-        await db.SaveChangesAsync();
-        return new { success = true, company.Id, company.Name, company.Plan, company.PaidUntil };
+            company.Id, company.Name, company.Plan, company.PaidUntil,
+            state = StateOf(company.PaidUntil, company.TrialEndsAt, company.CreatedAt, now),
+            accessEndsAt = AccessEnds(company.PaidUntil, company.TrialEndsAt, company.CreatedAt, now),
+        };
     }
 
+    static readonly MethodInfo RemoveOwnedMethod = typeof(PlatformService).GetMethod(nameof(RemoveOwned), BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+    async Task<int> RemoveOwned<T>(Guid companyId) where T : class, ICompanyOwned
+    {
+        var rows = await db.Set<T>().IgnoreQueryFilters().Where(x => x.CompanyId == companyId).ToListAsync();
+        db.Set<T>().RemoveRange(rows);
+        return rows.Count;
+    }
+
+    /// <summary>Erases a business: every row it owns in every table the model knows (so a table added later is
+    /// covered too), its logins, and its audit log, which holds copies of what was deleted. What stays is one line
+    /// in the platform's own audit log: who erased which business, when, and why.</summary>
     public async Task<object> WipeBusiness(Guid id, WipeBusinessInput input)
     {
         var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == id) ?? throw new AppException("Business not found.", 404);
@@ -513,101 +569,82 @@ public sealed class PlatformService(ErpDb db, RequestContext ctx, IConfiguration
 
         var reason = (input.Reason ?? "").Trim();
         if (reason.Length < 3) throw new AppException("A reason for data erasure must be provided for compliance audit logging.", 400);
+        reason = reason[..Math.Min(reason.Length, 500)];
 
-        async Task RemoveAll<T>(IQueryable<T> query) where T : class
+        var owned = db.Model.GetEntityTypes()
+            .Where(t => t.BaseType is null && !t.IsOwned() && t.FindPrimaryKey() is not null && typeof(ICompanyOwned).IsAssignableFrom(t.ClrType) && t.ClrType != typeof(AuditEntry))
+            .Select(t => t.ClrType).Distinct().ToList();
+        var removed = new SortedDictionary<string, int>();
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            var items = await query.ToListAsync();
-            if (items.Count > 0) db.Set<T>().RemoveRange(items);
-        }
+            removed.Clear();
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await AsBusiness(id, async () =>
+            {
+                foreach (var type in owned)
+                    if (await (Task<int>)RemoveOwnedMethod.MakeGenericMethod(type).Invoke(this, [id])! is > 0 and var n) removed[type.Name] = n;
+                db.Companies.Remove(company);
+                await db.SaveChangesAsync();
+                return await db.AuditEntries.IgnoreQueryFilters().Where(a => a.CompanyId == id).ExecuteDeleteAsync();
+            });
+            db.AuditEntries.Add(new AuditEntry
+            {
+                CompanyId = ctx.CompanyId, UserId = ctx.UserId, Actor = ctx.Actor, Action = "Erased", Entity = nameof(Company), EntityId = id.ToString(),
+                Changes = JsonSerializer.Serialize(new { name = company.Name, reason, removed = removed.Values.Sum(), tables = removed }),
+            });
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        });
 
-        await RemoveAll(db.DeliveryItems.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.DispatchTrips.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.AssetEvents.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Assets.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StockCountLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PortalCodes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.InquiryMessages.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Inquiries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.LinkVisits.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.TrackingLinks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.AgentSteps.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.AgentTasks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.AgentSetups.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StatementLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StatementImports.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.EtimsPurchases.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.WebhookDeliveries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.WebhookEndpoints.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.ApiKeys.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.MpesaRequests.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.BillingPayments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.EtimsDevices.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.WithholdingCertificates.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.EmployeeDeductions.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PosSessions.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.CampaignRecipients.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Campaigns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.ProductionRuns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.RecipeLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Recipes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Activities.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Leads.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Payslips.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PayrollRuns.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.LeaveRequests.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Employees.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.ItemUnits.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PriceListItems.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PriceLists.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StockBatches.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StockMoves.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.StockLevels.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Locations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.SupplierPayments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PurchaseLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PurchaseDocs.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Suppliers.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Proposals.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.AuditEntries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Sequences.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.JournalLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.JournalEntries.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Accounts.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.PaymentAllocations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Payments.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.SalesLines.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.SalesDocs.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Items.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Customers.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-        await RemoveAll(db.Users.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+        return new { success = true, wiped = company.Name, reason, removed = removed.Values.Sum(), tables = removed, wipedAt = DateTimeOffset.UtcNow };
+    }
 
-        db.Companies.Remove(company);
-        await db.SaveChangesAsync();
-
-        return new
+    /// <summary>The record each erasure leaves behind, newest first.</summary>
+    public async Task<object> Erasures()
+    {
+        var rows = await db.AuditEntries.IgnoreQueryFilters().Where(a => a.Entity == nameof(Company) && a.Action == "Erased")
+            .OrderByDescending(a => a.Id).Take(100).ToListAsync();
+        return rows.Select(a =>
         {
-            success = true,
-            wiped = company.Name,
-            reason,
-            wipedAt = DateTimeOffset.UtcNow
-        };
+            using var doc = JsonDocument.Parse(a.Changes is { Length: > 0 } c ? c : "{}");
+            var root = doc.RootElement;
+            string Text(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+            return new
+            {
+                companyId = Guid.TryParse(a.EntityId, out var g) ? g : Guid.Empty,
+                name = Text("name"), reason = Text("reason"),
+                removed = root.TryGetProperty("removed", out var r) && r.TryGetInt32(out var n) ? n : 0,
+                a.Actor, a.At,
+            };
+        }).ToList();
+    }
+
+    // The demo seeder writes rows for fifty businesses, so it runs outside any one business.
+    async Task Seed()
+    {
+        var company = ctx.CompanyId;
+        ctx.CompanyId = Guid.Empty;
+        try { await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db); }
+        finally { ctx.CompanyId = company; }
     }
 
     public async Task<object> ExecuteAction(string action)
     {
         action = action.ToLowerInvariant().Trim();
-        await Task.Yield();
         switch (action)
         {
-            case "clear-cache":
-                return new { action, status = "ok", message = "Platform cache refreshed." };
             case "gc-collect":
+                // The managed heap shows what a collection freed; the process's total lags while the OS takes pages back.
+                var before = GC.GetTotalMemory(false) / 1048576.0;
                 GC.Collect(2, GCCollectionMode.Forced, true, true);
                 GC.WaitForPendingFinalizers();
-                return new { action, status = "ok", message = "Garbage collection completed. LOH compacted." };
+                var after = GC.GetTotalMemory(false) / 1048576.0;
+                return new { action, status = "ok", message = $"Freed {Math.Max(0, before - after):0.#} MB: managed memory {before:0} MB → {after:0} MB." };
             case "seed-demo":
-                await EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
-                return new { action, status = "ok", message = "Enterprise demo network seeded successfully." };
+                var had = (await db.Companies.Select(c => c.Id).ToListAsync()).Count(IsDemo);
+                await Seed();
+                var have = (await db.Companies.Select(c => c.Id).ToListAsync()).Count(IsDemo);
+                return new { action, status = "ok", message = have > had ? $"Added {have - had} demo businesses." : "The demo businesses are already there." };
             default:
                 throw new AppException($"Unknown action '{action}'.", 400);
         }

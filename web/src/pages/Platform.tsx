@@ -1,32 +1,30 @@
-// The platform console for Kabuor Builds: oversight across every business, server health & auto-scaling
-// telemetry, database capacity, data governance & KDPA/GDPR compliance data wipes, cross-tenant support desk, and platform growth.
-// DESIGN: 100% PURE WHITE BACKGROUND, CRISP BLACK TYPOGRAPHY, REFINED BORDERS, PREMIUM EXECUTIVE UI/UX.
-import { useEffect, useId, useState } from 'react';
+// The platform console for Kabuor Builds (Platform:Admins only). It answers, in this order: does anything need me
+// (trials ending, businesses about to lock or gone quiet, customers waiting, failing checks)? How is Kabuor doing?
+// And for one business: which plan, access until when, who uses it, and changing that.
+// Plain white surfaces and ink type; colour only where it carries state.
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   Activity,
-  ArrowUpDown,
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   Building2,
-  Clock,
-  Cpu,
-  Database,
-  Eye,
-  FileText,
-  HardDrive,
+  CheckCircle2,
+  ChevronRight,
   Loader2,
   MessageSquare,
   RefreshCw,
-  Search,
   Send,
   Server,
   ShieldAlert,
   Trash2,
-  Users,
   Zap,
 } from 'lucide-react';
 import { api, useApi } from '../lib/api';
-import { cn, dateTime, ksh } from '../lib/format';
-import { Chips, ErrorNote, Loading, Sheet } from '../components/ui';
+import { cn, dateTime, day, dayYear, ksh, kshShort } from '../lib/format';
+import { Chips, Empty, ErrorNote, Loading, SearchBox, Sheet, Stat, Status } from '../components/ui';
 
 type Tone = 'good' | 'warn' | 'bad';
 type Check = { key: string; name: string; status: Tone; summary: string };
@@ -34,19 +32,10 @@ type Check = { key: string; name: string; status: Tone; summary: string };
 type Health = {
   status: Tone;
   checkedAt: string;
-  server: {
-    environment: string;
-    version: string;
-    startedAt: string;
-    uptimeHours: number;
-    memoryMb: number;
-    heapMb: number;
-    threads: number;
-    dotnet: string;
-    os: string;
-  };
+  server: { environment: string; version: string; startedAt: string; uptimeHours: number; memoryMb: number; heapMb: number; threads: number; dotnet: string; os: string };
   configured: Record<string, boolean>;
   checks: Check[];
+  demoTraffic: boolean;
   traffic: {
     series: { at: string; requests: number; errors: number; rejected: number; avgMs: number }[];
     requests: number;
@@ -62,32 +51,14 @@ type Health = {
 };
 
 type Resources = {
-  scaling: {
-    status: 'optimal' | 'scale_up_recommended' | 'attention_needed';
-    summary: string;
-    recommendations: string[];
-  };
-  memory: {
-    workingSetMb: number;
-    heapMb: number;
-    gen0: number;
-    gen1: number;
-    gen2: number;
-  };
-  cpu: {
-    threads: number;
-    busyWorkerThreads: number;
-    maxWorkerThreads: number;
-  };
-  database: {
-    sizeMb: number | null;
-    connections: number | null;
-  };
-  uptime: {
-    startedAt: string;
-    uptimeHours: number;
-  };
+  scaling: { status: 'optimal' | 'scale_up_recommended' | 'attention_needed'; summary: string; recommendations: string[] };
+  memory: { workingSetMb: number; heapMb: number; limitMb: number; gen0: number; gen1: number; gen2: number };
+  cpu: { threads: number; busyWorkerThreads: number; maxWorkerThreads: number };
+  database: { sizeMb: number | null; connections: number | null };
+  uptime: { startedAt: string; uptimeHours: number };
 };
+
+type State = 'paying' | 'trial' | 'grace' | 'locked';
 
 type BusinessItem = {
   id: string;
@@ -99,10 +70,13 @@ type BusinessItem = {
   createdAt: string;
   trialEndsAt: string | null;
   paidUntil: string | null;
-  state: 'paying' | 'trial' | 'grace' | 'locked';
+  state: State;
+  accessEndsAt: string;
+  isDemo: boolean;
   usersCount: number;
   invoicesCount: number;
   invoiceValue: number;
+  lastInvoiceOn: string | null;
   lastActive: string | null;
 };
 
@@ -120,49 +94,22 @@ type BusinessDetail = {
   createdAt: string;
   trialEndsAt: string | null;
   paidUntil: string | null;
-  state: 'paying' | 'trial' | 'grace' | 'locked';
-  users: {
-    id: string;
-    name: string;
-    email: string;
-    phone: string | null;
-    role: string;
-    active: boolean;
-    createdAt: string;
-    lastSignInAt: string | null;
-  }[];
-  invoices: {
-    id: string;
-    number: string;
-    customerName: string;
-    total: number;
-    balance: number;
-    status: string;
-    issueDate: string;
-    dueDate: string | null;
-  }[];
+  state: State;
+  accessEndsAt: string;
+  isDemo: boolean;
+  users: { id: string; name: string; email: string; phone: string | null; role: string; active: boolean; createdAt: string; lastSignInAt: string | null }[];
+  invoices: { id: string; number: string; customerName: string; total: number; balance: number; status: string; issueDate: string; dueDate: string | null }[];
   invoicedTotal: number;
-  footprint: {
-    users: number;
-    customers: number;
-    items: number;
-    invoices: number;
-    payments: number;
-    assets: number;
-    inquiries: number;
-    employees: number;
-    journals: number;
-  };
+  footprint: Record<'users' | 'customers' | 'items' | 'invoices' | 'payments' | 'assets' | 'inquiries' | 'employees' | 'journals', number>;
   canWipe: boolean;
 };
 
-type IssueMessage = {
-  id: string;
-  from: string;
-  author: string | null;
-  body: string;
-  at: string;
-};
+/** What the plan and access sheet needs; a row of the list and the full detail both have it. */
+type AccessTarget = Pick<BusinessItem, 'id' | 'name' | 'plan' | 'state' | 'accessEndsAt' | 'paidUntil'>;
+
+type Plan = { id: string; name: string; monthly: number; users: number; staff: number };
+
+type IssueMessage = { id: string; from: 'customer' | 'staff' | 'agent' | string; author: string | null; text: string; at: string };
 
 type IssueItem = {
   id: string;
@@ -174,11 +121,15 @@ type IssueItem = {
   email: string | null;
   subject: string;
   channel: string;
-  status: string;
+  status: 'Open' | 'Answered' | 'Quoted' | 'Won' | 'Lost';
   createdAt: string;
   firstResponseAt: string | null;
   messages: IssueMessage[];
 };
+
+type Erasure = { companyId: string; name: string; reason: string; removed: number; actor: string; at: string };
+
+type Days = '7' | '30' | '90' | '365';
 
 type Analytics = {
   days: number;
@@ -208,747 +159,475 @@ type Analytics = {
     assets: number;
   };
   series: { day: string; signups: number; invoiceValue: number; paymentValue: number }[];
-  top: {
-    id: string;
-    name: string;
-    county: string;
-    createdAt: string;
-    state: string;
-    plan: string;
-    users: number;
-    invoices: number;
-    invoiceValue: number;
-    lastInvoice: string | null;
-    lastSignIn: string | null;
-  }[];
+  top: { id: string; name: string; county: string; createdAt: string; state: State; plan: string; users: number; invoices: number; invoiceValue: number; lastInvoice: string | null; lastSignIn: string | null }[];
 };
 
+// ----------------------------------------------------------------------------- words and numbers
 const count = (n: number) => n.toLocaleString('en-KE');
-const short = (n: number) =>
-  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(n);
+const plural = (n: number, one: string, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
+const pct = (n: number, of: number) => (of > 0 ? Math.round((100 * n) / of) : 0);
+const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(Math.round(n)));
+const daysUntil = (iso: string) => Math.ceil((Date.parse(iso) - Date.now()) / 864e5);
+const DAY = 864e5;
 
-// -----------------------------------------------------------------------------
-// Executive Status Badge & KPI Card (All White Background, Crisp Black Text)
-// -----------------------------------------------------------------------------
-function StatusBadge({ state }: { state: string }) {
-  const map: Record<string, { label: string; dot: string }> = {
-    paying: { label: 'Paying', dot: 'bg-emerald-600' },
-    trial: { label: 'Trial', dot: 'bg-blue-600' },
-    grace: { label: 'Grace', dot: 'bg-amber-600' },
-    locked: { label: 'Locked', dot: 'bg-rose-600' },
-    Open: { label: 'Open', dot: 'bg-amber-600' },
-    InProgress: { label: 'In Progress', dot: 'bg-blue-600' },
-    Resolved: { label: 'Resolved', dot: 'bg-emerald-600' },
-    Closed: { label: 'Closed', dot: 'bg-slate-400' },
-  };
-  const item = map[state] ?? { label: state, dot: 'bg-black' };
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-xs font-bold text-black shadow-xs">
-      <span className={cn('h-1.5 w-1.5 rounded-full', item.dot)} />
-      <span>{item.label}</span>
-    </span>
-  );
+/** "Just now", "40 min ago", "5 h ago", "3 days ago", then the date. */
+function ago(iso?: string | null) {
+  if (!iso) return 'Never';
+  const min = (Date.now() - Date.parse(iso)) / 6e4;
+  if (min < 1) return 'Just now';
+  if (min < 60) return `${Math.round(min)} min ago`;
+  if (min < 60 * 24) return `${Math.round(min / 60)} h ago`;
+  if (min < 60 * 24 * 30) return `${plural(Math.round(min / 1440), 'day')} ago`;
+  return dayYear(iso);
 }
 
-function StatCard({
-  title,
-  value,
-  subtitle,
-  icon,
-}: {
-  title: string;
-  value: React.ReactNode;
-  subtitle?: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
+/** How long something has waited: "25 min", "6 h", "3 days". */
+function waited(iso: string) {
+  const min = Math.max(0, (Date.now() - Date.parse(iso)) / 6e4);
+  return min < 60 ? `${Math.round(min)} min` : min < 60 * 24 ? `${Math.round(min / 60)} h` : plural(Math.round(min / 1440), 'day');
+}
+
+const STATE: Record<State, { label: string; tone: 'good' | 'info' | 'warn' | 'bad' }> = {
+  paying: { label: 'Paying', tone: 'good' },
+  trial: { label: 'Trial', tone: 'info' },
+  grace: { label: 'Grace', tone: 'warn' },
+  locked: { label: 'Locked', tone: 'bad' },
+};
+
+/** The one fact about access a founder acts on: when the current state ends. */
+function accessText(state: State, endsAt: string) {
+  const d = daysUntil(endsAt);
+  const when = d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`;
+  if (state === 'paying') return `Paid until ${dayYear(endsAt)}`;
+  if (state === 'trial') return `Trial ends ${when}`;
+  if (state === 'grace') return `Read-only ${when}`;
+  return d >= 0 ? 'Locked today' : `Locked ${plural(-d, 'day')} ago`;
+}
+
+const endingSoon = (b: BusinessItem) => b.state === 'trial' && daysUntil(b.accessEndsAt) <= 7;
+const urgent = (b: Pick<BusinessItem, 'state' | 'accessEndsAt'>) => b.state === 'grace' || (b.state === 'trial' && daysUntil(b.accessEndsAt) <= 7);
+const quiet = (b: BusinessItem) => b.state !== 'locked' && (!b.lastActive || Date.now() - Date.parse(b.lastActive) > 14 * DAY);
+
+const primaryBtn = 'btn bg-ink text-white hover:bg-ink-2';
+const dangerBtn = 'btn bg-bad text-white hover:brightness-110';
+
+function DemoPill() {
+  return <span className="shrink-0 rounded-sm bg-paper px-1.5 py-0.5 text-[11px] font-semibold text-muted ring-1 ring-line">Demo</span>;
+}
+
+function Monogram({ name }: { name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-paper text-xs font-bold text-ink-2 ring-1 ring-line">{initials || '?'}</span>;
+}
+
+function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="group rounded-xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:border-slate-400 hover:shadow-md transition-all duration-200">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold tracking-wider text-slate-600 uppercase group-hover:text-black transition-colors">
-          {title}
-        </span>
-        {icon && (
-          <div className="rounded-lg border border-slate-200 bg-white p-1.5 text-black shadow-xs">
-            {icon}
-          </div>
-        )}
-      </div>
-      <div className="num mt-3 text-2xl font-black tracking-tight text-black sm:text-3xl">
-        {value}
-      </div>
-      {subtitle && <div className="mt-1.5 text-xs font-semibold text-slate-600">{subtitle}</div>}
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 className="font-display text-lg font-bold">{children}</h2>
+      {aside && <div className="text-sm text-muted">{aside}</div>}
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Interactive SVG Line Chart (All White Background, Pure Black Stroke)
-// -----------------------------------------------------------------------------
-function SvgLineChart({
+/** A two- or three-way switch where every option is visible. */
+function Segmented<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: [T, string][]; label: string }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md bg-paper p-0.5 ring-1 ring-line">
+      {options.map(([id, text]) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={value === id}
+          onClick={() => onChange(id)}
+          className={cn('rounded-[6px] px-3 py-1.5 text-sm font-semibold transition', value === id ? 'bg-ink text-white' : 'text-ink-2 hover:bg-white')}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Up or down against the period before, or why there's nothing to compare with. */
+function Change({ value, days }: { value: number | null; days: string }) {
+  if (value === null) return <span>nothing to compare in the {days} days before</span>;
+  return (
+    <span className={value >= 0 ? 'font-semibold text-good' : 'font-semibold text-bad'}>
+      {value >= 0 ? '▲' : '▼'} {Math.abs(value)}% vs the {days} days before
+    </span>
+  );
+}
+
+// ----------------------------------------------------------------------------- line chart
+function LineChart({
   data,
-  height = 210,
-  strokeColor = '#000000',
-  fillGradient = true,
+  height = 200,
   fmt = (v: number) => String(v),
-  emptyMsg = 'No telemetry data recorded for this window',
+  axis = short,
+  empty = 'Nothing recorded in this window yet',
 }: {
-  data: { label: string; value: number; secondary?: number }[];
+  data: { label: string; value: number }[];
   height?: number;
-  strokeColor?: string;
-  fillGradient?: boolean;
   fmt?: (v: number) => string;
-  emptyMsg?: string;
+  axis?: (v: number) => string;
+  empty?: string;
 }) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hover, setHover] = useState<number | null>(null);
   const gradId = useId();
 
-  if (!data || data.length === 0) {
+  if (data.length === 0 || data.every((d) => d.value === 0)) {
     return (
-      <div
-        className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-xs font-semibold text-slate-500"
-        style={{ height }}
-      >
-        {emptyMsg}
+      <div className="grid place-items-center rounded-md border border-dashed border-line text-sm text-muted" style={{ height }}>
+        {empty}
       </div>
     );
   }
 
-  const padding = { top: 20, right: 20, bottom: 32, left: 52 };
+  const pad = { top: 16, right: 16, bottom: 28, left: 56 };
   const width = 640;
-  const innerW = width - padding.left - padding.right;
-  const innerH = height - padding.top - padding.bottom;
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const x = (i: number) => (data.length === 1 ? pad.left + innerW / 2 : pad.left + (i / (data.length - 1)) * innerW);
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH;
+  const pts = data.map((d, i) => ({ x: x(i), y: y(d.value) }));
 
-  const maxVal = Math.max(...data.map((d) => d.value), 1);
-  const minVal = 0;
-
-  const getX = (i: number) =>
-    data.length === 1 ? padding.left + innerW / 2 : padding.left + (i / (data.length - 1)) * innerW;
-  const getY = (v: number) => padding.top + innerH - ((v - minVal) / (maxVal - minVal)) * innerH;
-
-  // Build smooth cubic bezier curve
-  const points = data.map((d, i) => ({ x: getX(i), y: getY(d.value) }));
-  let linePath = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(i - 1, 0)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(i + 2, points.length - 1)];
-
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    linePath += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  // A smooth line through the points (Catmull-Rom as cubic Béziers), never curving below zero.
+  const floor = (v: number) => Math.min(v, pad.top + innerH);
+  let line = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(i + 2, pts.length - 1)];
+    line += ` C ${p1.x + (p2.x - p0.x) / 6} ${floor(p1.y + (p2.y - p0.y) / 6)}, ${p2.x - (p3.x - p1.x) / 6} ${floor(p2.y - (p3.y - p1.y) / 6)}, ${p2.x} ${p2.y}`;
   }
-
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${padding.top + innerH} L ${
-    points[0].x
-  } ${padding.top + innerH} Z`;
-
-  const yTicks = [0, maxVal * 0.33, maxVal * 0.66, maxVal];
-  const step = Math.max(1, Math.floor(data.length / 5));
-  const xIndices = data.map((_, i) => i).filter((i) => i % step === 0 || i === data.length - 1);
+  const area = `${line} L ${pts[pts.length - 1].x} ${pad.top + innerH} L ${pts[0].x} ${pad.top + innerH} Z`;
+  const ticks = [0, max / 2, max];
+  const step = Math.max(1, Math.ceil(data.length / 6));
+  const labels = data.map((_, i) => i).filter((i) => i % step === 0 || i === data.length - 1);
+  const total = data.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="relative w-full select-none bg-white" onMouseLeave={() => setHoverIndex(null)}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-auto w-full overflow-visible bg-white"
-        style={{ maxHeight: height }}
-      >
+    <div className="relative w-full select-none text-ink" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full overflow-visible" style={{ maxHeight: height }} role="img" aria-label={`Line chart, total ${fmt(total)}`}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#000000" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#000000" stopOpacity="0.0" />
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.10" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
           </linearGradient>
         </defs>
-
-        {/* Horizontal gridlines & Y labels */}
-        {yTicks.map((tick, idx) => {
-          const y = getY(tick);
-          return (
-            <g key={idx}>
-              <line
-                x1={padding.left}
-                y1={y}
-                x2={width - padding.right}
-                y2={y}
-                stroke="#e2e8f0"
-                strokeWidth="1"
-                strokeDasharray="4 4"
-              />
-              <text
-                x={padding.left - 10}
-                y={y + 3.5}
-                textAnchor="end"
-                className="fill-black text-[11px] font-bold num"
-              >
-                {short(Math.round(tick))}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Gradient Area Fill */}
-        {fillGradient && <path d={areaPath} fill={`url(#${gradId})`} />}
-
-        {/* Main Line Stroke */}
-        <path d={linePath} fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />
-
-        {/* X-axis tick labels */}
-        {xIndices.map((idx) => {
-          const x = getX(idx);
-          return (
-            <text
-              key={idx}
-              x={x}
-              y={height - 8}
-              textAnchor="middle"
-              className="fill-black text-[11px] font-bold"
-            >
-              {data[idx].label}
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} className="stroke-line" strokeDasharray={i === 0 ? undefined : '4 4'} />
+            <text x={pad.left - 8} y={y(t) + 4} textAnchor="end" className="num fill-muted text-[11px]">
+              {axis(t)}
             </text>
-          );
-        })}
-
-        {/* Hover crosshair & point indicator */}
-        {hoverIndex !== null && hoverIndex >= 0 && hoverIndex < points.length && (
+          </g>
+        ))}
+        <path d={area} fill={`url(#${gradId})`} />
+        <path d={line} fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" />
+        {labels.map((i) => (
+          <text key={i} x={x(i)} y={height - 6} textAnchor="middle" className="fill-muted text-[11px]">
+            {data[i].label}
+          </text>
+        ))}
+        {hover !== null && (
           <g>
-            <line
-              x1={points[hoverIndex].x}
-              y1={padding.top}
-              x2={points[hoverIndex].x}
-              y2={padding.top + innerH}
-              stroke="#000000"
-              strokeWidth="1.5"
-              strokeDasharray="3 3"
-            />
-            <circle
-              cx={points[hoverIndex].x}
-              cy={points[hoverIndex].y}
-              r="5"
-              fill="#000000"
-              stroke="#ffffff"
-              strokeWidth="2.5"
-            />
+            <line x1={pts[hover].x} x2={pts[hover].x} y1={pad.top} y2={pad.top + innerH} stroke="currentColor" strokeOpacity="0.35" strokeDasharray="3 3" />
+            <circle cx={pts[hover].x} cy={pts[hover].y} r="4.5" fill="currentColor" stroke="white" strokeWidth="2" />
           </g>
         )}
-
-        {/* Mouse hover capture columns */}
-        {data.map((_, i) => {
-          const x = getX(i);
-          const colW = innerW / data.length;
-          return (
-            <rect
-              key={i}
-              x={x - colW / 2}
-              y={padding.top}
-              width={colW}
-              height={innerH}
-              fill="transparent"
-              className="cursor-crosshair"
-              onMouseEnter={() => setHoverIndex(i)}
-            />
-          );
-        })}
+        {data.map((_, i) => (
+          <rect key={i} x={x(i) - innerW / data.length / 2} y={pad.top} width={innerW / data.length} height={innerH} fill="transparent" onMouseEnter={() => setHover(i)} />
+        ))}
       </svg>
-
-      {/* Floating Tooltip in Pure White with Crisp Black Text */}
-      {hoverIndex !== null && hoverIndex >= 0 && hoverIndex < data.length && (
+      {hover !== null && (
         <div
-          className="pointer-events-none absolute top-3 z-10 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs text-black shadow-xl transition-all"
-          style={{
-            left: `${Math.min(85, Math.max(15, (points[hoverIndex].x / width) * 100))}%`,
-            transform: 'translateX(-50%)',
-          }}
+          className="pointer-events-none absolute top-2 z-10 rounded-md bg-white px-3 py-2 text-xs shadow-lg ring-1 ring-line"
+          style={{ left: `${Math.min(85, Math.max(15, (pts[hover].x / width) * 100))}%`, transform: 'translateX(-50%)' }}
         >
-          <div className="font-semibold text-slate-600">{data[hoverIndex].label}</div>
-          <div className="num font-black text-black text-sm">{fmt(data[hoverIndex].value)}</div>
+          <div className="text-muted">{data[hover].label}</div>
+          <div className="num text-sm font-bold">{fmt(data[hover].value)}</div>
         </div>
       )}
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Main Platform Entrypoint
-// -----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------- entry
 export default function Platform() {
   const me = useApi<{ allowed: boolean; why: string }>('/platform/me');
   if (me.error) return <ErrorNote>{me.error}</ErrorNote>;
   if (!me.data) return <Loading />;
   if (!me.data.allowed) {
     return (
-      <div className="mx-auto max-w-lg py-16 text-center bg-white">
-        <ShieldAlert className="mx-auto h-12 w-12 text-black" />
-        <h1 className="mt-4 text-xl font-bold text-black">Platform Admin Console</h1>
-        <p className="mt-2 text-sm text-slate-700">{me.data.why}</p>
-        <div className="mt-6 rounded-xl border border-slate-300 bg-white p-4 text-left text-xs text-slate-800 shadow-sm">
-          <p className="font-bold text-black">Administrative Policy</p>
-          <p className="mt-1">
-            Access to cross-tenant administration, system resource telemetry, KDPA/GDPR data wipes, and cross-company
-            issues is restricted to verified platform administrators.
-          </p>
-        </div>
+      <div className="mx-auto max-w-md py-16 text-center">
+        <ShieldAlert className="mx-auto h-10 w-10 text-ink" />
+        <h1 className="mt-4 font-display text-xl font-bold">The platform console is for Kabuor admins</h1>
+        <p className="mt-2 text-sm text-muted">{me.data.why}</p>
       </div>
     );
   }
   return <Console />;
 }
 
-type Tab = 'businesses' | 'growth' | 'issues' | 'traffic' | 'resources' | 'purge';
+type Tab = 'businesses' | 'growth' | 'inquiries' | 'health' | 'server' | 'erase';
+const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
+  { id: 'businesses', label: 'Businesses', icon: Building2 },
+  { id: 'growth', label: 'Growth & revenue', icon: BarChart3 },
+  { id: 'inquiries', label: 'Inquiries', icon: MessageSquare },
+  { id: 'health', label: 'Traffic & health', icon: Activity },
+  { id: 'server', label: 'Server', icon: Server },
+  { id: 'erase', label: 'Erase data', icon: Trash2 },
+];
+type Show = 'all' | 'paying' | 'trial' | 'ending' | 'grace' | 'locked' | 'quiet';
+
+/** Whether the seeded demo businesses count. Remembered on this device. */
+function useDemoChoice() {
+  const [demo, setDemo] = useState(() => {
+    try {
+      return localStorage.getItem('kerp-platform-demo') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const set = (v: boolean) => {
+    setDemo(v);
+    try {
+      localStorage.setItem('kerp-platform-demo', v ? 'on' : 'off');
+    } catch {}
+  };
+  return [demo, set] as const;
+}
 
 function Console() {
-  const [tab, setTab] = useState<Tab>('businesses');
-  const [actionMsg, setActionMsg] = useState<{ text: string; tone: 'good' | 'bad' } | null>(null);
-  const [acting, setActing] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'businesses') as Tab;
+  const show = (params.get('show') ?? 'all') as Show;
+  const openId = params.get('b');
+  const patch = useCallback(
+    (changes: Record<string, string | null>) =>
+      setParams((p) => {
+        const next = new URLSearchParams(p);
+        for (const [k, v] of Object.entries(changes)) v === null ? next.delete(k) : next.set(k, v);
+        return next;
+      }),
+    [setParams],
+  );
 
-  // APIs
-  const health = useApi<Health>('/platform/health');
-  const resources = useApi<Resources>('/platform/resources');
+  const [demo, setDemo] = useDemoChoice();
+  const [days, setDays] = useState<Days>('30');
+  const health = useApi<Health>(`/platform/health${demo ? '?demo=true' : ''}`);
   const businesses = useApi<BusinessItem[]>('/platform/businesses');
+  const plans = useApi<Plan[]>('/platform/plans');
   const issues = useApi<IssueItem[]>('/platform/issues');
-  const [days, setDays] = useState<'7' | '30' | '90' | '365'>('30');
-  const analytics = useApi<Analytics>(`/platform/analytics?days=${days}`);
+  const analytics = useApi<Analytics>(`/platform/analytics?days=${days}${demo ? '' : '&demo=false'}`);
+  const [managing, setManaging] = useState<AccessTarget | null>(null);
+  const [saves, setSaves] = useState(0); // reopens the business sheet with fresh data after a plan change
+  const [updatedAt, setUpdatedAt] = useState(() => new Date());
 
-  // Modals & Drawers
-  const [selectedBizId, setSelectedBizId] = useState<string | null>(null);
-  const [planModalBiz, setPlanModalBiz] = useState<BusinessItem | null>(null);
-  const [wipeTargetBiz, setWipeTargetBiz] = useState<BusinessItem | null>(null);
-
-  // Auto-refresh telemetry every 30s
+  // The console sits on pure white; cards keep their hairline borders for structure.
   useEffect(() => {
-    const t = window.setInterval(() => {
-      health.reload();
-      resources.reload();
-    }, 30_000);
-    return () => window.clearInterval(t);
-  }, [health.reload, resources.reload]);
+    document.body.classList.add('bg-white');
+    return () => document.body.classList.remove('bg-white');
+  }, []);
 
-  const runAction = async (action: string) => {
-    setActing(true);
-    setActionMsg(null);
-    try {
-      const res = await api<{ message: string }>(`/platform/actions/${action}`, { method: 'POST' });
-      setActionMsg({ text: res.message || 'Action executed successfully.', tone: 'good' });
-      resources.reload();
-      health.reload();
-    } catch (err: any) {
-      setActionMsg({ text: err.message || 'Action failed.', tone: 'bad' });
-    } finally {
-      setActing(false);
-    }
-  };
+  // Health is live: refresh it every 30 seconds while the console is on screen.
+  useEffect(() => {
+    const t = window.setInterval(() => document.visibilityState === 'visible' && health.reload(), 30_000);
+    return () => window.clearInterval(t);
+  }, [health.reload]);
 
   const reloadAll = () => {
     health.reload();
-    resources.reload();
     businesses.reload();
-    analytics.reload();
+    plans.reload();
     issues.reload();
+    analytics.reload();
+    setUpdatedAt(new Date());
   };
 
-  const h = health.data;
-  const r = resources.data;
-  const problems = h?.checks.filter((c) => c.status !== 'good') ?? [];
-  const openIssuesCount = issues.data?.filter((i) => i.status === 'Open' || i.status === 'InProgress').length ?? 0;
+  const all = businesses.data ?? [];
+  const demoCount = all.filter((b) => b.isDemo).length;
+  const list = demo ? all : all.filter((b) => !b.isDemo);
+  const planById = new Map((plans.data ?? []).map((p) => [p.id, p]));
+  const waiting = (issues.data ?? []).filter((i) => i.status === 'Open');
+  const problems = health.data?.checks.filter((c) => c.status !== 'good') ?? [];
 
-  // Real-time founder startup metrics
-  const bList = businesses.data ?? [];
-  const totalBusinesses = bList.length;
-  const payingBusinesses = bList.filter((b) => b.state === 'paying').length;
-  const trialBusinesses = bList.filter((b) => b.state === 'trial').length;
-  const totalUsers = bList.reduce((sum, b) => sum + b.usersCount, 0);
-  const totalInvoiced = bList.reduce((sum, b) => sum + b.invoiceValue, 0);
-  const mrrAmount = analytics.data?.revenue.mrr || (payingBusinesses * 12_500_00);
+  const a = analytics.data;
+  const ending = list.filter(endingSoon);
+  const grace = list.filter((b) => b.state === 'grace');
+  const locked = list.filter((b) => b.state === 'locked');
+  const quietOnes = list.filter(quiet);
+  const attention: { n: number; text: string; tone: 'warn' | 'bad' | 'plain'; go: () => void }[] = [
+    { n: ending.length, text: ending.length === 1 ? 'trial ends within 7 days' : 'trials end within 7 days', tone: 'warn' as const, go: () => patch({ tab: 'businesses', show: 'ending' }) },
+    { n: grace.length, text: 'in grace, read-only within a week', tone: 'warn' as const, go: () => patch({ tab: 'businesses', show: 'grace' }) },
+    { n: waiting.length, text: waiting.length === 1 ? 'customer waiting on a reply' : 'customers waiting on a reply', tone: 'warn' as const, go: () => patch({ tab: 'inquiries', show: null }) },
+    { n: problems.length, text: problems.length === 1 ? 'health check needs a look' : 'health checks need a look', tone: problems.some((p) => p.status === 'bad') ? ('bad' as const) : ('warn' as const), go: () => patch({ tab: 'health', show: null }) },
+    { n: quietOnes.length, text: 'no sign-in for 14+ days', tone: 'plain' as const, go: () => patch({ tab: 'businesses', show: 'quiet' }) },
+    { n: locked.length, text: 'locked, can’t record sales', tone: 'plain' as const, go: () => patch({ tab: 'businesses', show: 'locked' }) },
+  ].filter((x) => x.n > 0);
+  const attentionReady = businesses.data && issues.data && health.data;
+
+  const badge: Partial<Record<Tab, { n: number; tone: 'plain' | 'warn' | 'bad' }>> = {
+    businesses: businesses.data ? { n: list.length, tone: 'plain' } : undefined,
+    inquiries: waiting.length ? { n: waiting.length, tone: 'warn' } : undefined,
+    health: problems.length ? { n: problems.length, tone: problems.some((p) => p.status === 'bad') ? 'bad' : 'warn' } : undefined,
+  };
 
   return (
-    <div className="space-y-6 bg-white min-h-screen text-black pb-12">
-      {/* Executive Founder Header */}
-      <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-display text-2xl font-black tracking-tight text-black sm:text-3xl">
-              Founder Command Center
-            </h1>
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-black">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live Platform
-            </span>
-          </div>
-          <p className="mt-1 text-xs font-semibold text-slate-600">
-            Real-time client monitoring, business analytics & platform traction across Kenya · Kabuor ERP Founder
+    <div className="min-w-0 space-y-6 pb-12">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-display text-[26px] leading-tight font-bold tracking-tight sm:text-3xl">Founder Command Center</h1>
+          <p className="mt-1 text-sm text-muted">
+            Every business on Kabuor and the server they run on · updated {updatedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-            onClick={reloadAll}
-            title="Reload all platform metrics"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh Telemetry
-          </button>
-          <button
-            className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-            disabled={acting}
-            onClick={() => runAction('gc-collect')}
-            title="Trigger Garbage Collection & compact Large Object Heap"
-          >
-            <Zap className="h-3.5 w-3.5 text-black" /> {acting ? 'Running...' : 'Run GC'}
-          </button>
-        </div>
-      </div>
-
-      {actionMsg && (
-        <div className="flex items-center justify-between rounded-xl px-4 py-3 text-xs font-bold border border-slate-300 bg-white text-black shadow-sm">
-          <span>{actionMsg.text}</span>
-          <button className="underline hover:opacity-75" onClick={() => setActionMsg(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Founder Executive Startup Overview Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Onboarded Clients"
-          value={count(totalBusinesses)}
-          subtitle={`${payingBusinesses} paying · ${trialBusinesses} on trial`}
-          icon={<Building2 className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Monthly Recurring Revenue (MRR)"
-          value={ksh(mrrAmount)}
-          subtitle={`${ksh(mrrAmount * 12)} projected annual run rate`}
-          icon={<BarChart3 className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Active Client Headcount"
-          value={count(totalUsers)}
-          subtitle="Registered employees & users across clients"
-          icon={<Users className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Platform Commerce Volume"
-          value={ksh(totalInvoiced)}
-          subtitle="Gross transaction value invoiced via Kabuor"
-          icon={<FileText className="h-4 w-4" />}
-        />
-      </div>
-
-      {/* Segmented Tab Pill Navigation in Pure White */}
-      <div className="rounded-xl border border-slate-200 bg-white p-1.5 shadow-xs overflow-x-auto">
-        <nav className="flex space-x-1 min-w-max" aria-label="Tabs">
-          <button
-            onClick={() => setTab('businesses')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'businesses'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Building2 className="h-3.5 w-3.5" /> Client Directory
-            {businesses.data && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                  tab === 'businesses' ? 'bg-white text-black' : 'bg-slate-200 text-slate-800'
-                )}
-              >
-                {businesses.data.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setTab('growth')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'growth'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <BarChart3 className="h-3.5 w-3.5" /> Startup Analytics & MRR
-          </button>
-
-          <button
-            onClick={() => setTab('issues')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'issues'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <MessageSquare className="h-3.5 w-3.5" /> Support & Client Inquiries
-            {openIssuesCount > 0 && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                  tab === 'issues' ? 'bg-white text-black' : 'bg-black text-white'
-                )}
-              >
-                {openIssuesCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setTab('traffic')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'traffic'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Activity className="h-3.5 w-3.5" /> Platform Traffic & Health
-            {problems.length > 0 && (
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                  tab === 'traffic' ? 'bg-white text-black' : 'bg-rose-100 text-rose-800'
-                )}
-              >
-                {problems.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setTab('resources')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'resources'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Server className="h-3.5 w-3.5" /> Server Infrastructure
-          </button>
-
-          <button
-            onClick={() => setTab('purge')}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all',
-              tab === 'purge'
-                ? 'bg-black text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:text-black hover:bg-slate-100/80'
-            )}
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Account Purge & Wipes
-          </button>
-        </nav>
-      </div>
-
-      {/* TAB 1: RESOURCES & SCALING */}
-      {tab === 'resources' && (
-        <div className="space-y-6 bg-white">
-          {resources.error ? (
-            <ErrorNote>{resources.error}</ErrorNote>
-          ) : !r ? (
-            <Loading />
-          ) : (
-            <>
-              {/* Capacity Status Card */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
-                <div className="flex items-start gap-3.5">
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-black shadow-xs">
-                    <Server className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h2 className="text-base font-bold text-black">
-                        Auto-Scaling Telemetry: {r.scaling.summary}
-                      </h2>
-                      <StatusBadge state={r.scaling.status === 'optimal' ? 'Resolved' : 'Open'} />
-                    </div>
-                    <div className="mt-2 space-y-1.5 text-xs font-semibold text-slate-700">
-                      {r.scaling.recommendations.map((rec, i) => (
-                        <p key={i} className="flex items-center gap-2">
-                          <span className="h-1.5 w-1.5 rounded-full bg-black" />
-                          <span>{rec}</span>
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* KPI Stat Cards */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  title="Working Set Memory"
-                  value={`${r.memory.workingSetMb} MB`}
-                  subtitle={`Managed Heap: ${r.memory.heapMb} MB`}
-                  icon={<HardDrive className="h-4 w-4" />}
-                />
-                <StatCard
-                  title="ThreadPool Workers"
-                  value={`${r.cpu.busyWorkerThreads} busy`}
-                  subtitle={`Max Capacity: ${count(r.cpu.maxWorkerThreads)} threads`}
-                  icon={<Cpu className="h-4 w-4" />}
-                />
-                <StatCard
-                  title="PostgreSQL Database"
-                  value={r.database.sizeMb ? `${r.database.sizeMb} MB` : 'Active'}
-                  subtitle={`Live Pool Connections: ${r.database.connections ?? 'N/A'}`}
-                  icon={<Database className="h-4 w-4" />}
-                />
-                <StatCard
-                  title="System Uptime"
-                  value={`${r.uptime.uptimeHours} hrs`}
-                  subtitle={`Continuous since ${dateTime(r.uptime.startedAt)}`}
-                  icon={<Clock className="h-4 w-4" />}
-                />
-              </div>
-
-              {/* Memory Saturation & Server Specs */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-black text-sm">
-                      Memory Allocation & GC Pressure
-                    </h3>
-                    <span className="text-xs font-bold text-slate-600">Container Target: 1024 MB</span>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-bold text-black mb-1.5">
-                      <span>RAM Utilization</span>
-                      <span>{r.memory.workingSetMb} MB / 1024 MB ({Math.round((r.memory.workingSetMb / 1024) * 100)}%)</span>
-                    </div>
-                    <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-300">
-                      <div
-                        className="h-full rounded-full bg-black transition-all duration-500"
-                        style={{ width: `${Math.min(100, Math.round((r.memory.workingSetMb / 1024) * 100))}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 pt-2 text-center text-xs">
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
-                      <p className="font-bold text-slate-600">GC Gen 0</p>
-                      <p className="num text-xl font-black text-black mt-0.5">{r.memory.gen0}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
-                      <p className="font-bold text-slate-600">GC Gen 1</p>
-                      <p className="num text-xl font-black text-black mt-0.5">{r.memory.gen1}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
-                      <p className="font-bold text-slate-600">GC Gen 2</p>
-                      <p className="num text-xl font-black text-black mt-0.5">{r.memory.gen2}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-                  <h3 className="font-bold text-black text-sm">
-                    Runtime Architecture & Health Actions
-                  </h3>
-                  <div className="space-y-3 text-xs font-medium text-slate-700">
-                    <p className="leading-relaxed">
-                      Kabuor ERP operates on .NET 8 Server Garbage Collector. When hosting multi-tenant workloads, use
-                      these controls to reclaim cache pools or compact large object allocations without restarting.
-                    </p>
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <button
-                        className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-                        disabled={acting}
-                        onClick={() => runAction('gc-collect')}
-                      >
-                        <Zap className="h-3.5 w-3.5 text-black" /> Compact Large Object Heap
-                      </button>
-                      <button
-                        className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-                        disabled={acting}
-                        onClick={() => runAction('clear-cache')}
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" /> Flush Query Cache
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
+        <div className="flex items-center gap-2">
+          {demoCount > 0 && (
+            <label className="flex cursor-pointer items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium ring-1 ring-line">
+              <input type="checkbox" className="h-4 w-4 accent-ink" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
+              Include {demoCount} demo businesses
+            </label>
           )}
+          <button className="btn btn-ghost" onClick={reloadAll} aria-label="Refresh">
+            <RefreshCw className={cn('h-4 w-4', (businesses.loading || analytics.loading || health.loading) && 'animate-spin')} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </div>
+      </header>
+
+      {/* How Kabuor is doing, each number with what it's out of. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Businesses" value={a ? count(a.businesses.total) : '—'}>
+          {a && <>+{count(a.businesses.newInPeriod)} in {days} days{!demo && demoCount > 0 && ' · demo left out'}</>}
+        </Stat>
+        <Stat label="Paying" value={a ? count(a.businesses.paying) : '—'}>
+          {a && <>{pct(a.businesses.paying, a.businesses.total)}% of businesses · {count(a.businesses.trial)} on trial</>}
+        </Stat>
+        <Stat label="Monthly revenue" value={a ? ksh(a.revenue.mrr) : '—'}>
+          {a && <>recurring · {kshShort(a.revenue.arr)} a year · {kshShort(a.revenue.collectedInPeriod)} collected in {days} days</>}
+        </Stat>
+        <Stat label="Active this week" value={a ? count(a.businesses.active7d) : '—'}>
+          {a && <>{pct(a.businesses.active7d, a.businesses.total)}% of businesses · {plural(a.users.signedIn7d, 'person', 'people')} signed in</>}
+        </Stat>
+      </div>
+      {analytics.error && <ErrorNote>{analytics.error}</ErrorNote>}
+
+      {/* What needs the founder today; each item opens the list it counts. */}
+      {attentionReady && (
+        <section aria-label="Needs you" className="card p-4">
+          {attention.length === 0 ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-good">
+              <CheckCircle2 className="h-4 w-4" /> Nothing needs you right now: no trials ending, nobody waiting, every check passing.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-sm font-semibold">Needs you</span>
+              {attention.map((x) => (
+                <button
+                  key={x.text}
+                  onClick={x.go}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ring-1 transition hover:brightness-95',
+                    x.tone === 'bad' ? 'bg-bad-soft text-bad ring-bad/20' : x.tone === 'warn' ? 'bg-warn-soft text-warn ring-warn/20' : 'bg-white text-ink-2 ring-line',
+                  )}
+                >
+                  <span className="num font-bold">{count(x.n)}</span> {x.text} <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
-      {/* TAB 2: BUSINESSES & DEMO EXPLORER */}
+      <nav className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" aria-label="Console sections">
+        <div role="tablist" className="flex w-max gap-1 rounded-lg bg-paper p-1 ring-1 ring-line">
+          {TABS.map((t) => {
+            const active = tab === t.id;
+            const b = badge[t.id];
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => patch({ tab: t.id, show: null })}
+                className={cn('flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-semibold transition', active ? 'bg-ink text-white' : 'text-ink-2 hover:bg-white')}
+              >
+                <t.icon className="h-4 w-4" /> {t.label}
+                {b && (
+                  <span
+                    className={cn(
+                      'num rounded-full px-1.5 text-xs font-bold',
+                      active ? 'bg-white/20 text-white' : b.tone === 'bad' ? 'bg-bad-soft text-bad' : b.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-white text-muted',
+                    )}
+                  >
+                    {count(b.n)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       {tab === 'businesses' && (
         <BusinessesView
-          businesses={businesses.data ?? []}
-          loading={businesses.loading}
+          list={businesses.data ? list : null}
           error={businesses.error}
-          onReload={() => businesses.reload()}
-          onSelect={(id) => setSelectedBizId(id)}
-          onEditPlan={(b) => setPlanModalBiz(b)}
-          onWipe={(b) => {
-            setWipeTargetBiz(b);
-            setTab('purge');
-          }}
+          planById={planById}
+          show={show}
+          onShow={(s) => patch({ show: s === 'all' ? null : s })}
+          onOpen={(id) => patch({ b: id })}
         />
       )}
-
-      {/* TAB 3: TRAFFIC & PERFORMANCE */}
-      {tab === 'traffic' && <TrafficView health={h} error={health.error} />}
-
-      {/* TAB 4: GROWTH & REVENUE */}
-      {tab === 'growth' && (
-        <GrowthView analytics={analytics.data} error={analytics.error} days={days} setDays={setDays} />
-      )}
-
-      {/* TAB 5: SUPPORT & ISSUES */}
-      {tab === 'issues' && (
-        <IssuesView
-          issues={issues.data ?? []}
-          loading={issues.loading}
-          error={issues.error}
-          onReload={() => issues.reload()}
-        />
-      )}
-
-      {/* TAB 6: DEDICATED DELETE ACCOUNT / DATA PURGE */}
-      {tab === 'purge' && (
-        <PurgeAccountView
-          businesses={businesses.data ?? []}
-          preselectedBiz={wipeTargetBiz}
-          onPurged={() => {
+      {tab === 'growth' && <GrowthView analytics={a} error={analytics.error} days={days} setDays={setDays} onOpen={(id) => patch({ b: id })} />}
+      {tab === 'inquiries' && <InquiriesView issues={issues.data} loading={issues.loading} error={issues.error} onReload={issues.reload} />}
+      {tab === 'health' && <HealthView health={health.data} error={health.error} />}
+      {tab === 'server' && <ServerView health={health.data} onSeeded={businesses.reload} />}
+      {tab === 'erase' && (
+        <EraseView
+          businesses={businesses.data}
+          preselected={params.get('erase')}
+          onErased={() => {
             businesses.reload();
-            setWipeTargetBiz(null);
+            analytics.reload();
+            issues.reload();
+            patch({ erase: null });
           }}
         />
       )}
 
-      {/* Business Details Slide-over Sheet */}
-      {selectedBizId && (
-        <BusinessDetailSheet
-          businessId={selectedBizId}
-          onClose={() => setSelectedBizId(null)}
-          onEditPlan={(b) => {
-            setSelectedBizId(null);
-            setPlanModalBiz(b);
-          }}
-          onWipe={(b) => {
-            setSelectedBizId(null);
-            setWipeTargetBiz(b);
-            setTab('purge');
-          }}
+      {openId && (
+        <BusinessSheet
+          key={`${openId}-${saves}`}
+          id={openId}
+          planById={planById}
+          onClose={() => patch({ b: null })}
+          onManage={setManaging}
+          onErase={(id) => patch({ b: null, tab: 'erase', erase: id, show: null })}
         />
       )}
 
-      {/* Modal: Update Plan & Access in Pure White */}
-      {planModalBiz && (
-        <PlanModal
-          business={planModalBiz}
-          onClose={() => setPlanModalBiz(null)}
-          onUpdated={() => {
-            setPlanModalBiz(null);
+      {managing && (
+        <AccessSheet
+          business={managing}
+          plans={plans.data ?? []}
+          onClose={() => setManaging(null)}
+          onSaved={() => {
+            setManaging(null);
+            setSaves((n) => n + 1);
             businesses.reload();
+            analytics.reload();
           }}
         />
       )}
@@ -956,1275 +635,1376 @@ function Console() {
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Businesses & Demo Explorer (All White Background, Black Text)
-// -----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------- businesses
+type SortKey = 'name' | 'access' | 'plan' | 'users' | 'invoiced' | 'active';
+const ACCESS_RANK: Record<State, number> = { grace: 0, trial: 1, paying: 2, locked: 3 };
+
 function BusinessesView({
-  businesses,
-  loading,
+  list,
   error,
-  onReload,
-  onSelect,
-  onEditPlan,
-  onWipe,
+  planById,
+  show,
+  onShow,
+  onOpen,
 }: {
-  businesses: BusinessItem[];
-  loading: boolean;
-  error?: string | null;
-  onReload: () => void;
-  onSelect: (id: string) => void;
-  onEditPlan: (b: BusinessItem) => void;
-  onWipe: (b: BusinessItem) => void;
+  list: BusinessItem[] | null;
+  error: string | null;
+  planById: Map<string, Plan>;
+  show: Show;
+  onShow: (s: Show) => void;
+  onOpen: (id: string) => void;
 }) {
-  const [filterState, setFilterState] = useState<string>('all');
-  const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<'invoices' | 'users' | 'name'>('invoices');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'invoiced', desc: true });
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (loading && businesses.length === 0) return <Loading />;
+  if (!list) return <Loading />;
 
-  let filtered = businesses.filter((b) => {
-    if (filterState !== 'all' && b.state !== filterState) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      return (
-        b.name.toLowerCase().includes(q) ||
-        (b.email ?? '').toLowerCase().includes(q) ||
-        (b.county ?? '').toLowerCase().includes(q) ||
-        b.plan.toLowerCase().includes(q)
-      );
+  const n = (f: (b: BusinessItem) => boolean) => list.filter(f).length;
+  const filters: [Show, string, number][] = [
+    ['all', 'All', list.length],
+    ['paying', 'Paying', n((b) => b.state === 'paying')],
+    ['trial', 'On trial', n((b) => b.state === 'trial')],
+    ['ending', 'Trial ends in 7 days', n(endingSoon)],
+    ['grace', 'Grace', n((b) => b.state === 'grace')],
+    ['locked', 'Locked', n((b) => b.state === 'locked')],
+    ['quiet', 'Quiet 14+ days', n(quiet)],
+  ];
+  const matches = (b: BusinessItem) => (show === 'all' ? true : show === 'ending' ? endingSoon(b) : show === 'quiet' ? quiet(b) : b.state === show);
+  const planName = (b: BusinessItem) => planById.get(b.plan)?.name ?? (b.plan || 'No plan');
+  const needle = q.trim().toLowerCase();
+  const rows = list
+    .filter(matches)
+    .filter((b) => !needle || [b.name, b.email, b.phone, b.county, planName(b)].some((v) => (v ?? '').toLowerCase().includes(needle)));
+
+  const value = (b: BusinessItem): number | string => {
+    switch (sort.key) {
+      case 'name':
+        return b.name.toLowerCase();
+      case 'access':
+        return ACCESS_RANK[b.state] * 1e13 + Date.parse(b.accessEndsAt);
+      case 'plan':
+        return planById.get(b.plan)?.monthly ?? -1;
+      case 'users':
+        return b.usersCount;
+      case 'invoiced':
+        return b.invoiceValue;
+      case 'active':
+        return b.lastActive ? Date.parse(b.lastActive) : 0;
     }
-    return true;
+  };
+  rows.sort((x, y) => {
+    const [vx, vy] = [value(x), value(y)];
+    const c = typeof vx === 'string' ? vx.localeCompare(vy as string) : vx - (vy as number);
+    return sort.desc ? -c : c;
   });
+  const onSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'name' && key !== 'access' }));
 
-  if (sortBy === 'invoices') {
-    filtered = [...filtered].sort((a, b) => b.invoiceValue - a.invoiceValue);
-  } else if (sortBy === 'users') {
-    filtered = [...filtered].sort((a, b) => b.usersCount - a.usersCount);
-  } else {
-    filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-  }
+  const Head = ({ k, children, right }: { k: SortKey; children: ReactNode; right?: boolean }) => (
+    <th aria-sort={sort.key === k ? (sort.desc ? 'descending' : 'ascending') : 'none'} className={cn('px-4 py-2.5 font-semibold', right && 'text-right')}>
+      <button type="button" onClick={() => onSort(k)} className={cn('inline-flex items-center gap-1 hover:text-ink', sort.key === k && 'text-ink')}>
+        {children}
+        {sort.key === k && (sort.desc ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />)}
+      </button>
+    </th>
+  );
 
   return (
-    <div className="space-y-4 bg-white text-black">
-      {/* Search, Filter, and Sort Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-2 max-w-md">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-black" />
-            <input
-              className="field pl-9 text-xs bg-white text-black border border-slate-300 font-semibold"
-              placeholder="Search companies, demo accounts, emails, counties..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost text-xs p-2 border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold"
-            onClick={onReload}
-            title="Refresh businesses directory"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          </button>
-        </div>
+    <section className="space-y-3">
+      <SearchBox value={q} onChange={setQ} placeholder="Search name, email, phone, county or plan" />
+      <Chips label="Show businesses" value={show} onChange={onShow} options={filters} />
+      <p className="text-sm text-muted" aria-live="polite">
+        {rows.length === list.length ? plural(list.length, 'business', 'businesses') : `${count(rows.length)} of ${plural(list.length, 'business', 'businesses')}`}
+      </p>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-black shadow-xs">
-            <ArrowUpDown className="h-3 w-3 text-black" />
-            <span className="text-slate-600">Sort:</span>
-            <select
-              className="bg-transparent font-bold text-black outline-none cursor-pointer"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+      {rows.length === 0 ? (
+        <Empty
+          title="No businesses match"
+          action={
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setQ('');
+                onShow('all');
+              }}
             >
-              <option value="invoices">Invoiced Volume</option>
-              <option value="users">Team Size</option>
-              <option value="name">Company Name</option>
-            </select>
-          </div>
+              Show all businesses
+            </button>
+          }
+        >
+          {needle ? `Nothing matches “${q.trim()}”${show !== 'all' ? ' with this filter' : ''}.` : 'None are in this state right now.'}
+        </Empty>
+      ) : (
+        <>
+          {/* Phones: one card per business, the same facts in the same places. */}
+          <ul className="card divide-y divide-line sm:hidden">
+            {rows.map((b) => (
+              <li key={b.id}>
+                <button className="flex w-full items-start gap-3 p-4 text-left" onClick={() => onOpen(b.id)}>
+                  <Monogram name={b.name} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate font-semibold">{b.name}</span>
+                      {b.isDemo && <DemoPill />}
+                    </span>
+                    <span className={cn('mt-0.5 block text-sm', urgent(b) ? 'font-semibold text-warn' : 'text-muted')}>{accessText(b.state, b.accessEndsAt)}</span>
+                    <span className="mt-1 block text-xs text-muted">
+                      {planName(b)} · {plural(b.usersCount, 'login')} · active {ago(b.lastActive).toLowerCase()}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <Status tone={STATE[b.state].tone}>{STATE[b.state].label}</Status>
+                    <span className="num mt-1 block text-sm font-semibold">{kshShort(b.invoiceValue)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
 
-          <Chips
-            label="Status Filter"
-            value={filterState}
-            onChange={setFilterState}
-            options={[
-              ['all', 'All Companies', businesses.length],
-              ['paying', 'Paying', businesses.filter((b) => b.state === 'paying').length],
-              ['trial', 'Trial', businesses.filter((b) => b.state === 'trial').length],
-              ['grace', 'Grace', businesses.filter((b) => b.state === 'grace').length],
-              ['locked', 'Locked', businesses.filter((b) => b.state === 'locked').length],
-            ]}
-          />
-        </div>
-      </div>
-
-      {/* Directory Table */}
-      <div className="rounded-xl border border-slate-200/90 bg-white overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm bg-white">
-            <thead className="border-b border-slate-200 bg-white text-xs font-black text-black uppercase tracking-wider">
-              <tr>
-                <th className="py-3 px-4">Business & Identity</th>
-                <th className="py-3 px-4">Status & Plan</th>
-                <th className="py-3 px-4 text-center">Team Size</th>
-                <th className="py-3 px-4 text-right">Invoiced Volume</th>
-                <th className="py-3 px-4">Last Activity</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {filtered.length === 0 ? (
+          <div className="card hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[56rem] text-left text-sm">
+              <thead className="border-b border-line text-muted">
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-xs font-bold text-slate-500 bg-white">
-                    No businesses match your filter query.
-                  </td>
+                  <Head k="name">Business</Head>
+                  <Head k="access">Access</Head>
+                  <Head k="plan">Plan</Head>
+                  <Head k="users" right>
+                    Logins
+                  </Head>
+                  <Head k="invoiced" right>
+                    Invoiced
+                  </Head>
+                  <Head k="active">Last sign-in</Head>
+                  <th className="w-8" aria-label="Open" />
                 </tr>
-              ) : (
-                filtered.map((b) => {
-                  const initials = b.name
-                    .split(' ')
-                    .map((w) => w[0])
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase();
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((b) => {
+                  const plan = planById.get(b.plan);
                   return (
                     <tr
                       key={b.id}
-                      className="hover:bg-slate-50 transition cursor-pointer bg-white"
-                      onClick={() => onSelect(b.id)}
+                      tabIndex={0}
+                      onClick={() => onOpen(b.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && onOpen(b.id)}
+                      className="cursor-pointer transition hover:bg-paper focus-visible:bg-paper"
                     >
-                      <td className="py-3.5 px-4 bg-white">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-lg border border-slate-300 bg-white flex items-center justify-center font-black text-xs text-black shadow-xs shrink-0">
-                            {initials}
-                          </div>
-                          <div>
+                      <td className="max-w-[18rem] px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Monogram name={b.name} />
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-black hover:underline text-sm">
-                                {b.name}
-                              </span>
-                              {b.name.includes('Amani') && (
-                                <span className="rounded border border-slate-300 bg-white px-1.5 py-0.2 text-[10px] font-black uppercase tracking-wider text-black">
-                                  Demo
-                                </span>
-                              )}
+                              <span className="truncate font-semibold">{b.name}</span>
+                              {b.isDemo && <DemoPill />}
                             </div>
-                            <div className="text-xs text-slate-600 font-medium">
-                              {b.email || b.phone || 'No direct contact'} {b.county ? `· ${b.county}` : ''}
-                            </div>
+                            <div className="truncate text-xs text-muted">{[b.email || b.phone, b.county].filter(Boolean).join(' · ') || 'No contact on file'}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 bg-white">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge state={b.state} />
-                          <span className="text-xs font-bold uppercase tracking-wider text-black">
-                            {b.plan || 'Free'}
-                          </span>
-                        </div>
+                      <td className="px-4 py-3">
+                        <Status tone={STATE[b.state].tone}>{STATE[b.state].label}</Status>
+                        <div className={cn('mt-1 text-xs', urgent(b) ? 'font-semibold text-warn' : 'text-muted')}>{accessText(b.state, b.accessEndsAt)}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold num text-black bg-white">
-                        {b.usersCount} users
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{plan?.name ?? (b.plan || 'No plan')}</div>
+                        <div className="num text-xs text-muted">{plan ? `${ksh(plan.monthly)}/month` : b.plan ? 'Not a current plan' : '—'}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-right bg-white">
-                        <div className="font-black num text-black">{ksh(b.invoiceValue)}</div>
-                        <div className="text-xs text-slate-600 font-semibold num">{b.invoicesCount} invoices</div>
+                      <td className="num px-4 py-3 text-right">{count(b.usersCount)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="num font-semibold">{kshShort(b.invoiceValue)}</div>
+                        <div className="num text-xs text-muted">{plural(b.invoicesCount, 'invoice')}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-xs font-semibold text-slate-700 bg-white">
-                        {b.lastActive ? dateTime(b.lastActive) : 'Never'}
-                      </td>
-                      <td className="py-3.5 px-4 text-right bg-white" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            className="btn btn-ghost text-xs py-1 px-3 border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-                            onClick={() => onSelect(b.id)}
-                            title="Inspect complete business profile, team members, and footprint"
-                          >
-                            <Eye className="h-3.5 w-3.5 text-black" /> Details
-                          </button>
-                          <button
-                            className="btn btn-secondary text-xs py-1 px-2.5 border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-                            onClick={() => onEditPlan(b)}
-                            title="Adjust plan tier or extend trial days"
-                          >
-                            Plan
-                          </button>
-                          {b.name !== 'Kabuor Builds' && (
-                            <button
-                              className="btn btn-ghost text-xs text-black border border-slate-300 hover:bg-slate-100 py-1 px-2 shadow-xs"
-                              onClick={() => onWipe(b)}
-                              title="Open compliance data wipe"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-black" />
-                            </button>
-                          )}
-                        </div>
+                      <td className={cn('px-4 py-3', quiet(b) ? 'font-medium text-warn' : 'text-muted')}>{ago(b.lastActive)}</td>
+                      <td className="pr-3 text-faint">
+                        <ChevronRight className="h-4 w-4" />
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Business Detail Slide-over Sheet (All White Background, Black Text)
-// -----------------------------------------------------------------------------
-function BusinessDetailSheet({
-  businessId,
+// ----------------------------------------------------------------------------- one business
+function BusinessSheet({
+  id,
+  planById,
   onClose,
-  onEditPlan,
-  onWipe,
+  onManage,
+  onErase,
 }: {
-  businessId: string;
+  id: string;
+  planById: Map<string, Plan>;
   onClose: () => void;
-  onEditPlan: (b: BusinessItem) => void;
-  onWipe: (b: BusinessItem) => void;
+  onManage: (b: AccessTarget) => void;
+  onErase: (id: string) => void;
 }) {
-  const detail = useApi<BusinessDetail>(`/platform/businesses/${businessId}`);
+  const detail = useApi<BusinessDetail>(`/platform/businesses/${id}`);
   const b = detail.data;
-  const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'invoices'>('profile');
+  const plan = b ? planById.get(b.plan) : undefined;
+  const footprint: [keyof BusinessDetail['footprint'], string][] = [
+    ['customers', 'Customers'],
+    ['invoices', 'Invoices'],
+    ['payments', 'Payments'],
+    ['items', 'Products'],
+    ['employees', 'Employees'],
+    ['users', 'Logins'],
+    ['inquiries', 'Inquiries'],
+    ['assets', 'Assets'],
+    ['journals', 'Journals'],
+  ];
 
   return (
-    <Sheet open onClose={onClose} wide title={b ? b.name : 'Loading business...'}>
+    <Sheet open wide onClose={onClose} title={b?.name ?? 'Business'}>
       {detail.error ? (
         <ErrorNote>{detail.error}</ErrorNote>
       ) : !b ? (
         <Loading />
       ) : (
-        <div className="space-y-6 text-sm bg-white text-black">
-          {/* Header Summary Card */}
-          <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-black text-black text-xl">{b.name}</h3>
-                <p className="text-xs text-slate-500 font-mono break-all mt-0.5">Company ID: {b.id}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge state={b.state} />
-                <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-xs font-black uppercase tracking-wider text-black">
-                  {b.plan} Plan
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 text-xs font-medium text-slate-800 sm:grid-cols-3 border-t border-slate-100 pt-3.5">
+        <div className="space-y-6 text-sm">
+          <section className="card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Email</span>
-                <span className="text-black font-semibold block truncate" title={b.email || 'None'}>
-                  {b.email || 'None'}
-                </span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Phone</span>
-                <span className="text-black font-semibold block truncate">{b.phone || 'None'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">County</span>
-                <span className="text-black font-semibold block truncate">{b.county || 'Nairobi'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">KRA PIN</span>
-                <span className="font-mono font-bold text-black block truncate">{b.kraPin || 'Unset'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">VAT Registered</span>
-                <span className="text-black font-semibold block truncate">{b.vatRegistered ? 'Yes' : 'No'}</span>
-              </div>
-              <div className="min-w-0">
-                <span className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">Joined</span>
-                <span className="text-black font-semibold block truncate">{dateTime(b.createdAt)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Footprint Grid */}
-          <div>
-            <h4 className="text-xs font-black uppercase tracking-wider text-black mb-2">
-              Storage Footprint
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5">
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
-                <span className="text-slate-500 block font-semibold text-[11px] truncate">Users</span>
-                <span className="font-black num text-base text-black">{b.footprint.users}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
-                <span className="text-slate-500 block font-semibold text-[11px] truncate">Customers</span>
-                <span className="font-black num text-base text-black">{b.footprint.customers}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
-                <span className="text-slate-500 block font-semibold text-[11px] truncate">Products</span>
-                <span className="font-black num text-base text-black">{b.footprint.items}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0">
-                <span className="text-slate-500 block font-semibold text-[11px] truncate">Invoices</span>
-                <span className="font-black num text-base text-black">{b.footprint.invoices}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs min-w-0 col-span-2 sm:col-span-1">
-                <span className="text-slate-500 block font-semibold text-[11px] truncate">Journals</span>
-                <span className="font-black num text-base text-black">{b.footprint.journals}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sub-Navigation Tabs inside Drawer */}
-          <div className="flex border-b border-slate-200">
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={cn(
-                'py-2 px-3 text-xs font-bold border-b-2 transition-all',
-                activeTab === 'profile'
-                  ? 'border-black text-black'
-                  : 'border-transparent text-slate-500 hover:text-black'
-              )}
-            >
-              Overview & Metadata
-            </button>
-            <button
-              onClick={() => setActiveTab('team')}
-              className={cn(
-                'py-2 px-3 text-xs font-bold border-b-2 transition-all',
-                activeTab === 'team'
-                  ? 'border-black text-black'
-                  : 'border-transparent text-slate-500 hover:text-black'
-              )}
-            >
-              Staff Members ({b.users.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('invoices')}
-              className={cn(
-                'py-2 px-3 text-xs font-bold border-b-2 transition-all',
-                activeTab === 'invoices'
-                  ? 'border-black text-black'
-                  : 'border-transparent text-slate-500 hover:text-black'
-              )}
-            >
-              Billing ({b.invoices.length})
-            </button>
-          </div>
-
-          {/* Drawer Tab 1: Profile & Metadata */}
-          {activeTab === 'profile' && (
-            <div className="space-y-3 text-xs">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 shadow-xs">
-                <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-medium">Industry Classification:</span>
-                  <span className="font-bold text-black uppercase">{b.industry || 'General Trade'}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Status tone={STATE[b.state].tone}>{STATE[b.state].label}</Status>
+                  {b.isDemo && <DemoPill />}
                 </div>
-                <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-medium">M-Pesa Shortcode:</span>
-                  <span className="font-mono font-bold text-black">{b.mpesaShortcode || 'None'}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-slate-100">
-                  <span className="text-slate-600 font-medium">Paid Until Date:</span>
-                  <span className="font-bold text-black">{b.paidUntil ? dateTime(b.paidUntil) : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-slate-600 font-medium">Trial End Date:</span>
-                  <span className="font-bold text-black">{b.trialEndsAt ? dateTime(b.trialEndsAt) : 'N/A'}</span>
-                </div>
+                <p className={cn('mt-2 font-display text-xl font-bold', urgent(b) && 'text-warn')}>{accessText(b.state, b.accessEndsAt)}</p>
+                <p className="mt-0.5 text-muted">
+                  {plan ? `${plan.name} plan · ${ksh(plan.monthly)}/month` : b.plan ? `Plan “${b.plan}” (not a current plan)` : 'No plan chosen'} · joined {dayYear(b.createdAt)}
+                </p>
               </div>
-            </div>
-          )}
-
-          {/* Drawer Tab 2: Team Members */}
-          {activeTab === 'team' && (
-            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden bg-white shadow-xs">
-              {b.users.length === 0 ? (
-                <div className="p-4 text-xs text-slate-600 font-medium text-center">No users registered.</div>
-              ) : (
-                b.users.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between p-3 text-xs bg-white">
-                    <div>
-                      <div className="font-bold text-black">{u.name}</div>
-                      <div className="text-slate-600 font-medium">{u.email} {u.phone ? `· ${u.phone}` : ''}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[11px] font-bold text-black">
-                        {u.role}
-                      </span>
-                      <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                        {u.lastSignInAt ? `Active ${dateTime(u.lastSignInAt)}` : 'Never signed in'}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Drawer Tab 3: Recent Invoices */}
-          {activeTab === 'invoices' && (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-600">Total Billed:</span>
-                <span className="font-black text-black num text-sm">{ksh(b.invoicedTotal)}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200 overflow-hidden text-xs bg-white shadow-xs">
-                {b.invoices.length === 0 ? (
-                  <div className="p-4 text-slate-600 font-medium text-center">No invoices created yet.</div>
-                ) : (
-                  <table className="w-full text-left bg-white">
-                    <thead className="bg-white border-b border-slate-200 text-black font-bold">
-                      <tr>
-                        <th className="py-2.5 px-3">Number</th>
-                        <th className="py-2.5 px-3">Customer</th>
-                        <th className="py-2.5 px-3 text-right">Amount</th>
-                        <th className="py-2.5 px-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {b.invoices.map((inv) => (
-                        <tr key={inv.id} className="bg-white">
-                          <td className="py-2.5 px-3 font-mono font-bold text-black">{inv.number}</td>
-                          <td className="py-2.5 px-3 font-medium text-black">{inv.customerName}</td>
-                          <td className="py-2.5 px-3 text-right font-black num text-black">{ksh(inv.total)}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-black">
-                              {inv.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-            {b.canWipe ? (
-              <button
-                className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-100 font-bold"
-                onClick={() => {
-                  onClose();
-                  onWipe(b as any);
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5 text-black" /> Purge Account Data
+              <button className={primaryBtn} onClick={() => onManage(b)}>
+                Change plan or access
               </button>
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle>Details</SectionTitle>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(
+                [
+                  ['Email', b.email],
+                  ['Phone', b.phone],
+                  ['County', b.county],
+                  ['KRA PIN', b.kraPin],
+                  ['VAT registered', b.vatRegistered ? 'Yes' : 'No'],
+                  ['Industry', b.industry],
+                  ['M-Pesa shortcode', b.mpesaShortcode],
+                ] as [string, string | null][]
+              ).map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="text-xs text-muted">{k}</dt>
+                  <dd className={cn('truncate font-medium', !v && 'font-normal text-faint')} title={v ?? undefined}>
+                    {v || 'Not set'}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 font-mono text-xs break-all text-faint">ID {b.id}</p>
+          </section>
+
+          <section>
+            <SectionTitle aside={`${ksh(b.invoicedTotal)} on the latest ${b.invoices.length}`}>What they keep in Kabuor</SectionTitle>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {footprint.map(([k, label]) => (
+                <div key={k} className="min-w-0 rounded-md bg-paper p-2.5 ring-1 ring-line">
+                  <div className="num font-display text-lg font-bold">{count(b.footprint[k])}</div>
+                  <div className="truncate text-xs text-muted">{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle aside={`${b.users.filter((u) => u.active).length} active`}>People with a login ({b.users.length})</SectionTitle>
+            {b.users.length === 0 ? (
+              <p className="text-muted">Nobody has a login yet.</p>
             ) : (
-              <span className="text-xs font-bold text-slate-500">Root Platform Tenant</span>
+              <ul className="card divide-y divide-line">
+                {b.users.map((u) => (
+                  <li key={u.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-semibold">{u.name}</span>
+                        {!u.active && <Status tone="plain">No access</Status>}
+                      </div>
+                      <div className="truncate text-xs text-muted">{[u.email, u.phone].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-xs font-semibold text-ink-2">{u.role}</div>
+                      <div className="text-xs text-muted">{u.lastSignInAt ? `Signed in ${ago(u.lastSignInAt).toLowerCase()}` : 'Never signed in'}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
+          </section>
 
-            <div className="flex gap-2">
-              <button className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold" onClick={onClose}>
-                Close
-              </button>
-              <button
-                className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800 font-bold"
-                onClick={() => {
-                  onClose();
-                  onEditPlan(b as any);
-                }}
-              >
-                Change Plan Tier
-              </button>
-            </div>
-          </div>
+          <section>
+            <SectionTitle>Latest invoices</SectionTitle>
+            {b.invoices.length === 0 ? (
+              <p className="text-muted">No invoices yet.</p>
+            ) : (
+              <div className="card overflow-x-auto">
+                <table className="w-full min-w-[32rem] text-left">
+                  <thead className="border-b border-line text-muted">
+                    <tr>
+                      <th className="px-4 py-2.5 font-semibold">Invoice</th>
+                      <th className="px-4 py-2.5 font-semibold">Customer</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Still owed</th>
+                      <th className="px-4 py-2.5 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {b.invoices.map((inv) => (
+                      <tr key={inv.id}>
+                        <td className="px-4 py-2.5">
+                          <div className="font-mono text-xs font-semibold">{inv.number}</div>
+                          <div className="text-xs text-muted">{day(inv.issueDate)}</div>
+                        </td>
+                        <td className="max-w-[12rem] truncate px-4 py-2.5">{inv.customerName}</td>
+                        <td className="num px-4 py-2.5 text-right font-semibold">{ksh(inv.total)}</td>
+                        <td className={cn('num px-4 py-2.5 text-right', inv.balance > 0 ? 'text-ink' : 'text-faint')}>{inv.balance > 0 ? ksh(inv.balance) : '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <Status tone={inv.status === 'Paid' ? 'good' : inv.status === 'PartPaid' ? 'warn' : inv.status === 'Void' || inv.status === 'Draft' ? 'plain' : 'info'}>
+                            {inv.status === 'PartPaid' ? 'Part paid' : inv.status}
+                          </Status>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {b.canWipe ? (
+            <section className="rounded-lg bg-bad-soft/50 p-4 ring-1 ring-bad/20">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-bad">Erase this business</p>
+                  <p className="text-xs text-muted">Deletes everything they keep in Kabuor, for good. Only Kabuor’s record of the erasure stays.</p>
+                </div>
+                <button className="btn btn-ghost text-bad" onClick={() => onErase(b.id)}>
+                  <Trash2 className="h-4 w-4" /> Erase data…
+                </button>
+              </div>
+            </section>
+          ) : (
+            <p className="text-xs text-muted">This is Kabuor’s own business; it can’t be erased from here.</p>
+          )}
         </div>
       )}
     </Sheet>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Traffic & Performance View (White Background, Black Text)
-// -----------------------------------------------------------------------------
-function TrafficView({ health, error }: { health?: Health | null; error?: string | null }) {
-  const [metricMode, setMetricMode] = useState<'traffic' | 'latency'>('traffic');
+// ----------------------------------------------------------------------------- plan and access
+const ACCESS_DAYS: [string, string][] = [
+  ['7', '7 days'],
+  ['14', '14 days'],
+  ['30', '1 month'],
+  ['90', '3 months'],
+  ['365', '1 year'],
+];
 
-  if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (!health) return <Loading />;
-  const problems = health.checks.filter((c) => c.status !== 'good');
+function AccessSheet({ business, plans, onClose, onSaved }: { business: AccessTarget; plans: Plan[]; onClose: () => void; onSaved: () => void }) {
+  const known = plans.some((p) => p.id === business.plan);
+  const [plan, setPlan] = useState(known ? business.plan : '');
+  const [access, setAccess] = useState<'keep' | 'give' | 'lock'>(business.state === 'locked' ? 'give' : 'keep');
+  const [days, setDays] = useState('30');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const trafficSeries = (health.traffic.series ?? []).map((s) => ({
-    label: new Date(s.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    value: s.requests,
-  }));
+  const chosen = plans.find((p) => p.id === plan);
+  const current = plans.find((p) => p.id === business.plan);
+  const planChanged = plan !== '' && plan !== business.plan;
+  const now = Date.now();
+  const base = business.paidUntil && Date.parse(business.paidUntil) > now ? Date.parse(business.paidUntil) : now;
+  const until = new Date(base + Number(days) * DAY).toISOString();
+  const after: State = access === 'lock' ? 'locked' : access === 'give' ? 'paying' : business.state;
+  // What this does to monthly recurring revenue: only a business that pays (or will) counts.
+  const mrrBefore = business.state === 'paying' ? (current?.monthly ?? 0) : 0;
+  const mrrAfter = after === 'paying' ? ((chosen ?? current)?.monthly ?? 0) : 0;
+  const mrrDelta = mrrAfter - mrrBefore;
+  const changed = planChanged || access !== 'keep';
 
-  const latencySeries = (health.traffic.series ?? []).map((s) => ({
-    label: new Date(s.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    value: s.avgMs,
-  }));
+  const outcome =
+    access === 'lock'
+      ? `Lock ${business.name} now`
+      : access === 'give'
+        ? `Give access until ${day(until)}${planChanged && chosen ? ` on ${chosen.name}` : ''}`
+        : planChanged && chosen
+          ? `Move to ${chosen.name}`
+          : 'Save';
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changed) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      await api(`/platform/businesses/${business.id}/plan`, {
+        method: 'POST',
+        body: { plan: planChanged ? plan : null, extendDays: access === 'give' ? Number(days) : 0, lock: access === 'lock' },
+      });
+      onSaved();
+    } catch (error: any) {
+      setErr(error.message || 'Couldn’t save that.');
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="space-y-6 bg-white text-black">
-      {/* Subsystem Health Status Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-sm font-bold text-black">
-            {problems.length === 0
-              ? 'All subsystems functioning normally'
-              : `${problems.length} subsystem${problems.length === 1 ? '' : 's'} require verification`}
-          </span>
-        </div>
-        <span className="text-xs font-semibold text-slate-600">
-          Sampled {dateTime(health.checkedAt)} · .NET {health.server.dotnet}
-        </span>
-      </div>
-
-      {/* Subsystem Checks Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {health.checks.map((c) => (
-          <div
-            key={c.key}
-            className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-sm"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-black">{c.name}</span>
-              <StatusBadge state={c.status === 'good' ? 'Resolved' : c.status === 'warn' ? 'InProgress' : 'Open'} />
-            </div>
-            <p className="mt-1 text-xs font-semibold text-slate-600 leading-relaxed">{c.summary}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Interactive SVG Line Graph with Metric Mode Switcher */}
-      <div className="rounded-xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="font-bold text-black text-sm">
-              {metricMode === 'traffic'
-                ? 'System Traffic: Requests per Minute'
-                : 'API Latency Trend: Average Milliseconds'}
-            </h3>
-            <p className="text-xs font-medium text-slate-600">
-              {count(health.traffic.requests)} requests recorded · P50: {health.traffic.p50}ms · P95: {health.traffic.p95}ms
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setMetricMode('traffic')}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                metricMode === 'traffic'
-                  ? 'bg-black text-white'
-                  : 'bg-white border border-slate-300 text-black hover:bg-slate-50'
-              )}
-            >
-              Requests / Min
-            </button>
-            <button
-              onClick={() => setMetricMode('latency')}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                metricMode === 'latency'
-                  ? 'bg-black text-white'
-                  : 'bg-white border border-slate-300 text-black hover:bg-slate-50'
-              )}
-            >
-              Latency (ms)
-            </button>
+    <Sheet open onClose={onClose} title={`Plan and access · ${business.name}`}>
+      <form onSubmit={submit} className="space-y-6 text-sm">
+        <div className="rounded-md bg-paper p-3 ring-1 ring-line">
+          <div className="text-xs text-muted">Now</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <Status tone={STATE[business.state].tone}>{STATE[business.state].label}</Status>
+            <span className="font-medium">{accessText(business.state, business.accessEndsAt)}</span>
           </div>
         </div>
 
-        <SvgLineChart
-          data={metricMode === 'traffic' ? trafficSeries : latencySeries}
-          height={200}
-          strokeColor="#000000"
-          fmt={(v) => (metricMode === 'traffic' ? `${count(v)} requests` : `${v} ms`)}
-        />
-      </div>
-
-      {/* Slowest and Error Endpoints */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
-          <p className="mb-2 text-xs font-black text-black uppercase tracking-wider">
-            Slowest API Endpoints
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs bg-white">
-              <thead className="border-b border-slate-200 text-black font-bold">
-                <tr>
-                  <th className="py-2">Route</th>
-                  <th className="py-2 text-right">Calls</th>
-                  <th className="py-2 text-right">Avg ms</th>
-                  <th className="py-2 text-right">Max ms</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {health.traffic.slowest.map((r, i) => (
-                  <tr key={i}>
-                    <td className="py-2 font-mono font-bold text-black truncate max-w-[12rem]">
-                      {r.route}
-                    </td>
-                    <td className="py-2 text-right num font-semibold">{r.requests}</td>
-                    <td className="py-2 text-right num font-black text-black">{r.avgMs}</td>
-                    <td className="py-2 text-right num text-slate-700">{r.maxMs}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <fieldset>
+          <legend className="mb-2 font-semibold">Plan</legend>
+          {!known && business.plan && <p className="mb-2 text-xs text-warn">“{business.plan}” isn’t a current plan. Choose one to fix it.</p>}
+          <div className="space-y-2">
+            {plans.map((p) => (
+              <label key={p.id} className={cn('flex cursor-pointer items-center justify-between gap-3 rounded-md bg-white p-3 transition', plan === p.id ? 'ring-2 ring-ink' : 'ring-1 ring-line hover:ring-faint')}>
+                <input type="radio" name="plan" value={p.id} checked={plan === p.id} onChange={() => setPlan(p.id)} className="sr-only" />
+                <span className="min-w-0">
+                  <span className="font-semibold">{p.name}</span>
+                  {p.id === business.plan && <span className="ml-2 text-xs text-muted">current</span>}
+                  <span className="block text-xs text-muted">{p.users >= 1000 ? 'Unlimited users' : `Up to ${p.users} users`}</span>
+                </span>
+                <span className="num shrink-0 font-semibold">
+                  {ksh(p.monthly)}
+                  <span className="text-xs font-normal text-muted">/month</span>
+                </span>
+              </label>
+            ))}
           </div>
-        </div>
+        </fieldset>
 
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
-          <p className="mb-2 text-xs font-black text-black uppercase tracking-wider">
-            Server Error Log
-          </p>
-          {health.traffic.failing.length === 0 ? (
-            <div className="flex h-32 items-center justify-center text-xs font-bold text-black">
-              Zero 5xx server exceptions recorded.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs bg-white">
-                <thead className="border-b border-slate-200 text-black font-bold">
-                  <tr>
-                    <th className="py-2">Endpoint</th>
-                    <th className="py-2 text-right">Errors</th>
-                    <th className="py-2 text-right">Requests</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {health.traffic.failing.map((r, i) => (
-                    <tr key={i}>
-                      <td className="py-2 font-mono font-bold text-black truncate max-w-[12rem]">
-                        {r.route}
-                      </td>
-                      <td className="py-2 text-right font-black text-black num">{r.errors}</td>
-                      <td className="py-2 text-right num font-semibold">{r.requests}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <fieldset className="space-y-3">
+          <legend className="mb-2 font-semibold">Access</legend>
+          <Segmented
+            label="Access"
+            value={access}
+            onChange={setAccess}
+            options={[
+              ['keep', 'Keep as it is'],
+              ['give', 'Give access'],
+              ['lock', 'Lock now'],
+            ]}
+          />
+          {access === 'give' && (
+            <>
+              <Chips label="For how long" value={days} onChange={setDays} options={ACCESS_DAYS} />
+              <p className="text-muted">
+                Paid access until <strong className="text-ink">{dayYear(until)}</strong>
+                {business.paidUntil && Date.parse(business.paidUntil) > now ? ', added to what they’ve already paid.' : ', starting today.'} No money changes hands; they don’t get a bill.
+              </p>
+            </>
           )}
+          {access === 'lock' && <p className="text-bad">Read-only from now. They keep their data but can’t record sales until you give access again.</p>}
+        </fieldset>
+
+        {changed && mrrDelta !== 0 && (
+          <p className="text-muted">
+            Monthly recurring revenue{' '}
+            <strong className={mrrDelta > 0 ? 'text-good' : 'text-bad'}>
+              {mrrDelta > 0 ? '+' : '−'}
+              {ksh(Math.abs(mrrDelta))}
+            </strong>
+          </p>
+        )}
+
+        {err && <ErrorNote>{err}</ErrorNote>}
+
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className={access === 'lock' ? dangerBtn : primaryBtn} disabled={saving || !changed}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} {outcome}
+          </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </Sheet>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Growth & Analytics View (White Background, Black Text)
-// -----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------- growth
 function GrowthView({
   analytics,
   error,
   days,
   setDays,
+  onOpen,
 }: {
-  analytics?: Analytics | null;
-  error?: string | null;
-  days: '7' | '30' | '90' | '365';
-  setDays: (d: '7' | '30' | '90' | '365') => void;
+  analytics: Analytics | null;
+  error: string | null;
+  days: Days;
+  setDays: (d: Days) => void;
+  onOpen: (id: string) => void;
 }) {
-  const [chartMode, setChartMode] = useState<'revenue' | 'signups'>('revenue');
-
+  const [chart, setChart] = useState<'invoiced' | 'payments' | 'signups'>('invoiced');
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!analytics) return <Loading />;
   const b = analytics.businesses;
-
-  const invoiceSeries = (analytics.series ?? []).map((s) => ({
-    label: s.day.slice(5),
-    value: s.invoiceValue,
+  const v = analytics.volume;
+  const series = analytics.series.map((s) => ({
+    label: day(s.day),
+    value: chart === 'invoiced' ? s.invoiceValue : chart === 'payments' ? s.paymentValue : s.signups,
   }));
-
-  const signupSeries = (analytics.series ?? []).map((s) => ({
-    label: s.day.slice(5),
-    value: s.signups,
-  }));
+  const money = chart !== 'signups';
+  const totalMrr = Math.max(1, b.byPlan.reduce((s, p) => s + p.mrr, 0));
 
   return (
-    <div className="space-y-6 bg-white text-black">
+    <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-bold text-black text-sm">
-            Financial Growth & Platform Invoiced Volume
-          </h2>
-          <p className="text-xs font-semibold text-slate-600">
-            Real-time aggregate transaction analytics across all tenant workspaces
-          </p>
-        </div>
+        <p className="text-sm text-muted">Across every business on Kabuor, against the {days} days before.</p>
         <Chips
           label="Period"
           value={days}
           onChange={setDays}
           options={[
-            ['7', '7 Days'],
-            ['30', '30 Days'],
-            ['90', '90 Days'],
-            ['365', '1 Year'],
+            ['7', '7 days'],
+            ['30', '30 days'],
+            ['90', '90 days'],
+            ['365', '1 year'],
           ]}
         />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Businesses"
-          value={count(b.total)}
-          subtitle={`${b.newInPeriod} joined in last ${days} days`}
-          icon={<Building2 className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Active This Week"
-          value={count(b.active7d)}
-          subtitle={`${Math.round((b.active7d / Math.max(1, b.total)) * 100)}% weekly activity`}
-          icon={<Activity className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Monthly Recurring Revenue"
-          value={ksh(analytics.revenue.mrr)}
-          subtitle={`${b.paying} paying · ${ksh(analytics.revenue.arr)} annual run rate`}
-          icon={<BarChart3 className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Tenant Invoiced Volume"
-          value={ksh(analytics.volume.invoiceValue)}
-          subtitle={`${count(analytics.volume.invoices)} invoices across all tenants`}
-          icon={<FileText className="h-4 w-4" />}
-        />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="New businesses" value={count(b.newInPeriod)}>
+          {b.newBefore > 0 ? `${count(b.newBefore)} in the ${days} days before` : `of ${count(b.total)} in all`}
+        </Stat>
+        <Stat label="Invoiced through Kabuor" value={kshShort(v.invoiceValue)}>
+          <Change value={v.invoiceValueChange} days={days} />
+        </Stat>
+        <Stat label="Payments received" value={kshShort(v.paymentValue)}>
+          <Change value={v.paymentValueChange} days={days} />
+        </Stat>
+        <Stat label="People signed in" value={count(analytics.users.signedInPeriod)}>
+          of {plural(analytics.users.total, 'login')} · {count(b.activeInPeriod)} businesses active
+        </Stat>
       </div>
 
-      {/* SVG Line Graph with Metric Toggle */}
-      <div className="rounded-xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      <div className="card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-black text-sm">
-              {chartMode === 'revenue'
-                ? 'Daily Invoiced Volume Across All Businesses (KES)'
-                : 'New Business Registrations Trend'}
+            <h3 className="font-semibold">
+              {chart === 'invoiced' ? 'Invoiced per day' : chart === 'payments' ? 'Payments received per day' : 'New businesses per day'}
             </h3>
-            <p className="text-xs font-semibold text-slate-600">
-              {chartMode === 'revenue'
-                ? `Total window invoice volume: ${ksh(analytics.volume.invoiceValue)}`
-                : `${b.newInPeriod} new companies onboarded`}
+            <p className="text-sm text-muted">
+              {chart === 'invoiced'
+                ? `${ksh(v.invoiceValue)} on ${plural(v.invoices, 'invoice')}`
+                : chart === 'payments'
+                  ? `${ksh(v.paymentValue)} in ${plural(v.payments, 'payment')}`
+                  : `${count(b.newInPeriod)} joined`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setChartMode('revenue')}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                chartMode === 'revenue'
-                  ? 'bg-black text-white'
-                  : 'bg-white border border-slate-300 text-black hover:bg-slate-50'
-              )}
-            >
-              Invoiced Volume
-            </button>
-            <button
-              onClick={() => setChartMode('signups')}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-bold transition-all',
-                chartMode === 'signups'
-                  ? 'bg-black text-white'
-                  : 'bg-white border border-slate-300 text-black hover:bg-slate-50'
-              )}
-            >
-              Signups
-            </button>
-          </div>
+          <Segmented
+            label="Chart"
+            value={chart}
+            onChange={setChart}
+            options={[
+              ['invoiced', 'Invoiced'],
+              ['payments', 'Payments'],
+              ['signups', 'Sign-ups'],
+            ]}
+          />
         </div>
-
-        <SvgLineChart
-          data={chartMode === 'revenue' ? invoiceSeries : signupSeries}
-          height={200}
-          strokeColor="#000000"
-          fmt={(v) => (chartMode === 'revenue' ? ksh(v) : `${v} businesses`)}
-        />
+        <LineChart data={series} fmt={money ? ksh : (n) => plural(n, 'business', 'businesses')} axis={money ? (c) => short(c / 100) : short} />
       </div>
 
-      {/* Subscription Breakdown */}
-      <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
-        <p className="mb-2 text-xs font-black text-black uppercase tracking-wider">
-          Paying Tenants by Subscription Tier
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs bg-white">
-            <thead className="border-b border-slate-200 text-black font-bold">
-              <tr>
-                <th className="py-2.5">Tier Name</th>
-                <th className="py-2.5 text-center">Active Tenants</th>
-                <th className="py-2.5 text-right">Monthly Plan Price</th>
-                <th className="py-2.5 text-right">MRR Contribution</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {b.byPlan.map((p) => (
-                <tr key={p.id}>
-                  <td className="py-3 font-bold text-black">{p.name}</td>
-                  <td className="py-3 text-center num font-bold">{p.businesses}</td>
-                  <td className="py-3 text-right num font-semibold text-slate-700">{ksh(p.monthly)}</td>
-                  <td className="py-3 text-right font-black num text-black">
-                    {ksh(p.mrr)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card p-5">
+          <SectionTitle aside={`${ksh(analytics.revenue.mrr)} a month`}>Revenue by plan</SectionTitle>
+          <ul className="space-y-3">
+            {b.byPlan.map((p) => (
+              <li key={p.id}>
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span>
+                    <span className="font-semibold">{p.name}</span> <span className="text-muted">· {plural(p.businesses, 'business', 'businesses')} at {ksh(p.monthly)}</span>
+                  </span>
+                  <span className="num font-semibold">{ksh(p.mrr)}</span>
+                </div>
+                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-paper ring-1 ring-line">
+                  <div className="h-full rounded-full bg-ink" style={{ width: `${pct(p.mrr, totalMrr)}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-xs text-muted">
+            {count(b.paying)} paying · {count(b.trial)} on trial · {count(b.grace)} in grace · {count(b.locked)} locked
+          </p>
+        </div>
+
+        <div className="card p-5">
+          <SectionTitle aside={`invoiced in ${days} days`}>Busiest businesses</SectionTitle>
+          {analytics.top.filter((t) => t.invoiceValue > 0).length === 0 ? (
+            <p className="text-sm text-muted">No invoices in this period yet.</p>
+          ) : (
+            <ol className="divide-y divide-line">
+              {analytics.top
+                .filter((t) => t.invoiceValue > 0)
+                .slice(0, 8)
+                .map((t) => (
+                  <li key={t.id}>
+                    <button className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm hover:bg-paper" onClick={() => onOpen(t.id)}>
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold">{t.name}</span>
+                        <span className="text-xs text-muted">
+                          {plural(t.invoices, 'invoice')} · signed in {ago(t.lastSignIn).toLowerCase()}
+                        </span>
+                      </span>
+                      <span className="num shrink-0 font-semibold">{kshShort(t.invoiceValue)}</span>
+                    </button>
+                  </li>
+                ))}
+            </ol>
+          )}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Support & Team Issues Desk (White Background, Black Text)
-// -----------------------------------------------------------------------------
-function IssuesView({
-  issues,
-  loading,
-  error,
-  onReload,
-}: {
-  issues: IssueItem[];
-  loading: boolean;
-  error?: string | null;
-  onReload: () => void;
-}) {
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [replyErr, setReplyErr] = useState<string | null>(null);
+// ----------------------------------------------------------------------------- inquiries
+type InquiryShow = 'Open' | 'Answered' | 'Quoted' | 'Won' | 'Lost' | 'all';
+const INQUIRY: Record<IssueItem['status'], { label: string; tone: 'good' | 'info' | 'warn' | 'bad' | 'plain' }> = {
+  Open: { label: 'Waiting on reply', tone: 'warn' },
+  Answered: { label: 'Answered', tone: 'info' },
+  Quoted: { label: 'Quoted', tone: 'info' },
+  Won: { label: 'Won', tone: 'good' },
+  Lost: { label: 'Lost', tone: 'plain' },
+};
+
+/** When the customer last wrote (what an open inquiry has been waiting since). */
+const lastFromCustomer = (i: IssueItem) => [...i.messages].reverse().find((m) => m.from === 'customer')?.at ?? i.createdAt;
+const lastActivity = (i: IssueItem) => i.messages[i.messages.length - 1]?.at ?? i.createdAt;
+
+function useWide() {
+  const query = '(min-width: 1024px)';
+  const [wide, setWide] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+function InquiriesView({ issues, loading, error, onReload }: { issues: IssueItem[] | null; loading: boolean; error: string | null; onReload: () => void }) {
+  const [show, setShow] = useState<InquiryShow>('Open');
+  const [q, setQ] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  const wide = useWide();
+  const onSent = (i: IssueItem) => {
+    setSent(`Reply sent to ${i.name || 'the customer'} at ${i.companyName}.`);
+    setSelectedId(null);
+    onReload();
+  };
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (loading && issues.length === 0) return <Loading />;
+  if (!issues) return <Loading />;
 
-  const activeIssue = issues.find((i) => i.id === selectedIssueId) ?? issues[0] ?? null;
+  const n = (s: IssueItem['status']) => issues.filter((i) => i.status === s).length;
+  const needle = q.trim().toLowerCase();
+  const rows = issues
+    .filter((i) => show === 'all' || i.status === show)
+    .filter((i) => !needle || [i.companyName, i.name, i.subject, i.number, i.phone, i.email].some((v) => (v ?? '').toLowerCase().includes(needle)))
+    // Waiting longest first; everything else newest first.
+    .sort((a, b) => (show === 'Open' ? Date.parse(lastFromCustomer(a)) - Date.parse(lastFromCustomer(b)) : Date.parse(lastActivity(b)) - Date.parse(lastActivity(a))));
+  const selected = rows.find((i) => i.id === selectedId) ?? (wide ? rows[0] : undefined) ?? null;
 
-  const handleSendReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeIssue || !replyText.trim()) return;
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-2xl text-sm text-muted">
+          Questions customers sent to businesses on Kabuor (the latest 50). A reply goes into that business’s own thread, signed as Kabuor support, and the
+          customer sees it in the shop portal.
+        </p>
+        <button className="btn btn-ghost" onClick={onReload}>
+          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Refresh
+        </button>
+      </div>
+      {sent && (
+        <p role="status" className="flex items-center gap-2 rounded-md bg-good-soft px-3 py-2 text-sm font-medium text-good">
+          <CheckCircle2 className="h-4 w-4" /> {sent}
+        </p>
+      )}
+      <SearchBox value={q} onChange={setQ} placeholder="Search business, customer, subject or number" />
+      <Chips
+        label="Show inquiries"
+        value={show}
+        onChange={setShow}
+        options={[
+          ['Open', 'Waiting on reply', n('Open')],
+          ['Answered', 'Answered', n('Answered')],
+          ['Quoted', 'Quoted', n('Quoted')],
+          ['Won', 'Won', n('Won')],
+          ['Lost', 'Lost', n('Lost')],
+          ['all', 'All', issues.length],
+        ]}
+      />
+
+      {rows.length === 0 ? (
+        <Empty title={show === 'Open' && !needle ? 'Nobody is waiting on a reply' : 'No inquiries match'}>
+          {show === 'Open' && !needle ? 'Every customer question across the businesses has an answer.' : 'Try another filter or search.'}
+        </Empty>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+          <ul className="card max-h-[640px] divide-y divide-line overflow-y-auto">
+            {rows.map((i) => {
+              const since = lastFromCustomer(i);
+              const late = i.status === 'Open' && Date.now() - Date.parse(since) > DAY;
+              return (
+                <li key={i.id}>
+                  <button
+                    onClick={() => setSelectedId(i.id)}
+                    aria-current={selected?.id === i.id}
+                    className={cn('block w-full border-l-2 p-3.5 text-left transition', selected?.id === i.id ? 'border-l-ink bg-paper' : 'border-l-transparent hover:bg-paper')}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="truncate font-semibold">{i.subject || 'No subject'}</span>
+                      <span className={cn('num shrink-0 text-xs', late ? 'font-semibold text-bad' : 'text-faint')}>
+                        {i.status === 'Open' ? waited(since) : ago(lastActivity(i))}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-sm text-muted">
+                      {i.companyName} · {i.name || 'Customer'}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {wide && selected && <Thread key={selected.id} issue={selected} onSent={() => onSent(selected)} />}
+        </div>
+      )}
+      {!wide && selected && (
+        <Sheet open onClose={() => setSelectedId(null)} title={selected.subject || 'Inquiry'}>
+          <Thread key={selected.id} issue={selected} onSent={() => onSent(selected)} />
+        </Sheet>
+      )}
+    </section>
+  );
+}
+
+function Thread({ issue, onSent }: { issue: IssueItem; onSent: () => void }) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const send = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!text.trim() || sending) return;
     setSending(true);
-    setReplyErr(null);
+    setErr(null);
     try {
-      await api(`/platform/issues/${activeIssue.id}/reply`, {
-        method: 'POST',
-        body: { message: replyText.trim() },
-      });
-      setReplyText('');
-      onReload();
-    } catch (err: any) {
-      setReplyErr(err.message || 'Failed to send reply to tenant.');
+      await api(`/platform/issues/${issue.id}/reply`, { method: 'POST', body: { message: text.trim() } });
+      setText('');
+      onSent();
+    } catch (error: any) {
+      setErr(error.message || 'Couldn’t send that reply.');
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <div className="space-y-4 bg-white text-black">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold text-black">
-            Cross-Tenant Customer & Team Inquiries
-          </h2>
-          <p className="text-xs font-semibold text-slate-600">
-            Receive and respond directly to support requests raised by tenant teams across all companies.
+    <div className="card flex min-w-0 flex-col p-5">
+      <div className="flex items-start justify-between gap-3 border-b border-line pb-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold">{issue.subject || 'No subject'}</h3>
+          <p className="text-sm text-muted">
+            {issue.number} · <strong className="font-semibold text-ink-2">{issue.companyName}</strong> · {issue.channel}
           </p>
+          <p className="text-sm text-muted">{[issue.name, issue.phone, issue.email].filter(Boolean).join(' · ')}</p>
         </div>
-        <button
-          className="btn btn-ghost text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold shadow-xs"
-          onClick={onReload}
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} /> Refresh Tickets
-        </button>
+        <span className="shrink-0">
+          <Status tone={INQUIRY[issue.status].tone}>{INQUIRY[issue.status].label}</Status>
+        </span>
       </div>
 
-      {issues.length === 0 ? (
-        <div className="rounded-xl border border-slate-200/90 bg-white p-12 text-center text-xs font-bold text-slate-600 shadow-sm">
-          <MessageSquare className="mx-auto h-8 w-8 text-black mb-2" />
-          No open support inquiries across tenants.
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
-          {/* Issue Selector List */}
-          <div className="rounded-xl border border-slate-200/90 bg-white overflow-hidden divide-y divide-slate-100 shadow-sm max-h-[600px] overflow-y-auto">
-            {issues.map((i) => {
-              const selected = activeIssue?.id === i.id;
-              return (
-                <div
-                  key={i.id}
-                  onClick={() => setSelectedIssueId(i.id)}
-                  className={cn(
-                    'p-3.5 cursor-pointer transition text-xs bg-white',
-                    selected
-                      ? 'border-l-4 border-l-black bg-slate-50'
-                      : 'hover:bg-slate-50'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-black">{i.companyName}</span>
-                    <StatusBadge state={i.status} />
-                  </div>
-                  <div className="font-semibold text-slate-800 mt-1 truncate">
-                    {i.subject}
-                  </div>
-                  <div className="text-[11px] text-slate-600 font-semibold mt-1 flex justify-between">
-                    <span>{i.name}</span>
-                    <span>{dateTime(i.createdAt)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Active Issue Conversation & Direct Reply Box */}
-          {activeIssue && (
-            <div className="rounded-xl border border-slate-200/90 bg-white p-5 flex flex-col justify-between shadow-sm">
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <h3 className="font-bold text-black text-sm">
-                      #{activeIssue.number}: {activeIssue.subject}
-                    </h3>
-                    <p className="text-xs font-semibold text-slate-600">
-                      Company: <strong>{activeIssue.companyName}</strong> · Contact: {activeIssue.name} ({activeIssue.email || activeIssue.phone})
-                    </p>
-                  </div>
-                  <StatusBadge state={activeIssue.status} />
-                </div>
-
-                {/* Conversation History in White Cards */}
-                <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                  {activeIssue.messages.map((m) => {
-                    const isStaff = m.from === 'Staff' || m.from === 'Admin';
-                    return (
-                      <div
-                        key={m.id}
-                        className={cn(
-                          'p-3.5 rounded-xl text-xs leading-relaxed max-w-[85%] border shadow-xs',
-                          isStaff
-                            ? 'ml-auto border-black bg-white text-black'
-                            : 'border-slate-300 bg-white text-black'
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-slate-600 mb-1 border-b border-slate-100 pb-1">
-                          <span>{m.author || (isStaff ? 'Platform Admin (Rooney Kabuor)' : 'Customer Team')}</span>
-                          <span>{dateTime(m.at)}</span>
-                        </div>
-                        <p className="whitespace-pre-wrap font-medium text-black">{m.body}</p>
-                      </div>
-                    );
-                  })}
-                </div>
+      <div className="my-4 max-h-[380px] space-y-3 overflow-y-auto pr-1">
+        {issue.messages.map((m) => {
+          const ours = m.from !== 'customer';
+          return (
+            <div key={m.id} className={cn('max-w-[85%] rounded-lg px-3.5 py-2.5 text-sm', ours ? 'ml-auto bg-ink text-white' : 'bg-paper ring-1 ring-line')}>
+              <div className={cn('mb-1 flex items-center justify-between gap-3 text-xs', ours ? 'text-white/70' : 'text-muted')}>
+                <span className="truncate">{m.author || (ours ? issue.companyName : issue.name || 'Customer')}</span>
+                <span className="shrink-0">{dateTime(m.at)}</span>
               </div>
-
-              {/* Direct Reply Composer */}
-              <form onSubmit={handleSendReply} className="mt-4 pt-3 border-t border-slate-200 space-y-2">
-                {replyErr && <ErrorNote>{replyErr}</ErrorNote>}
-                <textarea
-                  className="field text-xs h-24 bg-white text-black border border-slate-300 font-semibold"
-                  placeholder={`Reply directly to ${activeIssue.name} at ${activeIssue.companyName}... (Press Ctrl + Enter to send)`}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.ctrlKey && e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSendReply(e);
-                    }
-                  }}
-                  disabled={sending}
-                  required
-                />
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-slate-600 font-semibold">
-                    Dispatched straight to the customer's portal and email notification ledger.
-                  </span>
-                  <button
-                    type="submit"
-                    className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800 font-bold"
-                    disabled={sending || !replyText.trim()}
-                  >
-                    {sending ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-3.5 w-3.5" /> Send Reply
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+              <p className="break-words whitespace-pre-wrap">{m.text}</p>
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      <form onSubmit={send} className="mt-auto space-y-2 border-t border-line pt-3">
+        {err && <ErrorNote>{err}</ErrorNote>}
+        <label htmlFor={`reply-${issue.id}`} className="sr-only">
+          Reply to {issue.name}
+        </label>
+        <textarea
+          id={`reply-${issue.id}`}
+          className="field h-24 resize-y"
+          placeholder={`Reply to ${issue.name || 'the customer'} for ${issue.companyName}`}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => (e.ctrlKey || e.metaKey) && e.key === 'Enter' && send()}
+          disabled={sending}
+          maxLength={4000}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted">Signed as you (Kabuor support) · Ctrl+Enter sends</span>
+          <button type="submit" className={primaryBtn} disabled={sending || text.trim().length < 2}>
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Send reply
+          </button>
         </div>
-      )}
+      </form>
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Component: Dedicated Delete Account / Data Purge View (All White, Black Text)
-// -----------------------------------------------------------------------------
-function PurgeAccountView({
-  businesses,
-  preselectedBiz,
-  onPurged,
-}: {
-  businesses: BusinessItem[];
-  preselectedBiz?: BusinessItem | null;
-  onPurged: () => void;
-}) {
-  const [selectedId, setSelectedId] = useState<string>(preselectedBiz?.id ?? '');
-  const [reason, setReason] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-  const [wiping, setWiping] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+// ----------------------------------------------------------------------------- traffic and health
+const CHECK: Record<Tone, { label: string; tone: 'good' | 'warn' | 'bad' }> = {
+  good: { label: 'OK', tone: 'good' },
+  warn: { label: 'Check', tone: 'warn' },
+  bad: { label: 'Failing', tone: 'bad' },
+};
+const CONFIGURED: [string, string][] = [
+  ['sentry', 'Error tracking'],
+  ['ai', 'Msaidizi (AI)'],
+  ['sms', 'SMS'],
+  ['billing', 'M-Pesa billing'],
+  ['redis', 'Shared cache'],
+  ['legalEmail', 'Legal email'],
+];
+const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-  const targetBiz = businesses.find((b) => b.id === selectedId);
-  const detail = useApi<BusinessDetail>(selectedId ? `/platform/businesses/${selectedId}` : null);
-  const canWipe = targetBiz && targetBiz.name !== 'Kabuor Builds';
-  const isConfirmed = targetBiz && confirmText.trim().toLowerCase() === targetBiz.name.trim().toLowerCase();
+function HealthView({ health, error }: { health: Health | null; error: string | null }) {
+  const [metric, setMetric] = useState<'requests' | 'latency'>('requests');
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!health) return <Loading />;
+  const problems = health.checks.filter((c) => c.status !== 'good');
+  const t = health.traffic;
+  const missing = CONFIGURED.filter(([k]) => health.configured[k] === false);
 
-  const handleWipe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!targetBiz || !canWipe || !isConfirmed || reason.trim().length < 4) return;
-    setWiping(true);
-    setErr(null);
-    setSuccessMsg(null);
+  return (
+    <section className="space-y-6">
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-between gap-3 rounded-lg p-4 ring-1',
+          health.status === 'good' ? 'bg-good-soft ring-good/20' : health.status === 'warn' ? 'bg-warn-soft ring-warn/20' : 'bg-bad-soft ring-bad/20',
+        )}
+      >
+        <p className={cn('flex items-center gap-2 font-semibold', health.status === 'good' ? 'text-good' : health.status === 'warn' ? 'text-warn' : 'text-bad')}>
+          {health.status === 'good' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+          {problems.length === 0 ? 'Everything is working' : `${plural(problems.length, 'check')} ${problems.length === 1 ? 'needs' : 'need'} a look: ${problems.map((p) => p.name).join(', ')}`}
+        </p>
+        <span className="text-sm text-muted">Checked {time(health.checkedAt)} · refreshes every 30 s</span>
+      </div>
+      {health.demoTraffic && (
+        <p className="-mt-3 text-sm text-muted">
+          The figures and charts below include the simulated load of the demo businesses. The checks judge real requests only; untick “Include demo
+          businesses” to see real traffic alone.
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Requests, last hour" value={count(t.requests)}>
+          {count(t.rejected)} turned away by rate limits
+        </Stat>
+        <Stat label="Server errors" value={`${t.errorRate}%`} tone={t.errorRate >= 5 ? 'bad' : undefined}>
+          {plural(t.errors, 'request')} failed
+        </Stat>
+        <Stat label="Typical response" value={`${t.p50} ms`}>
+          half of requests answer faster
+        </Stat>
+        <Stat label="Slow responses" value={`${t.p95} ms`} tone={t.p95 > 1000 ? 'bad' : undefined}>
+          95% faster · 99% under {t.p99} ms
+        </Stat>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[...health.checks]
+          .sort((a, b) => ['bad', 'warn', 'good'].indexOf(a.status) - ['bad', 'warn', 'good'].indexOf(b.status))
+          .map((c) => (
+            <div key={c.key} className="card p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{c.name}</span>
+                <Status tone={CHECK[c.status].tone}>{CHECK[c.status].label}</Status>
+              </div>
+              <p className="mt-1 text-sm text-muted">{c.summary}</p>
+            </div>
+          ))}
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">{metric === 'requests' ? 'Requests per minute' : 'Average response time'}</h3>
+            <p className="text-sm text-muted">The last hour on this server</p>
+          </div>
+          <Segmented
+            label="Chart"
+            value={metric}
+            onChange={setMetric}
+            options={[
+              ['requests', 'Requests'],
+              ['latency', 'Response time'],
+            ]}
+          />
+        </div>
+        <LineChart
+          data={t.series.map((s) => ({ label: time(s.at), value: metric === 'requests' ? s.requests : s.avgMs }))}
+          fmt={metric === 'requests' ? (v) => plural(v, 'request') : (v) => `${Math.round(v)} ms`}
+          empty="No requests in the last hour"
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card p-5">
+          <SectionTitle>Slowest endpoints</SectionTitle>
+          {t.slowest.length === 0 ? (
+            <p className="text-sm text-muted">Nothing recorded yet.</p>
+          ) : (
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="border-b border-line text-muted">
+                <tr>
+                  <th className="py-2 font-semibold">Route</th>
+                  <th className="w-16 py-2 text-right font-semibold">Calls</th>
+                  <th className="w-20 py-2 text-right font-semibold">Average</th>
+                  <th className="w-20 py-2 text-right font-semibold">Slowest</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {t.slowest.map((r) => (
+                  <tr key={r.route}>
+                    <td className="truncate py-2 pr-2 font-mono text-xs" title={r.route}>
+                      {r.route}
+                    </td>
+                    <td className="num py-2 text-right text-muted">{count(r.requests)}</td>
+                    <td className="num py-2 text-right font-semibold">{r.avgMs} ms</td>
+                    <td className="num py-2 text-right text-muted">{r.maxMs} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <SectionTitle>Endpoints with server errors</SectionTitle>
+          {t.failing.length === 0 ? (
+            <p className="flex items-center gap-2 text-sm text-good">
+              <CheckCircle2 className="h-4 w-4" /> No server errors in the last hour.
+            </p>
+          ) : (
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="border-b border-line text-muted">
+                <tr>
+                  <th className="py-2 font-semibold">Route</th>
+                  <th className="w-20 py-2 text-right font-semibold">Errors</th>
+                  <th className="w-20 py-2 text-right font-semibold">Of calls</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {t.failing.map((r) => (
+                  <tr key={r.route}>
+                    <td className="truncate py-2 pr-2 font-mono text-xs" title={r.route}>
+                      {r.route}
+                    </td>
+                    <td className="num py-2 text-right font-semibold text-bad">{count(r.errors)}</td>
+                    <td className="num py-2 text-right text-muted">{count(r.requests)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="mt-5 border-t border-line pt-4">
+            <p className="mb-2 text-sm font-semibold">Connected services</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CONFIGURED.map(([k, label]) => (
+                <Status key={k} tone={health.configured[k] ? 'good' : 'plain'}>
+                  {label}: {health.configured[k] ? 'on' : 'not set up'}
+                </Status>
+              ))}
+            </div>
+            {missing.length > 0 && <p className="mt-2 text-xs text-muted">Features that need {missing.map(([, l]) => l.toLowerCase()).join(', ')} stay off until their keys are set.</p>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----------------------------------------------------------------------------- server
+function ServerView({ health, onSeeded }: { health: Health | null; onSeeded: () => void }) {
+  const resources = useApi<Resources>('/platform/resources');
+  const [running, setRunning] = useState<string | null>(null);
+  const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
+
+  useEffect(() => {
+    const t = window.setInterval(() => document.visibilityState === 'visible' && resources.reload(), 30_000);
+    return () => window.clearInterval(t);
+  }, [resources.reload]);
+
+  const run = async (action: 'gc-collect' | 'seed-demo') => {
+    setRunning(action);
+    setResult(null);
     try {
-      const res = await api<{ message: string }>(`/platform/businesses/${targetBiz.id}/wipe`, {
-        method: 'POST',
-        body: {
-          reason: reason.trim(),
-          confirm: confirmText.trim(),
-        },
-      });
-      setSuccessMsg(res.message || `Successfully purged all records for ${targetBiz.name}.`);
-      setSelectedId('');
-      setConfirmText('');
-      setReason('');
-      onPurged();
-    } catch (error: any) {
-      setErr(error.message || 'Permanent erasure failed.');
+      const res = await api<{ message: string }>(`/platform/actions/${action}`, { method: 'POST' });
+      setResult({ text: res.message, ok: true });
+      resources.reload();
+      if (action === 'seed-demo') onSeeded();
+    } catch (err: any) {
+      setResult({ text: err.message || 'That didn’t work.', ok: false });
     } finally {
-      setWiping(false);
+      setRunning(null);
+    }
+  };
+
+  if (resources.error) return <ErrorNote>{resources.error}</ErrorNote>;
+  const r = resources.data;
+  if (!r) return <Loading />;
+  const memPct = r.memory.limitMb > 0 ? pct(r.memory.workingSetMb, r.memory.limitMb) : 0;
+  const tone = r.scaling.status === 'optimal' ? 'good' : r.scaling.status === 'attention_needed' ? 'bad' : 'warn';
+
+  return (
+    <section className="space-y-6">
+      <div className={cn('rounded-lg p-4 ring-1', tone === 'good' ? 'bg-good-soft ring-good/20' : tone === 'warn' ? 'bg-warn-soft ring-warn/20' : 'bg-bad-soft ring-bad/20')}>
+        <p className={cn('flex items-center gap-2 font-semibold', tone === 'good' ? 'text-good' : tone === 'warn' ? 'text-warn' : 'text-bad')}>
+          {tone === 'good' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />} {r.scaling.summary}
+        </p>
+        <ul className="mt-1 space-y-0.5 text-sm text-ink-2">
+          {r.scaling.recommendations.map((rec) => (
+            <li key={rec}>{rec}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Memory in use" value={`${Math.round(r.memory.workingSetMb)} MB`} tone={memPct >= 85 ? 'bad' : undefined}>
+          {memPct}% of {count(r.memory.limitMb)} MB · {Math.round(r.memory.heapMb)} MB managed
+        </Stat>
+        <Stat label="Busy worker threads" value={count(r.cpu.busyWorkerThreads)}>
+          of {count(r.cpu.maxWorkerThreads)} available · {r.cpu.threads} threads in all
+        </Stat>
+        <Stat label="Database" value={r.database.sizeMb !== null ? `${count(r.database.sizeMb)} MB` : 'Answering'}>
+          {r.database.connections !== null ? plural(r.database.connections, 'open connection') : 'Size shown on PostgreSQL only'}
+        </Stat>
+        <Stat
+          label="Up for"
+          value={r.uptime.uptimeHours >= 48 ? `${Math.round(r.uptime.uptimeHours / 24)} days` : r.uptime.uptimeHours >= 1 ? `${r.uptime.uptimeHours} h` : `${Math.max(1, Math.round((Date.now() - Date.parse(r.uptime.startedAt)) / 6e4))} min`}
+        >
+          since {dateTime(r.uptime.startedAt)}
+        </Stat>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card space-y-4 p-5">
+          <SectionTitle aside={`${count(r.memory.limitMb)} MB limit`}>Memory</SectionTitle>
+          <div>
+            <div className="mb-1.5 flex justify-between text-sm">
+              <span className="text-muted">In use</span>
+              <span className="num font-semibold">
+                {Math.round(r.memory.workingSetMb)} MB · {memPct}%
+              </span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-paper ring-1 ring-line">
+              <div className={cn('h-full rounded-full transition-all', memPct >= 85 ? 'bg-bad' : memPct >= 70 ? 'bg-warn' : 'bg-ink')} style={{ width: `${Math.min(100, memPct)}%` }} />
+            </div>
+            <p className="mt-1.5 text-xs text-muted">Scale up past 85%.</p>
+          </div>
+          <dl className="grid grid-cols-3 gap-2 text-center">
+            {(
+              [
+                ['Quick collections', r.memory.gen0],
+                ['Middle', r.memory.gen1],
+                ['Full', r.memory.gen2],
+              ] as [string, number][]
+            ).map(([label, n]) => (
+              <div key={label} className="rounded-md bg-paper p-2.5 ring-1 ring-line">
+                <dd className="num font-display text-lg font-bold">{count(n)}</dd>
+                <dt className="text-xs text-muted">{label}</dt>
+              </div>
+            ))}
+          </dl>
+          {health && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-4 text-sm">
+              {(
+                [
+                  ['Environment', health.server.environment],
+                  ['Version', health.server.version],
+                  ['.NET', health.server.dotnet],
+                  ['System', health.server.os],
+                ] as [string, string][]
+              ).map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="text-xs text-muted">{k}</dt>
+                  <dd className="truncate font-medium" title={v}>
+                    {v}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+
+        <div className="card space-y-4 p-5">
+          <SectionTitle>Maintenance</SectionTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Free memory now</p>
+              <p className="text-sm text-muted">Runs a full garbage collection. Safe while people work; requests pause for a moment.</p>
+            </div>
+            <button className="btn btn-ghost" disabled={running !== null} onClick={() => run('gc-collect')}>
+              {running === 'gc-collect' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Free memory
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Demo businesses</p>
+              <p className="text-sm text-muted">Adds the 50 sample businesses (20 staff each) if they aren’t there. Leaves real businesses alone.</p>
+            </div>
+            <button className="btn btn-ghost" disabled={running !== null} onClick={() => run('seed-demo')}>
+              {running === 'seed-demo' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />} Add demo businesses
+            </button>
+          </div>
+          {result && (
+            <p role="status" className={cn('rounded-md px-3 py-2 text-sm font-medium', result.ok ? 'bg-good-soft text-good' : 'bg-bad-soft text-bad')}>
+              {result.text}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----------------------------------------------------------------------------- erasure
+const REASONS = [
+  'The owner asked us to close the account and delete their data',
+  'Erasure request under the Data Protection Act 2019, s. 40 (GDPR art. 17)',
+  'Demo or test business, no longer needed',
+];
+
+function EraseView({ businesses, preselected, onErased }: { businesses: BusinessItem[] | null; preselected: string | null; onErased: () => void }) {
+  const [selectedId, setSelectedId] = useState(preselected ?? '');
+  const [reason, setReason] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [erasing, setErasing] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const erasures = useApi<Erasure[]>('/platform/erasures');
+  const detail = useApi<BusinessDetail>(selectedId ? `/platform/businesses/${selectedId}` : null);
+
+  useEffect(() => {
+    if (preselected) setSelectedId(preselected);
+  }, [preselected]);
+
+  if (!businesses) return <Loading />;
+  const choices = businesses.filter((b) => b.name !== 'Kabuor Builds').sort((a, b) => a.name.localeCompare(b.name));
+  const target = choices.find((b) => b.id === selectedId);
+  const typed = target && confirm.trim().toLowerCase() === target.name.trim().toLowerCase();
+  const ready = Boolean(target && typed && reason.trim().length >= 4);
+  const f = detail.data?.id === selectedId ? detail.data.footprint : null;
+
+  const erase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!target || !ready) return;
+    setErasing(true);
+    setErr(null);
+    setDone(null);
+    try {
+      const res = await api<{ wiped: string; removed: number }>(`/platform/businesses/${target.id}/wipe`, { method: 'POST', body: { reason: reason.trim(), confirm: confirm.trim() } });
+      setDone(`${res.wiped} is erased: ${plural(res.removed, 'record')} removed. The line in the record below is all that’s left.`);
+      setSelectedId('');
+      setConfirm('');
+      setReason('');
+      erasures.reload();
+      onErased();
+    } catch (error: any) {
+      setErr(error.message || 'The erasure didn’t go through. Nothing was deleted.');
+    } finally {
+      setErasing(false);
     }
   };
 
   return (
-    <div className="max-w-2xl space-y-6 bg-white text-black">
-      <div>
-        <h2 className="text-sm font-bold text-black">
-          Permanent Tenant Deletion & KDPA / GDPR Compliance Purge
-        </h2>
-        <p className="text-xs font-semibold text-slate-700 mt-1 leading-relaxed">
-          Executes Section 40 Kenya Data Protection Act 2019 and GDPR Article 17 "Right to Erasure". Cascades across
-          all 60+ domain tables (financial journals, invoices, payroll, stock, customer records, and user logins).
-        </p>
-      </div>
-
-      {successMsg && (
-        <div className="rounded-xl border border-slate-300 bg-white p-4 text-xs font-bold text-black shadow-sm">
-          ✓ {successMsg}
-        </div>
-      )}
-
-      {err && <ErrorNote>{err}</ErrorNote>}
-
-      <form onSubmit={handleWipe} className="rounded-xl border border-slate-200/90 bg-white p-6 space-y-5 shadow-sm">
+    <section className="grid gap-6 lg:grid-cols-[minmax(0,36rem)_1fr]">
+      <form onSubmit={erase} className="card space-y-5 p-5">
         <div>
-          <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5">
-            Select Company / Tenant Account to Purge
-          </label>
+          <h2 className="font-display text-lg font-bold">Erase a business</h2>
+          <p className="mt-1 text-sm text-muted">
+            Permanently deletes everything the business keeps in Kabuor: books, invoices, payroll, stock, customers and logins, and its audit log. This can’t be
+            undone. For the Data Protection Act 2019 (s. 40) and GDPR (art. 17).
+          </p>
+        </div>
+
+        {done && <p className="rounded-md bg-good-soft px-3 py-2 text-sm font-medium text-good">{done}</p>}
+        {err && <ErrorNote>{err}</ErrorNote>}
+
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold">Business</span>
           <select
-            className="field text-xs bg-white text-black border border-slate-300 font-bold"
+            className="field"
             value={selectedId}
             onChange={(e) => {
               setSelectedId(e.target.value);
-              setConfirmText('');
+              setConfirm('');
+              setDone(null);
             }}
-            required
           >
-            <option value="">-- Choose business to delete --</option>
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id} disabled={b.name === 'Kabuor Builds'}>
-                {b.name} ({b.plan} plan · {b.usersCount} users) {b.name === 'Kabuor Builds' ? '[Protected]' : ''}
-              </option>
-            ))}
+            <option value="">Choose a business…</option>
+            <optgroup label="Businesses">
+              {choices
+                .filter((b) => !b.isDemo)
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} · {STATE[b.state].label.toLowerCase()} · {plural(b.usersCount, 'login')}
+                  </option>
+                ))}
+            </optgroup>
+            {choices.some((b) => b.isDemo) && (
+              <optgroup label="Demo businesses">
+                {choices
+                  .filter((b) => b.isDemo)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} · demo
+                    </option>
+                  ))}
+              </optgroup>
+            )}
           </select>
-        </div>
+          <span className="mt-1 block text-xs text-muted">Kabuor Builds, the platform’s own business, can’t be erased.</span>
+        </label>
 
-        {targetBiz && targetBiz.name === 'Kabuor Builds' && (
-          <div className="rounded-xl border border-slate-300 bg-white p-3 text-xs font-bold text-black shadow-xs">
-            🛡️ <strong>Kabuor Builds</strong> is the root platform tenant and cannot be wiped.
-          </div>
-        )}
-
-        {targetBiz && canWipe && detail.data && (
-          <div className="rounded-xl border border-slate-300 bg-white p-4 space-y-2 text-xs shadow-xs">
-            <span className="font-bold text-black">
-              Impact Analysis: Records Scheduled for Destruction
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-slate-800 font-semibold sm:grid-cols-4 pt-1">
-              <div>Users: <b className="num font-black text-black">{detail.data.footprint.users}</b></div>
-              <div>Invoices: <b className="num font-black text-black">{detail.data.footprint.invoices}</b></div>
-              <div>Customers: <b className="num font-black text-black">{detail.data.footprint.customers}</b></div>
-              <div>Journals: <b className="num font-black text-black">{detail.data.footprint.journals}</b></div>
-            </div>
-          </div>
-        )}
-
-        {canWipe && (
+        {target && (
           <>
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold text-black uppercase tracking-wider">
-                  Compliance & Audit Reason
-                </label>
-                <div className="flex gap-1.5 text-[10px]">
-                  <button
-                    type="button"
-                    onClick={() => setReason('Customer requested contract termination under KDPA 2019 Section 40')}
-                    className="underline text-slate-600 hover:text-black font-semibold"
-                  >
-                    Template 1
-                  </button>
-                  <span>·</span>
-                  <button
-                    type="button"
-                    onClick={() => setReason('Right to Erasure GDPR Article 17 request by data controller')}
-                    className="underline text-slate-600 hover:text-black font-semibold"
-                  >
-                    Template 2
-                  </button>
+            <div className="rounded-md bg-paper p-3 ring-1 ring-line">
+              <p className="text-sm font-semibold">
+                {f === null ? 'Counting what will be deleted…' : 'Deleted, with their accounts, settings and history:'}
+                {target.state === 'paying' && <span className="font-normal text-warn"> · they’re paying, until {dayYear(target.accessEndsAt)}</span>}
+              </p>
+              {f && (
+                <div className="mt-2 grid grid-cols-3 gap-x-4 gap-y-1 text-sm sm:grid-cols-5">
+                  {(
+                    [
+                      ['customer', f.customers],
+                      ['invoice', f.invoices],
+                      ['payment', f.payments],
+                      ['employee', f.employees],
+                      ['login', f.users],
+                    ] as [string, number][]
+                  ).map(([k, v]) => (
+                    <div key={k} className="text-muted">
+                      <span className="num font-semibold text-ink">{count(v)}</span> {plural(v, k).replace(/^[\d,]+ /, '')}
+                    </div>
+                  ))}
                 </div>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="erase-reason" className="mb-1.5 block text-sm font-semibold">
+                Why
+              </label>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {REASONS.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setReason(r)}
+                    className={cn('rounded-full px-3 py-1 text-xs font-medium ring-1 transition', reason === r ? 'bg-ink text-white ring-ink' : 'bg-white text-ink-2 ring-line hover:ring-faint')}
+                  >
+                    {r.split(/[,(]/)[0]}
+                  </button>
+                ))}
               </div>
               <textarea
-                className="field text-xs h-20 bg-white text-black border border-slate-300 font-semibold"
-                placeholder="e.g. Contract termination per customer request under Kenya Data Protection Act 2019 Section 40..."
+                id="erase-reason"
+                className="field h-20"
+                placeholder="Who asked, and how (email, letter, call). Kept in Kabuor’s record of the erasure."
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                required
+                maxLength={500}
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5">
-                Confirmation: Type <span className="font-mono text-black font-black underline">{targetBiz?.name}</span> to authorize:
+              <label htmlFor="erase-confirm" className="mb-1.5 block text-sm font-semibold">
+                Type <span className="font-mono">{target.name}</span> to confirm
               </label>
-              <input
-                className="field text-xs bg-white text-black border border-slate-300 font-bold"
-                placeholder={targetBiz?.name}
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                required
-              />
+              <input id="erase-confirm" className="field" autoComplete="off" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={target.name} />
             </div>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                className="btn btn-primary text-xs w-full border border-black bg-black text-white hover:bg-slate-800 font-black"
-                disabled={wiping || !isConfirmed || reason.trim().length < 4}
-              >
-                {wiping ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Executing Irreversible Data Wipe...
-                  </>
-                ) : (
-                  `Execute Permanent Deletion of ${targetBiz?.name}`
-                )}
-              </button>
-            </div>
+            <button type="submit" className={cn(dangerBtn, 'w-full')} disabled={erasing || !ready}>
+              {erasing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Erasing…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" /> Erase {target.name} for good
+                </>
+              )}
+            </button>
+            {!ready && (
+              <p className="text-center text-xs text-muted">
+                {reason.trim().length < 4 ? 'Say why first. ' : ''}
+                {!typed ? 'Then type the business name exactly.' : ''}
+              </p>
+            )}
           </>
         )}
       </form>
-    </div>
-  );
-}
 
-// -----------------------------------------------------------------------------
-// Modal: Plan & Access Controller (All White Background, Black Text)
-// -----------------------------------------------------------------------------
-function PlanModal({
-  business,
-  onClose,
-  onUpdated,
-}: {
-  business: BusinessItem;
-  onClose: () => void;
-  onUpdated: () => void;
-}) {
-  const [plan, setPlan] = useState(business.plan || 'starter');
-  const [extendDays, setExtendDays] = useState('0');
-  const [lockTenant, setLockTenant] = useState(business.state === 'locked');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setErr(null);
-    try {
-      await api(`/platform/businesses/${business.id}/plan`, {
-        method: 'POST',
-        body: {
-          plan,
-          extendDays: parseInt(extendDays, 10) || 0,
-          lock: lockTenant,
-        },
-      });
-      onUpdated();
-    } catch (error: any) {
-      setErr(error.message || 'Failed to update subscription.');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Sheet open onClose={onClose} title={`Subscription & Access: ${business.name}`}>
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs bg-white text-black">
-        {err && <ErrorNote>{err}</ErrorNote>}
-
-        <div>
-          <label className="block font-bold mb-1 text-black">Plan Tier</label>
-          <select className="field text-xs bg-white text-black border border-slate-300 font-bold" value={plan} onChange={(e) => setPlan(e.target.value)}>
-            <option value="starter">Starter — KSh 3,500/mo (up to 3 users)</option>
-            <option value="growth">Growth — KSh 8,500/mo (up to 15 users, payroll, WhatsApp)</option>
-            <option value="scale">Scale — KSh 18,500/mo (unlimited users, multi-branch, API)</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-bold mb-1 text-black">Extend Trial / Grace (Days)</label>
-          <input
-            type="number"
-            className="field text-xs bg-white text-black border border-slate-300 font-bold"
-            value={extendDays}
-            onChange={(e) => setExtendDays(e.target.value)}
-            min="0"
-            max="365"
-          />
-        </div>
-
-        <div className="pt-2">
-          <label className="flex items-center gap-2 cursor-pointer font-bold text-black">
-            <input
-              type="checkbox"
-              checked={lockTenant}
-              onChange={(e) => setLockTenant(e.target.checked)}
-              className="rounded border-slate-300 text-black"
-            />
-            <span>Lock Tenant Workspace (Prevent Editing)</span>
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4 border-t border-slate-300">
-          <button type="button" className="btn btn-secondary text-xs border border-slate-300 bg-white text-black hover:bg-slate-50 font-bold" onClick={onClose} disabled={saving}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-primary text-xs border border-black bg-black text-white hover:bg-slate-800 font-bold" disabled={saving}>
-            {saving ? 'Saving...' : 'Apply Subscription'}
-          </button>
-        </div>
-      </form>
-    </Sheet>
+      <div className="card min-w-0 p-5">
+        <SectionTitle aside="kept by Kabuor">Erasure record</SectionTitle>
+        {erasures.error ? (
+          <ErrorNote>{erasures.error}</ErrorNote>
+        ) : !erasures.data ? (
+          <Loading />
+        ) : erasures.data.length === 0 ? (
+          <p className="text-sm text-muted">No business has been erased yet. Each erasure leaves one line here: which business, who, when and why.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {erasures.data.map((e) => (
+              <li key={`${e.companyId}-${e.at}`} className="py-3 text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-semibold">{e.name || 'A business'}</span>
+                  <span className="text-xs text-muted">{dateTime(e.at)}</span>
+                </div>
+                <p className="mt-0.5 text-muted">
+                  By {e.actor} · {plural(e.removed, 'record')} removed
+                </p>
+                <p className="mt-0.5 break-words text-ink-2">{e.reason}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }

@@ -16,9 +16,11 @@ public static class PlatformEndpoints
             var (allowed, why) = await inv.HttpContext.RequestServices.GetRequiredService<PlatformService>().Access();
             return allowed ? await next(inv) : Results.Json(new { error = why }, statusCode: 403);
         });
-        admin.MapGet("/health", (PlatformService s) => s.Health());
-        admin.MapGet("/analytics", (PlatformService s, int? days) => s.Analytics(days ?? 30));
+        admin.MapGet("/health", (PlatformService s, bool? demo) => s.Health(demo ?? false));
+        admin.MapGet("/analytics", (PlatformService s, int? days, bool? demo) => s.Analytics(days ?? 30, demo ?? true));
         admin.MapGet("/resources", (PlatformService s) => s.Resources());
+        admin.MapGet("/plans", (PlatformService s) => s.PlanList());
+        admin.MapGet("/erasures", (PlatformService s) => s.Erasures());
         admin.MapGet("/businesses", (PlatformService s) => s.Businesses());
         admin.MapGet("/businesses/{id:guid}", (PlatformService s, Guid id) => s.BusinessDetail(id));
         admin.MapPost("/businesses/{id:guid}/plan", (PlatformService s, Guid id, PlatformService.UpdatePlanInput input) => s.UpdatePlan(id, input));

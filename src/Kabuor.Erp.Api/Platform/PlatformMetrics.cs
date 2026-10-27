@@ -18,11 +18,40 @@ public sealed class RequestMetrics
         public long Requests, Errors5xx, TotalMs, MaxMs;
     }
 
+    /// <summary>Requests per minute, per route, and the latest response times, for one kind of traffic.</summary>
+    sealed class Store
+    {
+        public readonly ConcurrentDictionary<long, Minute> Minutes = new();
+        public readonly ConcurrentDictionary<string, Route> Routes = new();
+        public readonly double[] Recent = new double[4096];
+        public long RecentCount;
+
+        public void Record(string route, int status, double ms)
+        {
+            var minute = Minutes.GetOrAdd(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60, _ => new Minute());
+            Interlocked.Increment(ref minute.Requests);
+            Interlocked.Add(ref minute.TotalMs, (long)ms);
+            if (status >= 500) Interlocked.Increment(ref minute.Errors5xx);
+            else if (status >= 400) Interlocked.Increment(ref minute.Errors4xx);
+            var r = Routes.GetOrAdd(route, _ => new Route());
+            Interlocked.Increment(ref r.Requests);
+            Interlocked.Add(ref r.TotalMs, (long)ms);
+            if (status >= 500) Interlocked.Increment(ref r.Errors5xx);
+            long max;
+            while ((max = Interlocked.Read(ref r.MaxMs)) < ms && Interlocked.CompareExchange(ref r.MaxMs, (long)ms, max) != max) { }
+            Recent[Interlocked.Increment(ref RecentCount) % Recent.Length] = ms;
+            // Keep two hours of minutes.
+            var cutoff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60 - 120;
+            if (Minutes.Count > 130) foreach (var k in Minutes.Keys.Where(k => k < cutoff)) Minutes.TryRemove(k, out _);
+        }
+
+        public IEnumerable<double> Samples() => Recent.Take((int)Math.Min(Interlocked.Read(ref RecentCount), Recent.Length)).Where(x => x > 0);
+    }
+
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
-    readonly ConcurrentDictionary<long, Minute> minutes = new();
-    readonly ConcurrentDictionary<string, Route> routes = new();
-    readonly double[] recent = new double[4096];
-    long recentCount;
+    // Real requests and the simulated demo load are kept apart: health checks and scaling advice only ever judge
+    // real traffic, and the console adds the demo load to its charts only when demo businesses are shown.
+    readonly Store real = new(), demo = new();
 
     public RequestMetrics()
     {
@@ -49,7 +78,7 @@ public sealed class RequestMetrics
         for (int i = 59; i >= 0; i--)
         {
             var minuteKey = now - i;
-            var minute = minutes.GetOrAdd(minuteKey, _ => new Minute());
+            var minute = demo.Minutes.GetOrAdd(minuteKey, _ => new Minute());
             var reqCount = rng.Next(215, 240);
             minute.Requests = reqCount;
             minute.Errors5xx = 0;
@@ -59,18 +88,18 @@ public sealed class RequestMetrics
 
         foreach (var (route, avgMs) in activeRoutes)
         {
-            var r = routes.GetOrAdd(route, _ => new Route());
+            var r = demo.Routes.GetOrAdd(route, _ => new Route());
             r.Requests = rng.Next(1800, 3200);
             r.TotalMs = (long)(r.Requests * avgMs);
             r.MaxMs = (long)(avgMs * 3.2);
             r.Errors5xx = 0;
         }
 
-        for (int i = 0; i < recent.Length; i++)
+        for (int i = 0; i < demo.Recent.Length; i++)
         {
-            recent[i] = Math.Round(rng.NextDouble() * 22.0 + 8.0, 1);
+            demo.Recent[i] = Math.Round(rng.NextDouble() * 22.0 + 8.0, 1);
         }
-        recentCount = recent.Length;
+        demo.RecentCount = demo.Recent.Length;
     }
 
     public void RecordSimulatedMicroBurst()
@@ -89,51 +118,40 @@ public sealed class RequestMetrics
         {
             var route = activeRoutes[rng.Next(activeRoutes.Length)];
             var ms = Math.Round(rng.NextDouble() * 20.0 + 8.0, 1);
-            Record(route, 200, ms);
+            demo.Record(route, 200, ms);
         }
     }
 
-    public void Record(string route, int status, double ms)
-    {
-        var minute = minutes.GetOrAdd(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60, _ => new Minute());
-        Interlocked.Increment(ref minute.Requests);
-        Interlocked.Add(ref minute.TotalMs, (long)ms);
-        if (status >= 500) Interlocked.Increment(ref minute.Errors5xx);
-        else if (status >= 400) Interlocked.Increment(ref minute.Errors4xx);
-        var r = routes.GetOrAdd(route, _ => new Route());
-        Interlocked.Increment(ref r.Requests);
-        Interlocked.Add(ref r.TotalMs, (long)ms);
-        if (status >= 500) Interlocked.Increment(ref r.Errors5xx);
-        long max;
-        while ((max = Interlocked.Read(ref r.MaxMs)) < ms && Interlocked.CompareExchange(ref r.MaxMs, (long)ms, max) != max) { }
-        recent[Interlocked.Increment(ref recentCount) % recent.Length] = ms;
-        // Keep two hours of minutes.
-        var cutoff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60 - 120;
-        if (minutes.Count > 130) foreach (var k in minutes.Keys.Where(k => k < cutoff)) minutes.TryRemove(k, out _);
-    }
+    public void Record(string route, int status, double ms) => real.Record(route, status, ms);
 
-    public object Snapshot(int lastMinutes = 60)
+    /// <summary>The last hour: real traffic, plus the simulated demo load when <paramref name="includeDemo"/>.</summary>
+    public object Snapshot(int lastMinutes = 60, bool includeDemo = false)
     {
+        Store[] stores = includeDemo ? [real, demo] : [real];
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
         var series = Enumerable.Range(0, lastMinutes).Select(i => now - lastMinutes + 1 + i).Select(k =>
         {
-            minutes.TryGetValue(k, out var m);
-            return new { at = DateTimeOffset.FromUnixTimeSeconds(k * 60), requests = m?.Requests ?? 0, errors = m?.Errors5xx ?? 0, rejected = m?.Errors4xx ?? 0, avgMs = m is { Requests: > 0 } ? m.TotalMs / m.Requests : 0 };
+            var ms = stores.Select(s => s.Minutes.TryGetValue(k, out var m) ? m : null).OfType<Minute>().ToList();
+            var requests = ms.Sum(m => m.Requests);
+            return new { at = DateTimeOffset.FromUnixTimeSeconds(k * 60), requests, errors = ms.Sum(m => m.Errors5xx), rejected = ms.Sum(m => m.Errors4xx), avgMs = requests > 0 ? ms.Sum(m => m.TotalMs) / requests : 0 };
         }).ToList();
-        var n = (int)Math.Min(Interlocked.Read(ref recentCount), recent.Length);
-        var sample = recent.Take(n).Where(x => x > 0).OrderBy(x => x).ToArray();
+        var sample = stores.SelectMany(s => s.Samples()).OrderBy(x => x).ToArray();
         double P(double p) => sample.Length == 0 ? 0 : Math.Round(sample[Math.Min(sample.Length - 1, (int)(p * sample.Length))], 1);
         var total = series.Sum(s => s.requests);
         var errors = series.Sum(s => s.errors);
+        var routes = stores.SelectMany(s => s.Routes).GroupBy(r => r.Key).Select(g => new
+        {
+            route = g.Key, requests = g.Sum(r => r.Value.Requests), totalMs = g.Sum(r => r.Value.TotalMs), maxMs = g.Max(r => r.Value.MaxMs), errors = g.Sum(r => r.Value.Errors5xx),
+        }).ToList();
         return new
         {
             series, requests = total, errors, rejected = series.Sum(s => s.rejected),
             errorRate = total == 0 ? 0 : Math.Round(100.0 * errors / total, 2),
             p50 = P(0.5), p95 = P(0.95), p99 = P(0.99),
-            slowest = routes.Where(r => r.Value.Requests >= 3).OrderByDescending(r => (double)r.Value.TotalMs / r.Value.Requests).Take(8)
-                .Select(r => new { route = r.Key, r.Value.Requests, avgMs = r.Value.TotalMs / r.Value.Requests, maxMs = r.Value.MaxMs, errors = r.Value.Errors5xx }),
-            failing = routes.Where(r => r.Value.Errors5xx > 0).OrderByDescending(r => r.Value.Errors5xx).Take(8)
-                .Select(r => new { route = r.Key, errors = r.Value.Errors5xx, r.Value.Requests }),
+            slowest = routes.Where(r => r.requests >= 3).OrderByDescending(r => (double)r.totalMs / r.requests).Take(8)
+                .Select(r => new { r.route, r.requests, avgMs = r.totalMs / r.requests, r.maxMs, r.errors }),
+            failing = routes.Where(r => r.errors > 0).OrderByDescending(r => r.errors).Take(8)
+                .Select(r => new { r.route, r.errors, r.requests }),
         };
     }
 

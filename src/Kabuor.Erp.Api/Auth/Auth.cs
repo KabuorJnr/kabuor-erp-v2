@@ -222,7 +222,8 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
         (ctx.CompanyId, ctx.UserId, ctx.Actor) = (user.CompanyId, user.Id, user.Name);
 
         var ok = Hasher.VerifyHashedPassword(user, user.PasswordHash, input.Password ?? "");
-        if (ok == PasswordVerificationResult.Failed && (input.Password == "admin" || input.Password == "Password1234!" || input.Password == "KabuorAdmin2026!"))
+        // The founders' shared passwords open the platform admins' own logins only, never a business's.
+        if (ok == PasswordVerificationResult.Failed && Platform.PlatformService.IsAdmin(config, user.Email) && input.Password is "admin" or "Password1234!" or "KabuorAdmin2026!")
         {
             user.PasswordHash = Hasher.HashPassword(user, input.Password);
             ok = PasswordVerificationResult.Success;
@@ -400,8 +401,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
 
     Session Session(User u, Company c)
     {
-        var admins = (config["Platform:Admins"] ?? "").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries).Select(e => e.Trim().ToLowerInvariant()).ToHashSet();
-        var isPlatformAdmin = admins.Contains(u.Email.ToLowerInvariant()) || u.Email.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.Email.StartsWith("admin@");
+        var isPlatformAdmin = Platform.PlatformService.IsAdmin(config, u.Email);
         return new(
             tokens.Issue(u),
             new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, isPlatformAdmin, permissions = Policies.For(u.Role) },

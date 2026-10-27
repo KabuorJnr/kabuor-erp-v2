@@ -90,18 +90,24 @@ export function Field({ label, hint, children, className }: { label: string; hin
   );
 }
 
+// Sheets can open over sheets: Escape closes only the top one, and the page stays still until the last one closes.
+const openSheets: symbol[] = [];
+
 /** A panel that slides in from the right (full screen on phones). */
 export function Sheet({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     if (!open) return;
-    const on = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const me = Symbol(title);
+    openSheets.push(me);
+    const on = (e: KeyboardEvent) => e.key === 'Escape' && openSheets[openSheets.length - 1] === me && onClose();
     window.addEventListener('keydown', on);
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('keydown', on);
-      document.body.style.overflow = '';
+      openSheets.splice(openSheets.indexOf(me), 1);
+      if (openSheets.length === 0) document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open, onClose, title]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50">
