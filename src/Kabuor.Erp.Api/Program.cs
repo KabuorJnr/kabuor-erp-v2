@@ -206,7 +206,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 
 var app = builder.Build();
-if (app.Environment.IsProduction() && string.IsNullOrWhiteSpace(app.Configuration["App:PublicUrl"]) && string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]))
+if (app.Environment.IsProduction() && PublicUrl.Configured(app.Configuration) is null)
     app.Logger.LogWarning("Set App:PublicUrl (APP__PUBLICURL) to this server's public https address: M-Pesa callbacks and shared links fall back to the request's Host header without it.");
 
 // Fail at start, with the reason, if there's no signing key: never run a server that can't sign anyone in.

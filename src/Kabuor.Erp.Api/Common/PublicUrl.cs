@@ -5,12 +5,17 @@ namespace Kabuor.Erp.Common;
 
 public static class PublicUrl
 {
-    /// <summary>App:PublicUrl if set, else the address Render gives the service (RENDER_EXTERNAL_URL); the request's
-    /// own host only when neither is set, as in development.</summary>
-    public static string Of(HttpRequest request)
+    /// <summary>App:PublicUrl if set; else the production domain Vercel gives the project (VERCEL_PROJECT_PRODUCTION_URL,
+    /// a custom domain when there is one; previews use it too, so callbacks never land on a protected preview), or the
+    /// address Render gives the service (RENDER_EXTERNAL_URL); the request's own host only when none is set, as in
+    /// development.</summary>
+    public static string Of(HttpRequest request) => Configured(request.HttpContext.RequestServices.GetRequiredService<IConfiguration>()) ?? $"{request.Scheme}://{request.Host}";
+
+    public static string? Configured(IConfiguration config)
     {
-        var config = request.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var configured = config["App:PublicUrl"] is { Length: > 0 } url ? url : config["RENDER_EXTERNAL_URL"];
-        return string.IsNullOrWhiteSpace(configured) ? $"{request.Scheme}://{request.Host}" : configured.Trim().TrimEnd('/');
+        if (config["App:PublicUrl"] is { Length: > 0 } url) return url.Trim().TrimEnd('/');
+        if (config["VERCEL_PROJECT_PRODUCTION_URL"] is { Length: > 0 } vercel) return $"https://{vercel.Trim().TrimEnd('/')}";
+        if (config["RENDER_EXTERNAL_URL"] is { Length: > 0 } render) return render.Trim().TrimEnd('/');
+        return null;
     }
 }

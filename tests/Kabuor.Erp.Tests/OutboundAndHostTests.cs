@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Kabuor.Erp.Common;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 
 namespace Kabuor.Erp.Tests;
 
@@ -114,5 +115,19 @@ public class OutboundAndHostTests(PublicUrlFactory factory) : IClassFixture<Publ
         var customer = JsonDocument.Parse(await (await owner.PostAsJsonAsync("/api/customers", new { name = "Walk-in Buyer" })).Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
         var doc = JsonDocument.Parse(await (await owner.PostAsJsonAsync("/api/sales", new { kind = "Invoice", customerId = customer, lines = new[] { new { description = "Delivery", quantity = 1, unitPrice = 1_500_00 } } })).Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
         Assert.Equal(HttpStatusCode.NoContent, (await owner.GetAsync($"/api/sales/{doc}/variance")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("https://erp.kabuor.co.ke/", "erp.kabuor.test", "https://kabuor.onrender.com", "https://erp.kabuor.co.ke")]
+    [InlineData(null, "erp.kabuor.co.ke", "https://kabuor.onrender.com", "https://erp.kabuor.co.ke")] // Vercel's production domain
+    [InlineData(null, null, "https://kabuor.onrender.com", "https://kabuor.onrender.com")]
+    [InlineData(null, null, null, null)] // development: the request's own host
+    public void The_public_address_comes_from_configuration_in_this_order(string? configured, string? vercel, string? render, string? expected)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["App:PublicUrl"] = configured, ["VERCEL_PROJECT_PRODUCTION_URL"] = vercel, ["RENDER_EXTERNAL_URL"] = render,
+        }).Build();
+        Assert.Equal(expected, PublicUrl.Configured(config));
     }
 }
