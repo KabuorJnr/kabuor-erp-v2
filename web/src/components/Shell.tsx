@@ -9,6 +9,7 @@ import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
 import { setLang, useLang } from '../lib/i18n';
 import AssistantPanel from './AssistantPanel';
+import ErrorBoundary from './ErrorBoundary';
 import TellMe from './TellMe';
 import { TrialBanner } from './Plan';
 import { Sheet } from './ui';
@@ -208,7 +209,9 @@ export default function Shell({ session }: { session: Session }) {
         </header>
         <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 sm:px-6 lg:px-8 lg:pt-6 lg:pb-12">
           {can(session, 'admin') && <TrialBanner />}
-          <Outlet />
+          <ErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 
