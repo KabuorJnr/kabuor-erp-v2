@@ -3,6 +3,7 @@
 //    migrations existed, is recognised and marked as being at the first migration, then brought up to date.
 //  - SQLite (development files and the tests): EnsureCreated, then any table or column the model has gained
 //    since the file was made is added. Columns are only ever added, never changed or dropped.
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -156,6 +157,27 @@ public static partial class SchemaSync
     [GeneratedRegex(@"^(CREATE (?:UNIQUE )?INDEX) ")]
     private static partial Regex Index();
 
+    /// <summary>Businesses erased from the platform console, by id and by name. Erasing one leaves a record (see
+    /// PlatformService.WipeBusiness); the seeders here run on every start, so without this check they quietly put an
+    /// erased demo business back the next time the server started, and it reappeared on refresh.</summary>
+    public static async Task<(HashSet<Guid> Ids, HashSet<string> Names)> Erased(ErpDb db)
+    {
+        var rows = await db.AuditEntries.IgnoreQueryFilters().Where(a => a.Entity == nameof(Domain.Company) && a.Action == "Erased")
+            .Select(a => new { a.EntityId, a.Changes }).ToListAsync();
+        var (ids, names) = (new HashSet<Guid>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        foreach (var r in rows)
+        {
+            if (Guid.TryParse(r.EntityId, out var id)) ids.Add(id);
+            try
+            {
+                using var doc = JsonDocument.Parse(r.Changes is { Length: > 0 } c ? c : "{}");
+                if (doc.RootElement.TryGetProperty("name", out var n) && n.GetString() is { Length: > 0 } name) names.Add(name);
+            }
+            catch (JsonException) { }
+        }
+        return (ids, names);
+    }
+
     public static readonly Guid PlatformCompanyId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid PlatformAdminUserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
@@ -222,6 +244,7 @@ public static partial class SchemaSync
         try
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == DemoCompanyId || c.Name == "Amani Distributors Ltd");
+            if (company is null && await Erased(db) is var gone && (gone.Ids.Contains(DemoCompanyId) || gone.Names.Contains("Amani Distributors Ltd"))) return;
             if (company is null)
             {
                 company = new Domain.Company
@@ -404,6 +427,7 @@ public static partial class SchemaSync
         {
             const string email = "rooneyodhiambo2004@gmail.com";
             var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == OdhiamboCompanyId || c.Email == email || c.Name == "Odhiambo Enterprises" || c.Name.StartsWith("Driver"));
+            if (company is null && await Erased(db) is var gone && (gone.Ids.Contains(OdhiamboCompanyId) || gone.Names.Contains("Driver Logistics Ltd") || gone.Names.Contains("Odhiambo Enterprises"))) return;
             if (company is null)
             {
                 company = new Domain.Company

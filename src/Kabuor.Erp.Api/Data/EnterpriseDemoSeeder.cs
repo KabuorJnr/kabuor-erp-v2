@@ -23,6 +23,8 @@ public static class EnterpriseDemoSeeder
             if (count >= 50) return;
 
             var existingIds = (await db.Companies.IgnoreQueryFilters().Select(c => c.Id).ToListAsync()).ToHashSet();
+            // A demo business someone erased stays erased: this runs on every start, and used to bring it back.
+            var erased = await SchemaSync.Erased(db);
             var companiesDef = GetCompaniesDefinition();
             var employeeTemplates = GetEmployeeTemplates();
 
@@ -31,8 +33,8 @@ public static class EnterpriseDemoSeeder
                 var def = companiesDef[i];
                 var companyId = Guid.Parse($"b0000000-0000-0000-0000-{(i + 1):D12}");
 
-                // Check if this company already exists
-                if (existingIds.Contains(companyId)) continue;
+                // Check if this company already exists, or was erased on purpose
+                if (existingIds.Contains(companyId) || erased.Ids.Contains(companyId) || erased.Names.Contains(def.Name)) continue;
 
                 var company = new Company
                 {

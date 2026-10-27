@@ -149,4 +149,42 @@ public class PlatformTests(ErpFactory factory) : IClassFixture<ErpFactory>
             Assert.Equal(HttpStatusCode.Unauthorized, (await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = shared })).StatusCode);
         await Ok(await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = "a-long-password" }));
     }
+
+    [Fact]
+    public async Task An_erased_business_stays_erased_when_the_server_starts_again()
+    {
+        // The seeders run on every start; they used to put an erased demo business straight back.
+        var adminEmail = $"{Guid.NewGuid():N}@kabuor.test";
+        var app = factory.WithWebHostBuilder(b => b.UseSetting("Platform:Admins", adminEmail));
+        var admin = app.CreateClient();
+        var s = await Ok(await admin.PostAsJsonAsync("/api/auth/register", new { companyName = "Kabuor Builds Console", ownerName = "Founder", email = adminEmail, phone = "0712345678", password = "a-long-password" }));
+        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", s.GetProperty("token").GetString());
+
+        async Task Restart()
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<Kabuor.Erp.Data.ErpDb>();
+            await Kabuor.Erp.Data.SchemaSync.Prepare(db);
+            await Kabuor.Erp.Data.EnterpriseDemoSeeder.SeedEnterpriseNetwork(db);
+        }
+        async Task<bool> Exists(Guid id)
+        {
+            using var scope = app.Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<Kabuor.Erp.Data.ErpDb>().Companies.IgnoreQueryFilters().AnyAsync(c => c.Id == id);
+        }
+
+        await Restart();
+        var demoNetworkShop = Guid.Parse("b0000000-0000-0000-0000-000000000001");
+        Assert.True(await Exists(Kabuor.Erp.Data.SchemaSync.DemoCompanyId));
+        Assert.True(await Exists(demoNetworkShop));
+
+        foreach (var id in new[] { Kabuor.Erp.Data.SchemaSync.DemoCompanyId, demoNetworkShop })
+            await Ok(await admin.PostAsJsonAsync($"/api/platform/businesses/{id}/wipe", new { reason = "Demo no longer needed", confirm = "WIPE" }));
+
+        await Restart();
+        await Restart();
+        Assert.False(await Exists(Kabuor.Erp.Data.SchemaSync.DemoCompanyId));
+        Assert.False(await Exists(demoNetworkShop));
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/platform/businesses/{demoNetworkShop}")).StatusCode);
+    }
 }
