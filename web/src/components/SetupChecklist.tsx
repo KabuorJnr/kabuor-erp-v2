@@ -12,10 +12,11 @@ type Step = { key: string; title: string; detail: string; done: boolean; href: s
 type Status = { completionPercentage: number; steps?: Step[] };
 
 const HIDDEN = 'kerp-setup-hidden';
+export const SETUP_PATH = '/onboarding/status';
 
 export default function SetupChecklist() {
   const session = useSession();
-  const { data } = useApi<Status>('/onboarding/status');
+  const { data } = useApi<Status>(SETUP_PATH);
   const key = `${HIDDEN}:${session?.company.id}`;
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem(key) === '1'; } catch { return false; }

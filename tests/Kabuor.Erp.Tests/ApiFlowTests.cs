@@ -19,12 +19,13 @@ public class ErpFactory : WebApplicationFactory<Program>
     readonly string _name = $"kabuor_erp_test_{Guid.NewGuid():N}";
     string Sqlite => Path.Combine(Path.GetTempPath(), $"{_name}.db");
     public string ConnectionString => Pg is null ? $"Data Source={Sqlite}" : $"{Pg};Database={_name}";
+    public const string JwtKey = "test-key-test-key-test-key-test-key-0123456789";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
         builder.UseSetting("ConnectionStrings:Erp", ConnectionString);
-        builder.UseSetting("Jwt:Key", "test-key-test-key-test-key-test-key-0123456789");
+        builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Agents:Disabled", "true"); // tests run agents explicitly
         // Most tests start working straight after signing up; paying to start has its own tests (PayToStartTests).
         builder.UseSetting("Billing:PayToStart", PayToStart ? "true" : "false");
