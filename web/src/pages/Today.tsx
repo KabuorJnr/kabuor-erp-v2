@@ -1,15 +1,16 @@
 // The Role Center: what needs me today, and how is money moving? A one-line headline, the common actions,
 // then cue tiles (a count per job, coloured by urgency, each opening the filtered list), then the numbers.
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { Bot, CheckCircle2, Lightbulb, MessageCircle, Plus, ShieldAlert } from 'lucide-react';
-import { can, useApi, useSession } from '../lib/api';
+import { can, prefetch, useApi, useSession } from '../lib/api';
 import { cn, day, daysBetween, ksh, msisdn, todayIso } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { Loading, ErrorNote, PageHeader, Stat } from '../components/ui';
 import Proposals from '../components/Proposals';
-import KpiBoard from '../components/KpiBoard';
-import DashboardCharts from '../components/DashboardCharts';
-import SetupChecklist from '../components/SetupChecklist';
+import KpiBoard, { kpisPath } from '../components/KpiBoard';
+import DashboardCharts, { CHARTS_PATH } from '../components/DashboardCharts';
+import SetupChecklist, { SETUP_PATH } from '../components/SetupChecklist';
 
 type TodayData = {
   today: string;
@@ -77,6 +78,11 @@ export default function Today() {
   const session = useSession();
   const { t } = useLang();
   const { data: d, error, reload } = useApi<TodayData>('/today');
+  // The panels below appear once this page's own answer is in; their data loads alongside it, not after it.
+  useEffect(() => {
+    if (can(session, 'admin')) prefetch(SETUP_PATH);
+    if (can(session, 'reports')) prefetch(kpisPath('month', 0), CHARTS_PATH);
+  }, [session]);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!d) return <Loading />;
 

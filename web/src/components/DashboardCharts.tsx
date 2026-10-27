@@ -190,8 +190,10 @@ function ChartCard({ title, answer, legend, link, table, children, className }: 
   );
 }
 
+export const CHARTS_PATH = '/insights/charts?months=12';
+
 export default function DashboardCharts() {
-  const { data, error } = useApi<Charts>('/insights/charts?months=12');
+  const { data, error } = useApi<Charts>(CHARTS_PATH);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return <Loader2 className="h-5 w-5 animate-spin text-faint" />;
   // A young business: start at its first month with any activity, so the chart isn't mostly empty months.
