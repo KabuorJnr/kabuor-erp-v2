@@ -89,6 +89,8 @@ builder.Services.AddScoped<Numbers>();
 builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<ReportExports>();
+builder.Services.AddScoped<Kabuor.Erp.Finance.FinanceService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<Kabuor.Erp.Auth.OnboardingService>();
 builder.Services.AddHealthChecks().AddCheck<ErpDbHealthCheck>("database");

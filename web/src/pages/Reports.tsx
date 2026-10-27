@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router';
+import { CheckCircle2, AlertTriangle, CalendarRange, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { download, useApi } from '../lib/api';
 import { Download } from 'lucide-react';
 import { cn, dayYear, ksh, todayIso } from '../lib/format';
@@ -305,19 +305,65 @@ function CashFlow({ period }: { period: string }) {
   );
 }
 
-export default function Reports() {
-  const [tab, setTab] = useState('pnl');
-  const [period, setPeriod] = useState('month');
+// The file each tab downloads as, and whether it covers a period or stands at a date.
+const EXPORTS: Record<string, [string, string, boolean]> = {
+  pnl: ['profit-and-loss', 'Profit and loss', true],
+  bs: ['balance-sheet', 'Balance sheet', false],
+  cf: ['cash-flow', 'Cash flow', true],
+  aging: ['aging', 'Customers owe', false],
+  vat: ['vat', 'VAT', true],
+  tb: ['trial-balance', 'Trial balance', false],
+};
+
+function ExportButtons({ tab, period }: { tab: string; period: string }) {
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const [report, label, periodic] = EXPORTS[tab];
+  // Statements at a date (balance sheet, trial balance, debtors) download as they stand today, like the screen.
+  const [from, to, words] = periodic ? periodOf(period) : [todayIso(), todayIso(), 'today'];
+  const get = async (format: 'xlsx' | 'csv') => {
+    setBusy(format);
+    setError('');
+    try {
+      await download(`/reports/export/${report}?format=${format}&from=${from}&to=${to}`, `${label}.${format}`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy('');
+    }
+  };
   return (
     <>
-      <PageHeader title="Reports" subtitle="Numbers come straight from your invoices and payments, so they’re always up to date." />
+      {error && <span className="text-sm font-medium text-bad" role="alert">{error}</span>}
+      <button className="btn btn-ghost" onClick={() => get('xlsx')} disabled={!!busy} title={`${label}${periodic ? `, ${words}` : ''}, as an Excel workbook`}>
+        {busy === 'xlsx' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} Excel
+      </button>
+      <button className="btn btn-ghost" onClick={() => get('csv')} disabled={!!busy} title={`${label} as CSV, for any spreadsheet or accounting program`}>
+        {busy === 'csv' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} CSV
+      </button>
+      <Link to="/reports/monthly" className="btn btn-primary">
+        <CalendarRange className="h-4 w-4" /> Monthly report
+      </Link>
+    </>
+  );
+}
+
+export default function Reports() {
+  // In the address, so a link (from Finance, say) opens the right report and period, and a refresh keeps them.
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') && EXPORTS[params.get('tab')!] ? params.get('tab')! : 'pnl';
+  const period = ['month', 'last-month', 'year'].includes(params.get('period') ?? '') ? params.get('period')! : 'month';
+  const set = (next: { tab?: string; period?: string }) => setParams({ tab: next.tab ?? tab, period: next.period ?? period }, { replace: true });
+  return (
+    <>
+      <PageHeader title="Reports" subtitle="Numbers come straight from your invoices and payments, so they’re always up to date." actions={<ExportButtons tab={tab} period={period} />} />
       {/* Report and period each get a full row: side by side they ran out of room and hid "Trial balance". */}
       <div className="mb-4 flex flex-col gap-2.5">
-        <Chips label="Report" value={tab} onChange={setTab} options={[['pnl', 'Profit & loss'], ['bs', 'Balance sheet'], ['cf', 'Cash flow'], ['aging', 'Who owes you'], ['vat', 'VAT'], ['tb', 'Trial balance']]} />
+        <Chips label="Report" value={tab} onChange={(t) => set({ tab: t })} options={[['pnl', 'Profit & loss'], ['bs', 'Balance sheet'], ['cf', 'Cash flow'], ['aging', 'Who owes you'], ['vat', 'VAT'], ['tb', 'Trial balance']]} />
         {(tab === 'pnl' || tab === 'vat' || tab === 'cf') && (
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-muted">Period</span>
-            <Chips label="Period" value={period} onChange={setPeriod} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />
+            <Chips label="Period" value={period} onChange={(p) => set({ period: p })} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />
           </div>
         )}
       </div>
