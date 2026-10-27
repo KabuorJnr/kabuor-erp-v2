@@ -50,7 +50,13 @@ if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
     });
 
 // Database: PostgreSQL in production (a "Host=…" connection string), SQLite file locally.
-var cs = Program.ConnectionString(config.GetConnectionString("Erp") ?? config["DATABASE_URL"] ?? "Data Source=kabuor-erp.db");
+var configuredDb = new[] { config.GetConnectionString("Erp"), config["DATABASE_URL"] }.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+// Never a file inside the container in production: every running copy of the server (and every restart) would keep
+// its own businesses and logins, so a sign-in made on one copy is unknown to the next (signed out at once) and
+// whatever people enter disappears. Refuse to start instead, unless a throwaway demo is wanted on purpose.
+if (configuredDb is null && builder.Environment.IsProduction() && !config.GetValue("Database:AllowLocalFile", false))
+    throw new InvalidOperationException("Set DATABASE_URL to the PostgreSQL (Neon) connection string. Without it each copy of the server keeps its own throwaway database file: people are signed out straight after signing in, and what they enter is lost on restart. (Set Database__AllowLocalFile=true only for a throwaway demo.)");
+var cs = Program.ConnectionString(configuredDb ?? "Data Source=kabuor-erp.db");
 builder.Services.AddScoped<RequestContext>();
 builder.Services.AddMemoryCache();
 
@@ -309,11 +315,18 @@ app.Use(async (http, next) =>
         ctx.Role = Enum.TryParse<Role>(u.FindFirst("role")?.Value, out var r) ? r : Role.Viewer;
         ctx.EmployeeId = Guid.TryParse(u.FindFirst("eid")?.Value, out var eid) ? eid : null;
         Sentry.SentrySdk.ConfigureScope(scope => scope.SetTag("company", cid.ToString()));
-        // A session ends when the person is switched off, or their sessions were ended (password, sign out everywhere).
+        // A session ends when the person is switched off, their sessions were ended (password, sign out everywhere), or
+        // the login no longer belongs to the business the token names.
         var tv = int.TryParse(u.FindFirst("tv")?.Value, out var v) ? v : 0;
         var db = http.RequestServices.GetRequiredService<ErpDb>();
-        var current = await db.Users.IgnoreQueryFilters().Where(x => x.Id == ctx.UserId).Select(x => new { x.Active, x.TokenVersion, x.Role, x.MustChangePassword }).SingleOrDefaultAsync();
-        if (current is null || !current.Active || current.TokenVersion != tv || current.Role != ctx.Role)
+        // The person and their business's plan in one round trip: every request pays for this before any work.
+        var current = await (
+            from x in db.Users.IgnoreQueryFilters()
+            join c in db.Companies.IgnoreQueryFilters() on x.CompanyId equals c.Id
+            where x.Id == ctx.UserId
+            select new { x.Active, x.TokenVersion, x.Role, x.MustChangePassword, x.CompanyId, c.CreatedAt, c.TrialEndsAt, c.PaidUntil, c.AwaitingFirstPayment }
+        ).SingleOrDefaultAsync();
+        if (current is null || !current.Active || current.TokenVersion != tv || current.Role != ctx.Role || current.CompanyId != cid)
         {
             http.Response.StatusCode = 401;
             await http.Response.WriteAsJsonAsync(new { error = "Your session has ended. Please sign in again." });
@@ -330,16 +343,15 @@ app.Use(async (http, next) =>
         var path = http.Request.Path.Value ?? "";
         if (path.StartsWith("/api/") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth"))
         {
-            var company = await db.Companies.Where(c => c.Id == cid).Select(c => new { c.CreatedAt, c.TrialEndsAt, c.PaidUntil, c.AwaitingFirstPayment }).SingleAsync();
             // Signed up, not paid yet: only the plan and payment screens answer until the first payment arrives.
-            if (company.AwaitingFirstPayment)
+            if (current.AwaitingFirstPayment)
             {
                 http.Response.StatusCode = 402;
                 await http.Response.WriteAsJsonAsync(new { error = "Pay for a plan by M-Pesa to open your account.", code = "pay-to-start" });
                 return;
             }
             // Paid time (or the old free trial) over: everything stays readable and downloadable; adding and changing waits for a plan.
-            var probe = new Company { Name = "", CreatedAt = company.CreatedAt, TrialEndsAt = company.TrialEndsAt, PaidUntil = company.PaidUntil };
+            var probe = new Company { Name = "", CreatedAt = current.CreatedAt, TrialEndsAt = current.TrialEndsAt, PaidUntil = current.PaidUntil };
             if (method is not ("GET" or "HEAD" or "OPTIONS") && Kabuor.Erp.Billing.Plans.Locked(probe, DateTimeOffset.UtcNow))
             {
                 http.Response.StatusCode = 402;
@@ -366,6 +378,12 @@ Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
 AssetEndpoints.Map(app);
 PlatformEndpoints.Map(app);
+// An API address that matches nothing says so in JSON, instead of falling through to the web app's page below and
+// handing a screen HTML where it expected data. Reads only, like the page fallback: a catch-all that took any method
+// would win over real endpoints for bodiless POSTs (approve, dismiss), since routing sends a request with no
+// Content-Type only to endpoints that accept any.
+app.MapFallback("/api/{**path}", () => Results.NotFound(new { error = "That isn’t part of this server. Reload the page; it may have been updated." }))
+    .WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 // The web app (built into wwwroot): any other path is a page in it.
 app.MapFallbackToFile("index.html");
 

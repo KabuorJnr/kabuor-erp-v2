@@ -1,4 +1,4 @@
-import { Component, StrictMode, type ReactNode } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router';
 import './index.css';
@@ -6,6 +6,7 @@ import { registerShell } from './lib/offline';
 import { reportError, startMonitoring } from './lib/monitoring';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
 import Activate from './pages/Activate';
 import Today from './pages/Today';
@@ -47,31 +48,6 @@ import Finance from './pages/Finance';
 import LedgerPage from './pages/Ledger';
 import MonthlyReport from './pages/MonthlyReport';
 import Dashboards from './pages/Dashboards';
-
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
-  state = { hasError: false, error: null };
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error: Error) {
-    reportError(error);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="card mx-auto mt-12 max-w-md p-6 text-center shadow-lg">
-          <p className="text-lg font-bold">Something went wrong</p>
-          <p className="mt-1 text-sm text-muted">We encountered an unexpected error displaying this section.</p>
-          <div className="mt-4 flex justify-center gap-3">
-            <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
-            <Link to="/" className="btn btn-ghost" onClick={() => this.setState({ hasError: false, error: null })}>Back to Today</Link>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -186,7 +162,7 @@ startMonitoring();
 createRoot(document.getElementById('root')!, { onUncaughtError: (e) => (reportError(e), console.error(e)), onCaughtError: (e) => reportError(e) }).render(
   <StrictMode>
     <BrowserRouter>
-      <ErrorBoundary>
+      <ErrorBoundary whole>
         <App />
       </ErrorBoundary>
     </BrowserRouter>

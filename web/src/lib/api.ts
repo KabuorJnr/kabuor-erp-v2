@@ -29,10 +29,15 @@ export function setSession(s: Session | null) {
     if (s) localStorage.setItem(KEY, JSON.stringify(s));
     else localStorage.removeItem(KEY);
   } catch {}
+  // Answers kept for the last person (another business, after switching stores) are never shown to the next.
+  apiCache.clear();
+  inflight.clear();
   window.dispatchEvent(new Event('kerp-session'));
 }
 
 const apiCache = new Map<string, { data: any; timestamp: number }>();
+const inflight = new Map<string, Promise<unknown>>();
+const FRESH_MS = 5_000;
 
 export function clearApiCache(prefix?: string) {
   if (!prefix) {
@@ -61,6 +66,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   // The account hasn't been paid for yet (or no longer is, on a stale page): show the payment screen.
   if (res.status === 402 && data.code === 'pay-to-start' && s && !s.company.awaitingFirstPayment) setSession({ ...s, company: { ...s.company, awaitingFirstPayment: true } });
   if (!res.ok) throw new ApiError(res.status, data.error ?? (res.status === 403 ? 'You don’t have access to this.' : 'Network problem. Check your connection.'));
+  // A web page where data was expected: something between here and the API answered instead (an older deployment,
+  // a proxy's page). Say so rather than hand the screen an empty object to draw.
+  if (res.headers.get('content-type')?.includes('text/html')) throw new ApiError(502, 'The server sent back a page instead of data. Reload; if it keeps happening, the server may be mid-update.');
   if (method !== 'GET') {
     clearApiCache();
   }
@@ -81,7 +89,30 @@ export async function download(path: string, fallbackName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Loads `path` and reloads when it changes. SWR caching renders instantaneously if cached. `reload()` forces a refetch. */
+/** GETs `path` once even when several screens (or a prefetch) ask at the same time, and keeps the answer. */
+function load<T>(path: string): Promise<T> {
+  let p = inflight.get(path) as Promise<T> | undefined;
+  if (!p) {
+    p = api<T>(path)
+      .then((data) => {
+        if (inflight.get(path) === p) apiCache.set(path, { data, timestamp: Date.now() }); // not if signed out meanwhile
+        return data;
+      })
+      .finally(() => {
+        if (inflight.get(path) === p) inflight.delete(path);
+      });
+    inflight.set(path, p);
+  }
+  return p;
+}
+
+/** Starts loading what a screen is about to show, so it arrives together with the rest instead of after it. */
+export function prefetch(...paths: string[]) {
+  for (const path of paths) if (!apiCache.has(path)) load(path).catch(() => {});
+}
+
+/** Loads `path` and reloads when it changes. SWR caching renders instantaneously if cached; an answer only seconds
+ * old (a prefetch, another panel) isn't asked for again. `reload()` forces a refetch. */
 export function useApi<T = any>(path: string | null) {
   const cached = path ? apiCache.get(path) : undefined;
   const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({
@@ -97,10 +128,12 @@ export function useApi<T = any>(path: string | null) {
     const currentCached = apiCache.get(path);
     if (!currentCached) {
       setState((s) => ({ ...s, loading: true }));
+    } else if (Date.now() - currentCached.timestamp < FRESH_MS) {
+      setState({ data: currentCached.data as T, error: null, loading: false });
+      return;
     }
-    api<T>(path)
+    load<T>(path)
       .then((data) => {
-        apiCache.set(path, { data, timestamp: Date.now() });
         if (live) setState({ data, error: null, loading: false });
       })
       .catch((e: Error) => {

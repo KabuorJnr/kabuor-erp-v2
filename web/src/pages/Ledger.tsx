@@ -13,6 +13,12 @@ type Account = { id: string; code: string; name: string; type: 'Asset' | 'Liabil
 type Entry = { id: string; date: string; memo: string; source: string; manual: boolean; reversed: boolean; amount: number; lines: { accountId: string; code: string; name: string; debit: number; credit: number }[] };
 type Journal = { total: number; items: Entry[] };
 
+// Replies are checked before they're drawn: anything else (an older server, a proxy's error page) shows a message
+// instead of breaking the page.
+const isAccounts = (d: unknown): d is Account[] => Array.isArray(d);
+const isJournal = (d: unknown): d is Journal => typeof d === 'object' && d !== null && Array.isArray((d as Journal).items) && typeof (d as Journal).total === 'number';
+const BAD_REPLY = 'The books didn’t load properly. Reload the page; if it keeps happening, the server may be mid-update.';
+
 const TYPES: [Account['type'], string, string][] = [
   ['Asset', 'Assets', 'What the business owns: cash, bank, stock, money owed to it.'],
   ['Liability', 'Liabilities', 'What it owes: suppliers, KRA, loans, staff deductions.'],
@@ -82,7 +88,8 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
     return () => clearTimeout(t);
   }, [q]);
   const params = new URLSearchParams({ take: String(take), ...(accountId && { accountId }), ...(query && { q: query }), ...(from && { from }), ...(to && { to }) });
-  const { data, error, loading, reload } = useApi<Journal>(`/finance/journal?${params}`);
+  const { data: reply, error, loading, reload } = useApi<Journal>(`/finance/journal?${params}`);
+  const data = isJournal(reply) ? reply : null;
   const safeAccounts = Array.isArray(accounts) ? accounts : [];
   const account = safeAccounts.find((a) => a.id === accountId);
   const items = Array.isArray(data?.items) ? data.items : [];
@@ -139,7 +146,7 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
         </button>
       </div>
       {(error || state.error) && <ErrorNote>{error || state.error}</ErrorNote>}
-      {loading && !data ? <Loading /> : items.length === 0 ? (
+      {reply && !data ? <ErrorNote>{BAD_REPLY}</ErrorNote> : loading && !data ? <Loading /> : items.length === 0 ? (
         <Empty title="No entries match">{query || accountId || from || to ? 'Try another account, word or date.' : 'Entries appear here as invoices, payments and bills are posted.'}</Empty>
       ) : (
         <div className="card overflow-hidden">
@@ -308,7 +315,7 @@ export default function LedgerPage() {
   const accountId = params.get('account') ?? '';
   const sheet = params.get('new');
   const accounts = useApi<Account[]>('/finance/accounts');
-  const list = useMemo(() => Array.isArray(accounts.data) ? accounts.data : [], [accounts.data]);
+  const list = useMemo(() => (isAccounts(accounts.data) ? accounts.data : []), [accounts.data]);
   const go = (next: Record<string, string>) => setParams(Object.fromEntries(Object.entries(next).filter(([, v]) => v)), { replace: true });
 
   return (
@@ -329,7 +336,7 @@ export default function LedgerPage() {
           <button className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink" onClick={() => go({ view: 'ledger' })}><ArrowLeft className="h-4 w-4" /> All accounts</button>
         )}
       </div>
-      {accounts.error ? <ErrorNote>{accounts.error}</ErrorNote> : !accounts.data ? <Loading /> : view === 'accounts' ? (
+      {accounts.error ? <ErrorNote>{accounts.error}</ErrorNote> : !accounts.data ? <Loading /> : !isAccounts(accounts.data) ? <ErrorNote>{BAD_REPLY}</ErrorNote> : view === 'accounts' ? (
         <Accounts accounts={list} onOpen={(a) => go({ view: 'ledger', account: a.id })} />
       ) : (
         <Ledger accounts={list} accountId={accountId} setAccountId={(id) => go({ view: 'ledger', account: id })} canPost={canPost} onChanged={accounts.reload} />

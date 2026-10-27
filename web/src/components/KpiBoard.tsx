@@ -77,11 +77,13 @@ function Tile({ k }: { k: Kpi }) {
   );
 }
 
+export const kpisPath = (period: string, offset: number) => `/insights/kpis?period=${period}&offset=${offset}`;
+
 export default function KpiBoard() {
   const session = useSession();
   const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
   const [offset, setOffset] = useState(0);
-  const { data, error, reload } = useApi<Card>(`/insights/kpis?period=${period}&offset=${offset}`);
+  const { data, error, reload } = useApi<Card>(kpisPath(period, offset));
   const [editing, setEditing] = useState(false);
   if (error) return <ErrorNote>{error}</ErrorNote>;
   const groups = data ? [...new Set(data.kpis.map((k) => k.group))] : [];
