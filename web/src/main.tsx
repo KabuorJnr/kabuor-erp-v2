@@ -42,6 +42,10 @@ import Agents from './pages/Agents';
 import Security from './pages/Security';
 import Reconcile from './pages/Reconcile';
 import EtimsInbox from './pages/EtimsInbox';
+import Finance from './pages/Finance';
+import LedgerPage from './pages/Ledger';
+import MonthlyReport from './pages/MonthlyReport';
+import Dashboards from './pages/Dashboards';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -130,6 +134,10 @@ function App() {
         <Route path="campaigns/:id" element={<Need p="crm"><CampaignView /></Need>} />
         <Route path="money-in" element={<Need p="sales.view"><Payments /></Need>} />
         <Route path="reports" element={<Need p="reports"><Reports /></Need>} />
+        <Route path="reports/monthly" element={<Need p="reports"><MonthlyReport /></Need>} />
+        <Route path="dashboards" element={<Need p="reports"><Dashboards /></Need>} />
+        <Route path="finance" element={<Need p="reports"><Finance /></Need>} />
+        <Route path="finance/ledger" element={<Need p="reports"><LedgerPage /></Need>} />
         <Route path="agents" element={<Agents />} />
         <Route path="security" element={<Security />} />
         <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />

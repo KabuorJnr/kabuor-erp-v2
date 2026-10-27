@@ -9,12 +9,12 @@ import { api, can, useApi, useSession } from '../lib/api';
 import { cn, ksh } from '../lib/format';
 import { Chips, ErrorNote, Sheet } from './ui';
 
-type Kpi = {
+export type Kpi = {
   key: string; group: string; name: string; unit: 'ksh' | '%' | 'count' | 'hours' | 'days'; higherIsBetter: boolean; link: string; explain: string;
   value: number | null; target: number | null; dueByNow: number | null; status: 'met' | 'close' | 'behind' | 'none'; previous: number | null; change: number | null;
   projected: number | null; trend: { from: string; value: number | null }[];
 };
-type Card = { period: string; from: string; to: string; shownTo: string; elapsedShare: number; met: number; close: number; behind: number; withoutTarget: number; kpis: Kpi[] };
+export type Card = { period: string; from: string; to: string; shownTo: string; elapsedShare: number; met: number; close: number; behind: number; withoutTarget: number; kpis: Kpi[] };
 
 const shillings = (cents: number) => ksh(Math.round(cents / 100) * 100);
 export function fmt(k: Pick<Kpi, 'unit'>, v: number | null) {
@@ -28,12 +28,12 @@ export function fmt(k: Pick<Kpi, 'unit'>, v: number | null) {
   }
 }
 
-const STATUS: Record<Kpi['status'], [string, string]> = {
+export const STATUS: Record<Kpi['status'], [string, string]> = {
   met: ['On target', 'bg-good-soft text-good'], close: ['Nearly there', 'bg-warn-soft text-warn'], behind: ['Behind', 'bg-bad-soft text-bad'], none: ['No target', 'bg-paper text-muted ring-1 ring-line'],
 };
 
 /** Six periods as a line: one series, its name is the tile's, so no legend; the last point is marked. */
-function Spark({ points, good }: { points: (number | null)[]; good: boolean }) {
+export function Spark({ points, good }: { points: (number | null)[]; good: boolean }) {
   const vals = points.map((p) => p ?? null);
   const known = vals.filter((v): v is number => v != null);
   if (known.length < 2) return <span className="block h-8" />;

@@ -300,6 +300,30 @@ public static class Endpoints
             r.CashFlow(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
         reports.MapGet("/withheld", (ReportService r, DateOnly? from, DateOnly? to) =>
             r.Withheld(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
+        // Files: any report as a spreadsheet or CSV (or as tables for the printable view), and a month's numbers as one
+        // workbook to send on. Balance sheet, trial balance and debtors are "as at" the end date.
+        const string XlsxType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        reports.MapGet("/export/{report}", async (string report, string? format, DateOnly? from, DateOnly? to, ReportExports x) =>
+        {
+            var (f, t) = (from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today);
+            var sheet = await x.One(report, f, t);
+            if (format == "json") return Results.Ok(new { sheets = new[] { ReportExports.ToJson(sheet) } });
+            var period = report is "balance-sheet" or "trial-balance" or "aging" ? $"at {t:yyyy-MM-dd}" : $"{f:yyyy-MM-dd} to {t:yyyy-MM-dd}";
+            var company = await x.CompanyName();
+            return format == "csv"
+                ? Results.File([.. System.Text.Encoding.UTF8.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(Xlsx.Csv(sheet))], "text/csv", ReportExports.FileName(company, sheet.Name, period, "csv"))
+                : Results.File(Xlsx.Write([sheet]), XlsxType, ReportExports.FileName(company, sheet.Name, period, "xlsx"));
+        });
+        reports.MapGet("/monthly", async (string? month, string? format, ReportExports x) =>
+        {
+            var m = DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", out var d) ? d : new DateOnly(Clock.Today.Year, Clock.Today.Month, 1);
+            var sheets = await x.Monthly(m);
+            var company = await x.CompanyName();
+            return format == "json"
+                ? Results.Ok(new { company, month = m, sheets = sheets.Select(ReportExports.ToJson) })
+                : Results.File(Xlsx.Write(sheets), XlsxType, ReportExports.FileName(company, "Monthly report", m.ToString("yyyy-MM"), "xlsx"));
+        });
+
         // KRA VAT3 registers, to paste into the iTax return template.
         reports.MapGet("/itax/sales.csv", async (ReportService r, DateOnly? from, DateOnly? to, string? rate) =>
         {
@@ -406,6 +430,7 @@ public static class Endpoints
         ProductionEndpoints.Map(app_);
         DispatchEndpoints.Map(app_);
         RecruitmentEndpoints.Map(app_);
+        Kabuor.Erp.Finance.FinanceEndpoints.Map(app_);
         Assistant.AssistantEndpoints.Map(app_);
     }
 

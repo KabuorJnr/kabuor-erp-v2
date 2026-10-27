@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  Armchair, BarChart3, Bot, Brain, Briefcase, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Handshake, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Armchair, BarChart3, BookOpen, Bot, Brain, Briefcase, Landmark, LayoutDashboard, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Handshake, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -50,6 +50,7 @@ export default function Shell({ session }: { session: Session }) {
           title: '',
           links: [
             { to: '/', label: t('Today'), icon: Home, end: true },
+            can(session, 'reports') && { to: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
             can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
             (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
           ],
@@ -68,11 +69,14 @@ export default function Shell({ session }: { session: Session }) {
           ],
         },
         {
-          title: 'Money',
+          // The finance department's corner: its overview first, then the daily money work, then the books.
+          title: 'Finance',
           links: [
+            can(session, 'reports') && { to: '/finance', label: 'Finance overview', icon: Landmark, end: true },
             can(session, 'sales.view') && { to: '/money-in', label: t('Money in'), icon: Wallet },
             can(session, 'buy.view') && { to: '/purchases', label: t('Purchases'), icon: ShoppingBag },
             can(session, 'finance') && { to: '/reconcile', label: 'Reconcile', icon: ListChecks },
+            can(session, 'reports') && { to: '/finance/ledger', label: 'Accounts & ledger', icon: BookOpen },
             can(session, 'reports') && { to: '/reports', label: t('Reports'), icon: BarChart3 },
           ],
         },

@@ -10,7 +10,7 @@ import { cn, ksh } from '../lib/format';
 import { ErrorNote } from './ui';
 
 type Month = { month: string; sales: number; target: number | null; invoices: number; grossProfit: number; moneyIn: number; moneyOut: number };
-type Charts = {
+export type Charts = {
   from: string; to: string; salesTarget: number | null; owed: number;
   monthly: Month[];
   ageing: { bucket: string; amount: number; invoices: number }[];
@@ -20,11 +20,11 @@ type Charts = {
 };
 
 // Categorical slots 1 and 2 of the reference palette, checked for colour-blind separation and contrast on white.
-const SERIES = ['#2a78d6', '#eb6834'];
+export const SERIES = ['#2a78d6', '#eb6834'];
 
-const money = (cents: number) => ksh(Math.round(cents / 100) * 100);
+export const money = (cents: number) => ksh(Math.round(cents / 100) * 100);
 /** Axis and label money: KSh 1.2M, KSh 350K. */
-function compact(cents: number) {
+export function compact(cents: number) {
   const s = cents / 100;
   const a = Math.abs(s);
   if (a >= 1e6) return `${(s / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
@@ -34,7 +34,7 @@ function compact(cents: number) {
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((100 * part) / whole) : 0);
 /** A share for reading: a sliver isn't "0%". */
 const share = (part: number, whole: number) => (part > 0 && pct(part, whole) === 0 ? 'under 1%' : `${pct(part, whole)}%`);
-const monthName = (iso: string, year = false) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', year ? { month: 'long', year: 'numeric' } : { month: 'short' });
+export const monthName = (iso: string, year = false) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', year ? { month: 'long', year: 'numeric' } : { month: 'short' });
 
 function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
@@ -69,10 +69,10 @@ function barPath(x: number, base: number, w: number, h: number) {
 type Series = { name: string; color: string; values: number[] };
 
 /** Month columns on one money axis, optionally with a dashed target line. Hover a month for its figures. */
-function Columns({ labels, series, reference, tip }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode }) {
+export function Columns({ labels, series, reference, tip, height = 220 }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode; height?: number }) {
   const [ref, w] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
-  const H = 220, top = 16, bottom = 24, left = 46, right = 8;
+  const H = height, top = 16, bottom = 24, left = 46, right = 8;
   const max = Math.max(1, ...series.flatMap((s) => s.values), reference?.value ?? 0);
   const t = ticks(max);
   const yMax = t[t.length - 1];
@@ -130,7 +130,7 @@ function Columns({ labels, series, reference, tip }: { labels: string[]; series:
 }
 
 /** Ranked horizontal bars, each labelled with its value, for a single measure. */
-function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; value: number; note?: string }[]; value: (v: number) => string; color?: string }) {
+export function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; value: number; note?: string }[]; value: (v: number) => string; color?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <ul className="space-y-2">
@@ -162,7 +162,7 @@ function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   );
 }
 
-function Legend({ items }: { items: [string, string][] }) {
+export function Legend({ items }: { items: [string, string][] }) {
   return (
     <span className="flex flex-wrap gap-3 text-xs text-ink-2">
       {items.map(([name, color]) => <span key={name} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{name}</span>)}
