@@ -70,7 +70,7 @@ export default function ActivityLog() {
             const list = fields(e.changes, e.action);
             return (
               <li key={e.id}>
-                {header && <p className="bg-paper px-4 py-1.5 text-[11px] font-semibold tracking-wider text-faint uppercase">{d}</p>}
+                {header && <p className="bg-paper px-4 py-1.5 text-2xs font-semibold tracking-wider text-faint uppercase">{d}</p>}
                 <button className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-paper" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}>
                   <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', e.action === 'Added' ? 'bg-good' : e.action === 'Deleted' ? 'bg-bad' : 'bg-brand')} />
                   <span className="min-w-0 flex-1 text-sm">

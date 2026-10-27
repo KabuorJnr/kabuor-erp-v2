@@ -46,7 +46,7 @@ function MatchCard({ p, onDone }: { p: Payment; onDone: () => void }) {
     <li className="card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <b className="block truncate text-[15px]">{p.payerName || prettyPhone(p.payerPhone) || 'Unknown payer'}</b>
+          <b className="block truncate text-sm">{p.payerName || prettyPhone(p.payerPhone) || 'Unknown payer'}</b>
           <p className="text-sm text-muted">
             {p.method === 'Mpesa' ? 'M-Pesa' : p.method}
             {p.reference && ` ${p.reference}`} · {dateTime(p.receivedAt)}
@@ -54,7 +54,7 @@ function MatchCard({ p, onDone }: { p: Payment; onDone: () => void }) {
           </p>
           {p.accountRef && (
             <p className="mt-1 text-sm">
-              Typed as account: <b className="rounded bg-paper px-1.5 py-0.5 font-mono text-[13px]">{p.accountRef}</b>
+              Typed as account: <b className="rounded bg-paper px-1.5 py-0.5 font-mono text-xs">{p.accountRef}</b>
             </p>
           )}
         </div>

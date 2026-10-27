@@ -48,16 +48,17 @@ export default function SetupChecklist() {
         {steps.map((s, i) => {
           const isNext = s === next;
           return (
-            <li key={s.key} className={cn('flex items-center gap-3 px-4 py-3 sm:px-5', isNext && 'bg-brand-soft/50')}>
+            // On a phone the button goes under the words; beside them it squeezed the text to a word per line.
+            <li key={s.key} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5', isNext && 'bg-brand-soft/50')}>
               <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold', s.done ? 'bg-good text-white' : isNext ? 'bg-brand text-white' : 'bg-paper text-muted ring-1 ring-line')}>
                 {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className={cn('block text-[15px] font-semibold', s.done && 'text-muted line-through decoration-faint')}>{s.title}</span>
+              <span className="min-w-0 flex-1 basis-[calc(100%-2.25rem)] sm:basis-auto">
+                <span className={cn('block text-sm font-semibold', s.done && 'text-muted line-through decoration-faint')}>{s.title}</span>
                 {!s.done && <span className="block text-sm text-muted">{s.detail}</span>}
               </span>
               {!s.done && (
-                <Link to={s.href} className={cn('shrink-0', isNext ? 'btn btn-primary' : 'btn btn-ghost hidden sm:inline-flex')}>
+                <Link to={s.href} className={cn('ml-9 shrink-0 sm:ml-0', isNext ? 'btn btn-primary' : 'btn btn-ghost hidden sm:inline-flex')}>
                   {s.action} {isNext && <ArrowRight className="h-4 w-4" />}
                 </Link>
               )}

@@ -63,7 +63,7 @@ export default function AssistantPanel({ open, onClose }: { open: boolean; onClo
             </div>
           )}
           {turns.map((tn, i) => (
-            <div key={i} className={cn('max-w-[85%] rounded-lg px-4 py-2.5 text-[15px] whitespace-pre-line', tn.role === 'user' ? 'ml-auto bg-brand text-white' : 'bg-white ring-1 ring-line')}>
+            <div key={i} className={cn('max-w-[85%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-line', tn.role === 'user' ? 'ml-auto bg-brand text-white' : 'bg-white ring-1 ring-line')}>
               {tn.text}
             </div>
           ))}

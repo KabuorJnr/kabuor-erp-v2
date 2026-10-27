@@ -454,14 +454,16 @@ export default function Stock() {
         <Empty
           title={query || filter !== 'all' ? 'No products match' : 'No tracked products'}
           action={
-            <Link to="/invoices/new" className="btn btn-primary">
-              Manage items in settings
-            </Link>
+            !query && filter === 'all' && (
+              <Link to="/settings?tab=items" className="btn btn-primary">
+                Add products
+              </Link>
+            )
           }
         >
           {query || filter !== 'all'
             ? 'Try another search term or filter.'
-            : 'Track stock on your items in settings or by posting supplier bills.'}
+            : 'Turn on stock tracking for a product, or post a supplier bill, and it shows up here with what it is worth.'}
         </Empty>
       ) : (
         <div className="card overflow-hidden">
@@ -474,9 +476,9 @@ export default function Stock() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <b className="truncate text-ink">{it.name}</b>
+                    <b className="line-clamp-2 text-ink">{it.name}</b>
                     {it.brand && (
-                      <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                      <span className="rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
                         {it.brand}
                       </span>
                     )}
@@ -503,30 +505,27 @@ export default function Stock() {
             <thead className="border-b border-line bg-paper text-left text-xs text-muted">
               <tr>
                 <th className="px-4 py-2.5 font-semibold">Item</th>
-                <th className="px-4 py-2.5 font-semibold">Brand</th>
-                <th className="px-4 py-2.5 font-semibold">SKU</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
-                <th className="px-4 py-2.5 text-right font-semibold">On Hand</th>
-                <th className="px-4 py-2.5 text-right font-semibold">Reorder level</th>
+                <th className="px-4 py-2.5 text-right font-semibold">On hand</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Reorder at</th>
                 <th className="px-4 py-2.5 text-right font-semibold">Average cost</th>
-                <th className="px-4 py-2.5 text-right font-semibold">Stock Value</th>
-                <th className="px-4 py-2.5 text-center font-semibold">History</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Stock value</th>
+                <th className="px-4 py-2.5"><span className="sr-only">History</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {items.map((it) => (
                 <tr key={it.id} className="hover:bg-paper">
-                  <td className="px-4 py-3 font-semibold text-ink">{it.name}</td>
+                  {/* Brand and SKU sit under the name, only when there is one: empty columns of dashes cost width the numbers need. */}
                   <td className="px-4 py-3">
-                    {it.brand ? (
-                      <span className="rounded bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand">
-                        {it.brand}
+                    <span className="font-semibold text-ink">{it.name}</span>
+                    {(it.brand || it.sku) && (
+                      <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                        {it.brand && <span className="rounded bg-brand-soft px-1.5 py-px font-semibold text-brand">{it.brand}</span>}
+                        {it.sku && <span className="font-mono">{it.sku}</span>}
                       </span>
-                    ) : (
-                      <span className="text-xs text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted font-mono text-xs">{it.sku || '—'}</td>
                   <td className="px-4 py-3">
                     <Status
                       tone={it.state === 'ok' ? 'good' : it.state === 'low' ? 'warn' : 'bad'}
@@ -534,13 +533,13 @@ export default function Stock() {
                       {it.state === 'ok' ? t('In stock') : it.state === 'low' ? t('Low stock') : it.state === 'below' ? `Below zero (${it.total})` : t('Out of stock')}
                     </Status>
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-ink num">
+                  <td className="num px-4 py-3 text-right font-bold whitespace-nowrap text-ink">
                     {it.total} <span className="text-xs font-normal text-muted">{it.unit}</span>
                   </td>
-                  <td className="px-4 py-3 text-right text-muted num">{it.reorderLevel}</td>
-                  <td className="px-4 py-3 text-right font-mono text-muted">{ksh(it.averageCost)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-ink num">{ksh(it.value)}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="num px-4 py-3 text-right whitespace-nowrap text-muted">{it.reorderLevel}</td>
+                  <td className="num px-4 py-3 text-right whitespace-nowrap text-muted">{ksh(it.averageCost)}</td>
+                  <td className="num px-4 py-3 text-right font-bold whitespace-nowrap text-ink">{ksh(it.value)}</td>
+                  <td className="px-4 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => setHistoryItem({ id: it.id, name: it.name })}

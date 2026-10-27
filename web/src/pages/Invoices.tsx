@@ -108,7 +108,7 @@ export function InvoiceList({ kind }: { kind: 'Invoice' | 'Quote' }) {
                     <Link to={`/sales/${r.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-brand">
                       {r.number}
                     </Link>
-                    {invoice && r.etimsStatus === 'Failed' && <span className="ml-2 text-xs font-semibold text-warn">eTIMS!</span>}
+                    {invoice && r.etimsStatus === 'Failed' && <span className="ml-2 text-xs font-semibold text-warn" title="KRA hasn't signed this invoice yet; open it to send it again">eTIMS failed</span>}
                   </td>
                   <td className="max-w-[16rem] truncate px-4 py-3">{r.customer}</td>
                   <td className="px-4 py-3 text-muted">{day(r.issueDate)}</td>
@@ -116,7 +116,8 @@ export function InvoiceList({ kind }: { kind: 'Invoice' | 'Quote' }) {
                     <DocStatus d={r} />
                   </td>
                   <td className="num px-4 py-3 text-right">{ksh(r.total)}</td>
-                  {invoice && <td className="num px-4 py-3 text-right font-semibold">{r.status === 'Void' || r.status === 'Draft' ? '—' : ksh(r.total - r.paid)}</td>}
+                  {/* Only what is actually owed stands out; paid, void and draft rows show a quiet dash, the same way. */}
+                  {invoice && <td className="num px-4 py-3 text-right font-semibold">{r.status === 'Void' || r.status === 'Draft' || r.total - r.paid <= 0 ? <span className="font-normal text-faint">—</span> : ksh(r.total - r.paid)}</td>}
                 </tr>
               ))}
             </tbody>

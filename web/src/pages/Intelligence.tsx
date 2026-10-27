@@ -356,7 +356,7 @@ function QuoteVariance({ days }: { days: string }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-ink">{r.customerName}</span>
                     <span className="text-xs text-muted">· {r.invoiceNumber} (from {r.quoteNumber})</span>
-                    <span className="rounded bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand">
+                    <span className="rounded bg-brand-soft px-2 py-0.5 text-2xs font-semibold text-brand">
                       Brought by: {r.broughtBy}
                     </span>
                     <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold',
@@ -385,7 +385,7 @@ function QuoteVariance({ days }: { days: string }) {
               {/* AI Agent Reasoning & Explanations */}
               <div className="mt-3.5 rounded-lg border border-line bg-paper/60 p-3 text-xs">
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-ink text-[9px] font-bold text-white">AI</span>
+                  <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-ink text-2xs font-bold text-white">AI</span>
                   <div className="space-y-1">
                     <p className="font-medium text-ink">{r.agentSummary}</p>
                     {r.agentReasons?.length > 0 && (

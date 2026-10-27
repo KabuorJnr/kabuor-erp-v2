@@ -44,7 +44,7 @@ function Steps() {
     <ol className="flex items-center gap-2 text-xs font-semibold" aria-label="Opening your account">
       {steps.map((s, i) => (
         <li key={s} className="flex items-center gap-2">
-          <span className={cn('grid h-5 w-5 place-items-center rounded-full text-[11px]', i === 0 ? 'bg-good text-white' : i === 1 ? 'bg-brand text-white' : 'bg-line text-muted')} aria-current={i === 1 ? 'step' : undefined}>
+          <span className={cn('grid h-5 w-5 place-items-center rounded-full text-2xs', i === 0 ? 'bg-good text-white' : i === 1 ? 'bg-brand text-white' : 'bg-line text-muted')} aria-current={i === 1 ? 'step' : undefined}>
             {i === 0 ? <Check className="h-3 w-3" /> : i + 1}
           </span>
           <span className={i === 1 ? 'text-ink' : 'text-muted'}>{s}</span>

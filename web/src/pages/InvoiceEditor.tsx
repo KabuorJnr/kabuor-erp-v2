@@ -223,9 +223,11 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
             </div>
           </section>
 
-          <section className="card p-4 sm:p-5">
+          {/* A container: the line becomes one row only when this card is wide enough for it (beside the menu and the
+              totals it often isn't, and the item box shrank to a few letters). Narrower, each line stacks with labels. */}
+          <section className="@container card p-4 sm:p-5">
             <h2 className="text-sm font-semibold">What you’re charging for</h2>
-            <div className="mt-3 hidden grid-cols-[1fr_5rem_8rem_8rem_7rem_2rem] gap-2 text-xs font-semibold text-muted md:grid">
+            <div className="mt-3 hidden grid-cols-[minmax(12rem,1fr)_4.5rem_7rem_7.5rem_7rem_2.25rem] gap-2 text-xs font-semibold text-muted @3xl:grid">
               <span>Item or description</span>
               <span>Qty</span>
               <span>Price (KSh)</span>
@@ -233,12 +235,12 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
               <span className="text-right">Amount</span>
               <span />
             </div>
-            <ul className="mt-2 space-y-3 md:space-y-2">
+            <ul className="mt-2 space-y-3 @3xl:space-y-2">
               {lines.map((l, i) => {
                 const amount = Math.round((Number(l.quantity) || 0) * toCents(l.price));
                 return (
-                  <li key={l.key} className="grid grid-cols-2 gap-2 rounded-md bg-paper p-3 md:grid-cols-[1fr_5rem_8rem_8rem_7rem_2rem] md:items-center md:bg-transparent md:p-0">
-                    <div className="col-span-2 flex gap-2 md:col-span-1">
+                  <li key={l.key} className="grid grid-cols-2 gap-2 rounded-md bg-paper p-3 @3xl:grid-cols-[minmax(12rem,1fr)_4.5rem_7rem_7.5rem_7rem_2.25rem] @3xl:items-center @3xl:bg-transparent @3xl:p-0">
+                    <div className="col-span-2 flex gap-2 @3xl:col-span-1">
                       <input className="field min-w-0 flex-1" list="items" value={l.description} onChange={(e) => pickItem(l.key, e.target.value)} placeholder="Type or pick an item" aria-label={`Line ${i + 1} item`} />
                       {l.itemId && units.data?.some((u) => u.itemId === l.itemId) && (
                         <select className="field w-28 shrink-0" value={l.unit ?? ''} aria-label={`Line ${i + 1} unit`} onChange={(e) => { const unit = e.target.value || undefined; set(l.key, { unit, price: String(priceOf(l.itemId!, unit) / 100), auto: true }); }}>
@@ -247,17 +249,29 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
                         </select>
                       )}
                     </div>
-                    <input className="field num" inputMode="decimal" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} />
-                    <input className="field num" inputMode="decimal" value={l.price} onChange={(e) => set(l.key, { price: e.target.value, auto: false })} placeholder="0" aria-label={`Line ${i + 1} price including VAT`} />
-                    <select className="field" value={l.taxType} onChange={(e) => set(l.key, { taxType: e.target.value })} aria-label={`Line ${i + 1} tax`} disabled={!vat}>
-                      {TAX.map(([v, label]) => (
-                        <option key={v} value={v}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="num self-center text-right font-semibold">{ksh(amount)}</span>
-                    <button type="button" onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))} className="grid h-9 w-9 place-items-center justify-self-end rounded-full text-muted hover:bg-bad-soft hover:text-bad" aria-label={`Remove line ${i + 1}`}>
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Qty</span>
+                      <input className="field num" inputMode="decimal" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} />
+                    </label>
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Price (KSh)</span>
+                      <input className="field num" inputMode="decimal" value={l.price} onChange={(e) => set(l.key, { price: e.target.value, auto: false })} placeholder="0" aria-label={`Line ${i + 1} price including VAT`} />
+                    </label>
+                    <label className="min-w-0">
+                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Tax</span>
+                      <select className="field" value={l.taxType} onChange={(e) => set(l.key, { taxType: e.target.value })} aria-label={`Line ${i + 1} tax`} disabled={!vat}>
+                        {TAX.map(([v, label]) => (
+                          <option key={v} value={v}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="num self-end pb-2.5 text-right font-semibold @3xl:self-center @3xl:pb-0">
+                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Amount</span>
+                      {ksh(amount)}
+                    </span>
+                    <button type="button" onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))} className="col-span-2 grid h-9 w-9 place-items-center justify-self-end rounded-full text-muted hover:bg-bad-soft hover:text-bad @3xl:col-span-1" aria-label={`Remove line ${i + 1}`}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </li>

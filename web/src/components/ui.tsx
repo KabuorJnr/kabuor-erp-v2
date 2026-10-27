@@ -25,8 +25,9 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 /** Filter chips that show how many each one returns, before it's tapped. */
 export function Chips<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: [T, string, number?][]; label: string }) {
   return (
-    <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label={label}>
-      <div className="flex w-max gap-1.5">
+    // Phones swipe through one row; wider screens wrap, so no option is ever hidden past the edge.
+    <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0" role="group" aria-label={label}>
+      <div className="flex w-max gap-1.5 sm:w-auto sm:flex-wrap">
         {options.map(([id, text, n]) => (
           <button
             key={id}

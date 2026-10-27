@@ -18,6 +18,17 @@
   --font-sans: 'Onest', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Bricolage', 'Onest', ui-sans-serif, sans-serif;
 
+  /* Type scale, read on phones in daylight and on a till all day: body 15px, details 13px, nothing under 12px.
+     Every text-xs/text-sm in the app follows these, so sizes stay consistent screen to screen. */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+
   --color-ink: #0a0b1e;
   --color-ink-2: #3b3f5c;
   --color-muted: #585c80;
@@ -60,13 +71,18 @@
   button {
     font: inherit;
   }
+  /* Column headings read the same on every table: quieter than the rows, but never lighter than semibold. */
+  th {
+    font-weight: 600;
+  }
 }
 
 @utility card {
   @apply rounded-lg bg-card ring-1 ring-line;
 }
 @utility field {
-  @apply w-full rounded-md bg-white px-3 py-2.5 text-[15px] ring-1 ring-line transition placeholder:text-faint focus:ring-2 focus:ring-brand focus:outline-none;
+  /* 16px on phones: iOS zooms the page into any smaller input when it's tapped. */
+  @apply w-full rounded-md bg-white px-3 py-2.5 text-base ring-1 ring-line transition placeholder:text-faint focus:ring-2 focus:ring-brand focus:outline-none sm:text-sm;
 }
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-50;

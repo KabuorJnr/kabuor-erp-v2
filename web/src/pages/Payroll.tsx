@@ -285,7 +285,8 @@ export function PayrollRun() {
         </Stat>
       </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_22rem]">
+      {/* The payslip table needs every column in view to check a month; the remittances sit beside it only when there is room. */}
+      <div className="mt-5 grid gap-5 2xl:grid-cols-[1fr_22rem]">
         <section className="card overflow-x-auto">
           <table className="w-full min-w-[46rem] text-sm">
             <thead className="border-b border-line bg-paper text-left text-xs text-muted">

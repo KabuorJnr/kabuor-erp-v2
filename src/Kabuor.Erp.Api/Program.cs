@@ -115,7 +115,8 @@ builder.Services.AddScoped<Kabuor.Erp.Intelligence.PortalService>();
 builder.Services.AddSingleton<Kabuor.Erp.Intelligence.PortalTokens>();
 builder.Services.AddScoped<Kabuor.Erp.Integrations.WebhookService>();
 builder.Services.AddHostedService<Kabuor.Erp.Integrations.WebhookWorker>();
-builder.Services.AddHttpClient("webhooks", c => c.Timeout = TimeSpan.FromSeconds(15));
+// Webhook addresses come from businesses: never into this server's own network (see Common/OutboundGuard.cs).
+builder.Services.AddHttpClient("webhooks", c => c.Timeout = TimeSpan.FromSeconds(15)).ConfigurePrimaryHttpMessageHandler(OutboundGuard.Handler);
 builder.Services.AddHttpClient("daraja", c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<Kabuor.Erp.Crm.CrmService>();
 builder.Services.AddScoped<Kabuor.Erp.Production.ProductionService>();
@@ -205,6 +206,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 
 var app = builder.Build();
+if (app.Environment.IsProduction() && string.IsNullOrWhiteSpace(app.Configuration["App:PublicUrl"]) && string.IsNullOrWhiteSpace(app.Configuration["RENDER_EXTERNAL_URL"]))
+    app.Logger.LogWarning("Set App:PublicUrl (APP__PUBLICURL) to this server's public https address: M-Pesa callbacks and shared links fall back to the request's Host header without it.");
 
 // Fail at start, with the reason, if there's no signing key: never run a server that can't sign anyone in.
 app.Services.GetRequiredService<TokenIssuer>();
