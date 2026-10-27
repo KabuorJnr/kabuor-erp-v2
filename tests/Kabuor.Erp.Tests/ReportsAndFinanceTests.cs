@@ -181,4 +181,19 @@ public class ReportsAndFinanceTests(ErpFactory factory) : IClassFixture<ErpFacto
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.GetAsync("/api/finance/overview")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.GetAsync("/api/reports/export/profit-and-loss")).StatusCode);
     }
+
+    // The ledger page went blank on a server that didn't have its address yet: the web app's page came back where
+    // data was expected. An API address that matches nothing now says so, in JSON, signed in or not.
+    [Fact]
+    public async Task An_api_address_that_matches_nothing_answers_not_found_in_json()
+    {
+        var (owner, _) = await Business();
+        foreach (var c in new[] { owner, factory.CreateClient() })
+        {
+            var res = await c.GetAsync("/api/finance/no-such-thing");
+            Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
+            Assert.Equal("application/json", res.Content.Headers.ContentType?.MediaType);
+            Assert.False(string.IsNullOrWhiteSpace(JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("error").GetString()));
+        }
+    }
 }

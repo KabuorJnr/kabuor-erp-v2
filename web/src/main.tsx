@@ -6,6 +6,7 @@ import { registerShell } from './lib/offline';
 import { reportError, startMonitoring } from './lib/monitoring';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
 import Activate from './pages/Activate';
 import Today from './pages/Today';
@@ -154,7 +155,9 @@ startMonitoring();
 createRoot(document.getElementById('root')!, { onUncaughtError: (e) => (reportError(e), console.error(e)), onCaughtError: (e) => reportError(e) }).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <ErrorBoundary whole>
+        <App />
+      </ErrorBoundary>
     </BrowserRouter>
   </StrictMode>,
 );

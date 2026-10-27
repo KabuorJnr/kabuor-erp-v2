@@ -360,6 +360,12 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
 AssetEndpoints.Map(app);
+// An API address that matches nothing says so in JSON, instead of falling through to the web app's page below and
+// handing a screen HTML where it expected data. Reads only, like the page fallback: a catch-all that took any method
+// would win over real endpoints for bodiless POSTs (approve, dismiss), since routing sends a request with no
+// Content-Type only to endpoints that accept any.
+app.MapFallback("/api/{**path}", () => Results.NotFound(new { error = "That isn’t part of this server. Reload the page; it may have been updated." }))
+    .WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 // The web app (built into wwwroot): any other path is a page in it.
 app.MapFallbackToFile("index.html");
 

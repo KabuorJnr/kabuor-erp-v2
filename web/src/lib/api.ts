@@ -66,6 +66,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   // The account hasn't been paid for yet (or no longer is, on a stale page): show the payment screen.
   if (res.status === 402 && data.code === 'pay-to-start' && s && !s.company.awaitingFirstPayment) setSession({ ...s, company: { ...s.company, awaitingFirstPayment: true } });
   if (!res.ok) throw new ApiError(res.status, data.error ?? (res.status === 403 ? 'You don’t have access to this.' : 'Network problem. Check your connection.'));
+  // A web page where data was expected: something between here and the API answered instead (an older deployment,
+  // a proxy's page). Say so rather than hand the screen an empty object to draw.
+  if (res.headers.get('content-type')?.includes('text/html')) throw new ApiError(502, 'The server sent back a page instead of data. Reload; if it keeps happening, the server may be mid-update.');
   if (method !== 'GET') {
     clearApiCache();
   }
