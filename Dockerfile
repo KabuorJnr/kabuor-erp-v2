@@ -20,6 +20,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=api --chown=$APP_UID:$APP_UID /app ./
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV Database__AllowLocalFile=true
 # Run as unprivileged non-root app user
 USER $APP_UID
 # Render (and most hosts) set PORT; listen on it (8080 when run elsewhere).
