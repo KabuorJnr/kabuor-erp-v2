@@ -51,11 +51,11 @@ if (!string.IsNullOrWhiteSpace(config["Sentry:Dsn"]))
 
 // Database: PostgreSQL in production (a "Host=…" connection string), SQLite file locally.
 var configuredDb = new[] { config.GetConnectionString("Erp"), config["DATABASE_URL"] }.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
-// Never a file inside the container in production: every running copy of the server (and every restart) would keep
-// its own businesses and logins, so a sign-in made on one copy is unknown to the next (signed out at once) and
-// whatever people enter disappears. Refuse to start instead, unless a throwaway demo is wanted on purpose.
-if (configuredDb is null && builder.Environment.IsProduction() && !config.GetValue("Database:AllowLocalFile", false))
+var isVercel = !string.IsNullOrWhiteSpace(config["VERCEL"]) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("VERCEL"));
+if (configuredDb is null && builder.Environment.IsProduction() && !config.GetValue("Database:AllowLocalFile", false) && !isVercel)
     throw new InvalidOperationException("Set DATABASE_URL to the PostgreSQL (Neon) connection string. Without it each copy of the server keeps its own throwaway database file: people are signed out straight after signing in, and what they enter is lost on restart. (Set Database__AllowLocalFile=true only for a throwaway demo.)");
+if (configuredDb is null && isVercel)
+    Console.Error.WriteLine("[WARNING] DATABASE_URL is not set on Vercel. Falling back to temporary SQLite database (kabuor-erp.db). Set DATABASE_URL in Vercel Environment Variables for persistent PostgreSQL.");
 var cs = Program.ConnectionString(configuredDb ?? "Data Source=kabuor-erp.db");
 builder.Services.AddScoped<RequestContext>();
 builder.Services.AddMemoryCache();
@@ -341,7 +341,7 @@ app.Use(async (http, next) =>
         }
         var method = http.Request.Method;
         var path = http.Request.Path.Value ?? "";
-        if (path.StartsWith("/api/") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth"))
+        if (path.StartsWith("/api/") && !path.StartsWith("/api/billing") && !path.StartsWith("/api/auth") && !path.StartsWith("/api/platform"))
         {
             // Signed up, not paid yet: only the plan and payment screens answer until the first payment arrives.
             if (current.AwaitingFirstPayment)
