@@ -246,7 +246,7 @@ public static class Endpoints
             return await s.Get(id);
         }).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/void", (Guid id, SalesService s) => s.Void(id)).RequireAuthorization(Policies.Finance);
-        docs.MapPost("/{id:guid}/mpesa-request", (Guid id, StkRequestInput input, StkService s, HttpRequest req) => s.Request(id, input, $"{req.Scheme}://{req.Host}")).RequireAuthorization(Policies.Sell);
+        docs.MapPost("/{id:guid}/mpesa-request", (Guid id, StkRequestInput input, StkService s, HttpRequest req) => s.Request(id, input, PublicUrl.Of(req))).RequireAuthorization(Policies.Sell);
         docs.MapGet("/{id:guid}/mpesa-requests", (Guid id, StkService s) => s.ForInvoice(id));
         docs.MapPost("/{id:guid}/to-invoice", (Guid id, SalesService s) => s.ToInvoice(id)).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/etims", async (Guid id, SalesService s) =>
@@ -335,7 +335,7 @@ public static class Endpoints
         // ---------- subscription ----------
         var billing = app_.MapGroup("/billing").RequireAuthorization(Policies.Admin);
         billing.MapGet("", (Kabuor.Erp.Billing.BillingService s) => s.Status());
-        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, $"{req.Scheme}://{req.Host}")).RequireRateLimiting("prompts");
+        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, PublicUrl.Of(req))).RequireRateLimiting("prompts");
         billing.MapPost("/payments/{id:guid}/check", (Guid id, Kabuor.Erp.Billing.BillingService s) => s.Check(id));
 
         // ---------- moving in: CSV from Excel, QuickBooks, Sage, Zoho ----------
@@ -358,7 +358,7 @@ public static class Endpoints
         settings.MapGet("/company", async (ErpDb db, HttpRequest req) =>
         {
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
-            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{req.Scheme}://{req.Host}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
+            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{PublicUrl.Of(req)}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
         }).RequireAuthorization(Policies.Admin);
         settings.MapGet("/mpesa-prompt", (StkService s) => s.Setup()).RequireAuthorization(Policies.Admin);
         settings.MapPut("/mpesa-prompt", (StkSetupInput input, StkService s) => s.Save(input)).RequireAuthorization(Policies.Admin);

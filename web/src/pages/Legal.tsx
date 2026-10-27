@@ -15,7 +15,7 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
         <ArrowLeft className="h-4 w-4" /> Kabuor ERP
       </Link>
       <h1 className="font-display text-3xl font-bold tracking-tight">{title}</h1>
-      <div className="legal mt-6 space-y-4 text-[15px] leading-relaxed [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-bold [&_li]:ml-5 [&_li]:list-disc [&_ul]:space-y-1.5">{children}</div>
+      <div className="legal mt-6 space-y-4 text-sm leading-relaxed [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-bold [&_li]:ml-5 [&_li]:list-disc [&_ul]:space-y-1.5">{children}</div>
     </main>
   );
 }
@@ -108,10 +108,10 @@ export function Terms() {
       <h2>The service</h2>
       <p>Kabuor ERP helps you invoice, take payments, keep stock, run payroll and keep your books. It sends invoices to KRA eTIMS and reads M-Pesa payments when you connect them. We aim to keep it available at all times but can’t promise it will never be interrupted; we tell you in the app about planned maintenance.</p>
 
-      <h2>Free trial and paying</h2>
+      <h2>Paying</h2>
       <ul>
-        <li>New businesses get a 30-day free trial with every feature.</li>
-        <li>After the trial and 7 more days’ grace, your records stay readable and downloadable, but adding and changing them waits until you choose a plan.</li>
+        <li>A new business chooses a plan and pays its first month or year by M-Pesa before the account opens.</li>
+        <li>When paid time runs out, and 7 more days’ grace, your records stay readable and downloadable, but adding and changing them waits until you renew.</li>
         <li>Plans are paid in Kenyan shillings, in advance, monthly or yearly (a year costs ten months). Prices are shown in Settings → Plan & billing; we give 30 days’ notice of any price change.</li>
         <li>Paid time is not refunded if you stop early, except where the law requires.</li>
       </ul>

@@ -58,7 +58,7 @@ function Tile({ k }: { k: Kpi }) {
     <Link to={k.link} className="card flex flex-col gap-1.5 p-3.5 transition hover:ring-faint" title={k.explain}>
       <span className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-muted">{k.name}</span>
-        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', tone)}>{label}</span>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold', tone)}>{label}</span>
       </span>
       <span className="num text-xl font-bold">{fmt(k, k.value)}</span>
       <span className="text-xs text-muted">

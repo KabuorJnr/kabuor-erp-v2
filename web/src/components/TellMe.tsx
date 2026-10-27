@@ -108,22 +108,22 @@ export default function TellMe({ session, open, onClose }: { session: Session; o
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
             placeholder="Tell me what you want to do, or find a customer, invoice, item…"
-            className="h-14 w-full bg-transparent text-[15px] outline-none placeholder:text-faint"
+            className="h-14 w-full bg-transparent text-sm outline-none placeholder:text-faint"
             aria-label="Search"
             role="combobox"
             aria-expanded="true"
             aria-controls="tellme-results"
           />
-          <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-[11px] text-muted sm:block">Esc</kbd>
+          <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-2xs text-muted sm:block">Esc</kbd>
         </label>
         <ul id="tellme-results" role="listbox" className="max-h-[60vh] overflow-y-auto py-1">
-          {!term && <li className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-faint uppercase">Common actions</li>}
+          {!term && <li className="px-4 pt-2 pb-1 text-2xs font-semibold tracking-wider text-faint uppercase">Common actions</li>}
           {results.map((e, i) => {
             const showHeader = Boolean(term) && e.kind !== lastKind;
             lastKind = e.kind;
             return (
               <li key={`${e.kind}-${e.url}-${i}`}>
-                {showHeader && <p className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-faint uppercase">{HEADINGS[e.kind] ?? e.kind}</p>}
+                {showHeader && <p className="px-4 pt-2 pb-1 text-2xs font-semibold tracking-wider text-faint uppercase">{HEADINGS[e.kind] ?? e.kind}</p>}
                 <button
                   role="option"
                   aria-selected={i === active}
@@ -145,7 +145,7 @@ export default function TellMe({ session, open, onClose }: { session: Session; o
           })}
           {term && results.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">Nothing matches “{q}”. Try a customer name, an invoice number or what you want to do.</li>}
         </ul>
-        <p className="border-t border-line px-4 py-2 text-[11px] text-faint">↑↓ to move · Enter to open · Ctrl K from anywhere</p>
+        <p className="border-t border-line px-4 py-2 text-2xs text-faint">↑↓ to move · Enter to open · Ctrl K from anywhere</p>
       </div>
     </div>
   );

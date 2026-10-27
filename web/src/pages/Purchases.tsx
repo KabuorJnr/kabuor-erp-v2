@@ -227,7 +227,7 @@ export function PurchaseList() {
                   <td className="px-4 py-3">
                     <PurchaseStatusBadge d={r} />
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-medium">{ksh(r.total)}</td>
+                  <td className="num px-4 py-3 text-right font-medium">{ksh(r.total)}</td>
                 </tr>
               ))}
             </tbody>

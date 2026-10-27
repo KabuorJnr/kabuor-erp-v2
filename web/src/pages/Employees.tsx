@@ -25,7 +25,7 @@ export function PayBreakdown({ p, compact }: { p: Pay | null; compact?: boolean 
           <div key={label} className="flex items-baseline justify-between gap-3">
             <dt className="min-w-0 flex-1 text-muted">
               <span className="font-medium text-ink">{label}</span>
-              {sub && <span className="block text-[11px] text-muted/80">{sub}</span>}
+              {sub && <span className="block text-2xs text-muted/80">{sub}</span>}
             </dt>
             <dd className="num shrink-0 text-right font-medium whitespace-nowrap">
               {v < 0 ? `−${ksh(-v)}` : ksh(v)}
@@ -44,7 +44,7 @@ export function PayBreakdown({ p, compact }: { p: Pay | null; compact?: boolean 
             {ksh(p.gross + p.nssfEmployer + p.housingLevyEmployer + p.nita)}
           </span>
         </div>
-        <span className="mt-1 block text-[11px] text-muted leading-tight">
+        <span className="mt-1 block text-2xs text-muted leading-tight">
           Includes gross pay + employer NSSF, Housing Levy (1.5%) &amp; NITA (KES 50)
         </span>
       </div>
@@ -261,7 +261,7 @@ You'll choose your own password the first time.`;
       {!data ? null : grant ? (
         <div className="mt-2 space-y-2 text-sm">
           <p>{grant.reset ? 'Login reset.' : 'Login created.'} Give {employee.name.split(' ')[0]} these details; the password works once:</p>
-          <p className="rounded-md bg-paper p-3 font-mono text-[13px]">
+          <p className="rounded-md bg-paper p-3 font-mono text-xs">
             Phone: {prettyPhone(grant.phone)}
             <br />
             Password: {grant.password}

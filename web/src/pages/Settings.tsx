@@ -47,13 +47,14 @@ function Company() {
     }
   };
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+    // Side by side only on very wide screens: next to the settings menu the form was left two 165px columns.
+    <div className="grid gap-5 2xl:grid-cols-[1fr_22rem]">
       <form onSubmit={save} className="card space-y-4 p-4 sm:p-5">
         <Field label="Business name">
           <input className="field" value={f.name} onChange={set('name')} required />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Industry / Sector" hint="Workflow rules & module defaults.">
+          <Field label="Industry" hint="Decides which sections and setup steps you see.">
             <select className="field" value={f.industry ?? 'general'} onChange={(e) => setF({ ...f, industry: e.target.value })}>
               <option value="general">General Business & Trading</option>
               <option value="distribution">Wholesale & Distribution</option>
@@ -63,7 +64,7 @@ function Company() {
               <option value="services">Services & Consulting</option>
             </select>
           </Field>
-          <Field label="Accounting Period Lock Date" hint="Blocks backdating invoices & bills.">
+          <Field label="Books closed up to" hint="Nothing can be dated on or before this day, so filed months stay as filed.">
             <input type="date" className="field" value={f.accountingLockDate ?? ''} onChange={(e) => setF({ ...f, accountingLockDate: e.target.value || null })} />
           </Field>
         </div>
@@ -299,7 +300,7 @@ function EtimsSetup() {
   };
   const live = data.mode !== 'Test' && data.connected;
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-4 2xl:grid-cols-[1fr_20rem]">
       <section className="card space-y-4 p-5">
         <div className={live ? 'rounded-md bg-good-soft p-3 text-sm text-good' : 'rounded-md bg-warn-soft p-3 text-sm text-warn'}>
           {live ? (
@@ -374,9 +375,9 @@ export default function Settings() {
         <nav className="hidden lg:block" aria-label="Settings">
           {SECTIONS.map((sec) => (
             <div key={sec.title} className="mb-4">
-              <p className="mb-1 px-3 text-[11px] font-semibold tracking-wider text-faint uppercase">{sec.title}</p>
+              <p className="mb-1 px-3 text-2xs font-semibold tracking-wider text-faint uppercase">{sec.title}</p>
               {sec.tabs.map(([id, label]) => (
-                <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined} className={cn('block w-full rounded-md px-3 py-2 text-left text-[15px] font-medium', tab === id ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-white')}>
+                <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined} className={cn('block w-full rounded-md px-3 py-2 text-left text-sm font-medium', tab === id ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-white')}>
                   {label}
                 </button>
               ))}

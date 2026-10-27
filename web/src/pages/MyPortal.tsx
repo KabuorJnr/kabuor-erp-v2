@@ -187,21 +187,24 @@ export default function MyPortal() {
             </div>
 
             <div className="card p-4">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Last Payslip Take-Home</span>
-              <p className="num mt-2 font-display text-3xl font-bold text-good">
-                {payslips[0] ? ksh(payslips[0].net) : '—'}
-              </p>
-              <span className="text-xs text-muted">
-                {payslips[0] ? monthName(payslips[0].period) : 'No published payslips yet'}
-              </span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Last payslip take-home</span>
+              {payslips[0] ? (
+                <>
+                  <p className="num mt-2 font-display text-3xl font-bold text-good">{ksh(payslips[0].net)}</p>
+                  <span className="text-xs text-muted">{monthName(payslips[0].period)}</span>
+                </>
+              ) : (
+                // No figure yet: say so in words rather than a big green dash that reads like an amount.
+                <p className="mt-2 text-sm text-muted">Your first payslip shows here once payroll is approved.</p>
+              )}
             </div>
 
             <div className="card p-4">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Statutory ID Numbers</span>
               <div className="mt-2 text-xs space-y-1">
-                <p>KRA PIN: <b className="text-ink font-mono">{emp.kraPin || 'Not recorded'}</b></p>
-                <p>NSSF: <b className="text-ink font-mono">{emp.nssfNumber || 'Not recorded'}</b></p>
-                <p>SHA (SHIF): <b className="text-ink font-mono">{emp.shaNumber || 'Not recorded'}</b></p>
+                <p>KRA PIN: {emp.kraPin ? <b className="font-mono text-ink">{emp.kraPin}</b> : <span className="text-faint">not recorded yet</span>}</p>
+                <p>NSSF: {emp.nssfNumber ? <b className="font-mono text-ink">{emp.nssfNumber}</b> : <span className="text-faint">not recorded yet</span>}</p>
+                <p>SHA (SHIF): {emp.shaNumber ? <b className="font-mono text-ink">{emp.shaNumber}</b> : <span className="text-faint">not recorded yet</span>}</p>
               </div>
             </div>
           </div>
@@ -250,7 +253,7 @@ export default function MyPortal() {
                     <div>
                       <b className="block text-sm text-ink">{monthName(p.period)}</b>
                       <span className="text-xs text-muted">
-                        Gross {ksh(p.gross)} · Net Take-Home: <b className="text-good">{ksh(p.net)}</b>
+                        Gross {ksh(p.gross)} · take-home <b className="text-good">{ksh(p.net)}</b>
                       </span>
                     </div>
                   </div>
@@ -350,7 +353,7 @@ export default function MyPortal() {
               <div className="overflow-x-auto text-xs">
                 <table className="w-full min-w-[54rem] divide-y divide-line text-left">
                   <thead>
-                    <tr className="bg-paper font-semibold text-muted text-[11px]">
+                    <tr className="bg-paper font-semibold text-muted text-2xs">
                       <th className="p-2 whitespace-nowrap">Month</th>
                       <th className="p-2 text-right whitespace-nowrap">Basic Pay</th>
                       <th className="p-2 text-right whitespace-nowrap">Benefits</th>

@@ -136,7 +136,7 @@ function QuoteAuditCard({ invoiceId }: { invoiceId: string }) {
       {/* AI Agent Verdict & Explanation */}
       <div className="mt-3.5 rounded-lg bg-paper/80 p-3.5 text-sm">
         <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[10px] font-bold text-white">AI</span>
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-2xs font-bold text-white">AI</span>
           <div className="space-y-1.5 text-ink-2">
             <p className="font-medium text-ink">{variance.agentSummary}</p>
             {variance.agentReasons?.length > 0 && (
@@ -171,7 +171,7 @@ function QuoteAuditCard({ invoiceId }: { invoiceId: string }) {
                   <tr key={i} className={l.changeKind === 'Unchanged' ? 'opacity-60' : ''}>
                     <td className="py-2 pr-2">
                       <b className="text-ink">{l.description}</b>
-                      {l.brand && <span className="ml-1 text-[11px] text-muted">({l.brand})</span>}
+                      {l.brand && <span className="ml-1 text-2xs text-muted">({l.brand})</span>}
                     </td>
                     <td className="num py-2 text-right text-muted">
                       {l.quotedQty} × {ksh(l.quotedUnitPrice)}
@@ -185,7 +185,7 @@ function QuoteAuditCard({ invoiceId }: { invoiceId: string }) {
                       {diff === 0 ? '0' : `${diff > 0 ? '+' : ''}${ksh(diff)}`}
                     </td>
                     <td className="py-2 pl-4 text-muted">
-                      <span className={cn('inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold mr-1.5',
+                      <span className={cn('inline-block rounded px-1.5 py-0.5 text-2xs font-semibold mr-1.5',
                         l.changeKind === 'Discounted' ? 'bg-warn-soft text-warn' :
                         l.changeKind === 'PriceIncreased' ? 'bg-indigo-soft text-indigo' :
                         l.changeKind === 'QtyReduced' ? 'bg-warn-soft text-warn' :
@@ -320,7 +320,7 @@ export default function InvoiceView() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_18rem]">
         {/* The document as the customer sees it (and as it prints). */}
-        <article className="card p-5 sm:p-8 print:shadow-none print:ring-0">
+        <article className="card min-w-0 p-5 sm:p-8 print:shadow-none print:ring-0">
           <div className="flex flex-wrap justify-between gap-6">
             <div>
               <p className="font-display text-xl font-bold">{session?.company.name}</p>

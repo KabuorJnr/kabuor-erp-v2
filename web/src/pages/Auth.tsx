@@ -16,7 +16,7 @@ export function Frame({ children }: { children: React.ReactNode }) {
         </div>
         <div className="relative max-w-md">
           <h1 className="font-display text-5xl leading-[1.05] font-bold tracking-tight">Run the whole business from one place.</h1>
-          <ul className="mt-8 space-y-3 text-[15px] text-white/80">
+          <ul className="mt-8 space-y-3 text-sm text-white/80">
             {['M-Pesa payments match your invoices by themselves', 'Every invoice ready for KRA eTIMS', 'Ask Msaidizi in English or Kiswahili', 'Works on your phone, for the whole team'].map((x) => (
               <li key={x} className="flex gap-3">
                 <Check className="mt-0.5 h-5 w-5 shrink-0 text-gold" /> {x}
@@ -194,8 +194,9 @@ export function SignUp() {
                 onClick={() => setF({ ...f, industry: ind.id })}
                 className={cn('flex flex-col items-start rounded-md bg-white px-3 py-2 text-left ring-1 transition', f.industry === ind.id ? 'bg-brand-soft ring-2 ring-brand' : 'ring-line hover:ring-faint')}
               >
-                <span className={cn('text-[13px] leading-tight font-semibold', f.industry === ind.id && 'text-brand')}>{ind.label}</span>
-                <span className="mt-0.5 line-clamp-1 text-[11px] text-muted">{ind.desc}</span>
+                <span className={cn('text-sm leading-tight font-semibold', f.industry === ind.id && 'text-brand')}>{ind.label}</span>
+                {/* Two lines: the description is how people tell the tiles apart, so it can't be cut to "Trade terms, pr…". */}
+                <span className="mt-0.5 line-clamp-2 text-xs text-muted">{ind.desc}</span>
               </button>
             ))}
           </div>

@@ -67,7 +67,7 @@ function CueTile({ c }: { c: Cue }) {
       )}
     >
       <span className={cn('num font-display text-[28px] leading-none font-bold', quiet ? 'text-faint' : c.tone === 'bad' ? 'text-bad' : 'text-ink')}>{c.count}</span>
-      <span className="mt-2 text-[13px] leading-tight font-semibold text-ink-2">{c.label}</span>
+      <span className="mt-2 text-xs leading-tight font-semibold text-ink-2">{c.label}</span>
       {c.note && <span className="num text-xs text-muted">{c.note}</span>}
     </Link>
   );
@@ -156,7 +156,7 @@ export default function Today() {
         {can(session, 'admin') && <SetupChecklist />}
 
         {d.headline && (
-          <p className="flex items-start gap-3 rounded-md bg-brand-soft px-4 py-3 text-[15px] text-ink">
+          <p className="flex items-start gap-3 rounded-md bg-brand-soft px-4 py-3 text-sm text-ink">
             <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-brand" /> {d.headline}
           </p>
         )}
@@ -164,7 +164,7 @@ export default function Today() {
         {(session?.user.role === 'Owner' || session?.user.role === 'Accountant') && !session.user.twoFactorEnabled && (
           <Link to="/security" className="flex items-center gap-3 rounded-md bg-warn-soft px-4 py-3 text-warn hover:brightness-95">
             <ShieldAlert className="h-5 w-5 shrink-0" />
-            <span className="flex-1 text-[15px]">
+            <span className="flex-1 text-sm">
               <b>Protect the books:</b> a stolen password is all it takes to sign in as you. Turn on two-step sign-in (two minutes).
             </span>
             <span className="text-sm font-semibold">Turn on →</span>
@@ -174,7 +174,7 @@ export default function Today() {
         {(d.agentTasks ?? 0) > 0 && (
           <Link to="/agents" className="flex items-center gap-3 rounded-md bg-indigo px-4 py-3 text-white hover:brightness-110">
             <Bot className="h-5 w-5 shrink-0 text-gold" />
-            <span className="flex-1 text-[15px]">
+            <span className="flex-1 text-sm">
               Your agents have <b>{d.agentTasks}</b> thing{d.agentTasks === 1 ? '' : 's'} for you to check
             </span>
             <span className="text-sm font-semibold">Review →</span>
@@ -184,7 +184,7 @@ export default function Today() {
         {d.proposals > 0 && <Proposals onChange={reload} />}
 
         {allClear && (
-          <p className="flex items-center gap-2 rounded-md bg-white px-4 py-3 text-[15px] text-muted ring-1 ring-line">
+          <p className="flex items-center gap-2 rounded-md bg-white px-4 py-3 text-sm text-muted ring-1 ring-line">
             <CheckCircle2 className="h-5 w-5 shrink-0 text-good" /> Nothing waiting for you today: no overdue invoices, payments to match or approvals.
           </p>
         )}
@@ -192,7 +192,7 @@ export default function Today() {
         <div className={cn('grid gap-5 xl:grid-cols-2', allClear && 'hidden')}>
           {visible.map((g) => (
             <section key={g.title} aria-label={g.title}>
-              <h2 className="mb-2 text-[11px] font-semibold tracking-wider text-faint uppercase">{g.title}</h2>
+              <h2 className="mb-2 text-2xs font-semibold tracking-wider text-faint uppercase">{g.title}</h2>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3">
                 {g.cues.map((c) => (
                   <CueTile key={c.label} c={c} />
@@ -210,7 +210,7 @@ export default function Today() {
 
         {d.moneyIn && d.owed && d.overdue && d.dueThisWeek && !noMoneyYet && (
           <>
-            <h2 className="pt-2 text-[11px] font-semibold tracking-wider text-faint uppercase">How money is moving</h2>
+            <h2 className="pt-2 text-2xs font-semibold tracking-wider text-faint uppercase">How money is moving</h2>
             <div className="-mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Stat label={t('Money in, last 7 days')} value={ksh(d.moneyIn.last7Days)}>
                 <Change now={d.moneyIn.last7Days} before={d.moneyIn.previous7Days} />
@@ -255,7 +255,7 @@ export default function Today() {
               return (
                 <li key={i.id} className="flex items-center gap-3 py-3">
                   <Link to={`/sales/${i.id}`} className="min-w-0 flex-1">
-                    <b className="block truncate text-[15px]">{i.customer}</b>
+                    <b className="block truncate text-sm">{i.customer}</b>
                     <span className="text-sm text-muted">
                       {i.number} · <span className="text-bad">{i.daysLate} day{i.daysLate === 1 ? '' : 's'} late</span>
                     </span>

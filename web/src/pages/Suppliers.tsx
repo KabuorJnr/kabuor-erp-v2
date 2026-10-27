@@ -234,7 +234,7 @@ export function SupplierList() {
                         {s.overdue > 0 && <span className="block text-xs text-bad">{ksh(s.overdue)} late</span>}
                       </div>
                     ) : (
-                      <span className="text-xs text-muted">KSh 0.00</span>
+                      <span className="text-faint">—</span>
                     )}
                   </td>
                 </tr>
@@ -388,7 +388,7 @@ export function SupplierView() {
                   <td className="px-4 py-2.5">
                     <PurchaseStatusBadge d={d} />
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono font-medium">{ksh(d.total)}</td>
+                  <td className="num px-4 py-2.5 text-right font-medium">{ksh(d.total)}</td>
                 </tr>
               ))}
             </tbody>

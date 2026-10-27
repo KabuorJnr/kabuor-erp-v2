@@ -311,9 +311,15 @@ export default function Reports() {
   return (
     <>
       <PageHeader title="Reports" subtitle="Numbers come straight from your invoices and payments, so they’re always up to date." />
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      {/* Report and period each get a full row: side by side they ran out of room and hid "Trial balance". */}
+      <div className="mb-4 flex flex-col gap-2.5">
         <Chips label="Report" value={tab} onChange={setTab} options={[['pnl', 'Profit & loss'], ['bs', 'Balance sheet'], ['cf', 'Cash flow'], ['aging', 'Who owes you'], ['vat', 'VAT'], ['tb', 'Trial balance']]} />
-        {(tab === 'pnl' || tab === 'vat' || tab === 'cf') && <Chips label="Period" value={period} onChange={setPeriod} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />}
+        {(tab === 'pnl' || tab === 'vat' || tab === 'cf') && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted">Period</span>
+            <Chips label="Period" value={period} onChange={setPeriod} options={[['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year']]} />
+          </div>
+        )}
       </div>
       {tab === 'pnl' && <ProfitAndLoss period={period} />}
       {tab === 'aging' && <Aging />}

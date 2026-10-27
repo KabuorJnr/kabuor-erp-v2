@@ -93,7 +93,7 @@ function Columns({ labels, series, reference, tip }: { labels: string[]; series:
           {t.map((v) => (
             <g key={v}>
               <line x1={left} x2={w - right} y1={y(v)} y2={y(v)} stroke="var(--color-line)" strokeWidth={1} />
-              <text x={left - 6} y={y(v)} dy="0.32em" textAnchor="end" className="fill-faint text-[10px]">{compact(v)}</text>
+              <text x={left - 6} y={y(v)} dy="0.32em" textAnchor="end" className="fill-muted text-2xs">{compact(v)}</text>
             </g>
           ))}
           {labels.map((l, i) => {
@@ -101,18 +101,18 @@ function Columns({ labels, series, reference, tip }: { labels: string[]; series:
             return (
               <g key={i} opacity={hover == null || hover === i ? 1 : 0.4}>
                 {series.map((s, k) => <path key={s.name} d={barPath(x0 + k * (barW + gap), base, barW, base - y(s.values[i]))} fill={s.color} />)}
-                {(i % every === 0 || i === last) && <text x={left + band * (i + 0.5)} y={H - 6} textAnchor="middle" className={cn('text-[10px]', hover === i ? 'fill-ink font-semibold' : 'fill-faint')}>{l}</text>}
+                {(i % every === 0 || i === last) && <text x={left + band * (i + 0.5)} y={H - 6} textAnchor="middle" className={cn('text-2xs', hover === i ? 'fill-ink font-semibold' : 'fill-muted')}>{l}</text>}
               </g>
             );
           })}
           {/* Direct labels on the latest month, so the current figures read without hovering. */}
           {hover == null && series.map((s, k) => s.values[last] > 0 && (
-            <text key={s.name} x={left + band * last + (band - groupW) / 2 + k * (barW + gap) + barW / 2} y={y(s.values[last]) - 4} textAnchor="middle" className="fill-ink-2 text-[10px] font-semibold">{compact(s.values[last])}</text>
+            <text key={s.name} x={left + band * last + (band - groupW) / 2 + k * (barW + gap) + barW / 2} y={y(s.values[last]) - 4} textAnchor="middle" className="fill-ink-2 text-2xs font-semibold">{compact(s.values[last])}</text>
           ))}
           {reference && reference.value > 0 && (
             <g>
               <line x1={left} x2={w - right} y1={y(reference.value)} y2={y(reference.value)} stroke="var(--color-ink-2)" strokeWidth={1.5} strokeDasharray="5 4" />
-              <text x={left + 4} y={y(reference.value) - 5} className="fill-ink-2 text-[10px] font-semibold">{reference.label}</text>
+              <text x={left + 4} y={y(reference.value) - 5} className="fill-ink-2 text-2xs font-semibold">{reference.label}</text>
             </g>
           )}
           {labels.map((_, i) => (
@@ -135,7 +135,8 @@ function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; valu
   return (
     <ul className="space-y-2">
       {rows.map((r) => (
-        <li key={r.label} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3 text-sm" title={r.note}>
+        // Long names are cut to fit the column, so the full name (and its note) is on hover.
+        <li key={r.label} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3 text-sm" title={r.note ? `${r.label} · ${r.note}` : r.label}>
           <span className="truncate text-ink-2">{r.label}</span>
           <span className="flex items-center gap-2">
             <span className="h-3.5 rounded-r-[4px]" style={{ width: `${Math.max(1, (r.value / max) * 75)}%`, background: color }} />
@@ -176,7 +177,7 @@ function ChartCard({ title, answer, legend, link, table, children, className }: 
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-muted">{title}</h3>
-          <p className="text-[15px] font-semibold text-ink">{answer}</p>
+          <p className="text-sm font-semibold text-ink">{answer}</p>
         </div>
         <button className="btn btn-ghost shrink-0 px-2" onClick={() => setAsTable(!asTable)} aria-label={asTable ? 'Show as chart' : 'Show as table'} title={asTable ? 'Show as chart' : 'Show as table'}>
           {asTable ? <BarChart3 className="h-4 w-4" /> : <Table2 className="h-4 w-4" />}
