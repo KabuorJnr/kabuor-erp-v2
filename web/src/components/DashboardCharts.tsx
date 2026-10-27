@@ -10,7 +10,7 @@ import { cn, ksh } from '../lib/format';
 import { ErrorNote } from './ui';
 
 type Month = { month: string; sales: number; target: number | null; invoices: number; grossProfit: number; moneyIn: number; moneyOut: number };
-type Charts = {
+export type Charts = {
   from: string; to: string; salesTarget: number | null; owed: number;
   monthly: Month[];
   ageing: { bucket: string; amount: number; invoices: number }[];
@@ -22,7 +22,7 @@ type Charts = {
 // Categorical slots 1 and 2 of the reference palette, checked for colour-blind separation and contrast on white.
 export const SERIES = ['#2a78d6', '#eb6834'];
 
-const money = (cents: number) => ksh(Math.round(cents / 100) * 100);
+export const money = (cents: number) => ksh(Math.round(cents / 100) * 100);
 /** Axis and label money: KSh 1.2M, KSh 350K. */
 export function compact(cents: number) {
   const s = cents / 100;
@@ -34,7 +34,7 @@ export function compact(cents: number) {
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((100 * part) / whole) : 0);
 /** A share for reading: a sliver isn't "0%". */
 const share = (part: number, whole: number) => (part > 0 && pct(part, whole) === 0 ? 'under 1%' : `${pct(part, whole)}%`);
-const monthName = (iso: string, year = false) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', year ? { month: 'long', year: 'numeric' } : { month: 'short' });
+export const monthName = (iso: string, year = false) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', year ? { month: 'long', year: 'numeric' } : { month: 'short' });
 
 function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
@@ -69,12 +69,12 @@ function barPath(x: number, base: number, w: number, h: number) {
 type Series = { name: string; color: string; values: number[] };
 
 /** Month columns on one money axis, optionally with a dashed target line. Hover a month for its figures. */
-export function Columns({ labels, series, reference, tip, fmt, whole }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode; fmt?: (v: number) => string; whole?: boolean }) {
+export function Columns({ labels, series, reference, tip, fmt, whole, height = 220 }: { labels: string[]; series: Series[]; reference?: { value: number; label: string } | null; tip: (i: number) => ReactNode; fmt?: (v: number) => string; whole?: boolean; height?: number }) {
   void whole;
   const formatter = fmt ?? compact;
   const [ref, w] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
-  const H = 220, top = 16, bottom = 24, left = 46, right = 8;
+  const H = height, top = 16, bottom = 24, left = 46, right = 8;
   const max = Math.max(1, ...series.flatMap((s) => s.values), reference?.value ?? 0);
   const t = ticks(max);
   const yMax = t[t.length - 1];
@@ -103,7 +103,7 @@ export function Columns({ labels, series, reference, tip, fmt, whole }: { labels
             return (
               <g key={i} opacity={hover == null || hover === i ? 1 : 0.4}>
                 {series.map((s, k) => <path key={s.name} d={barPath(x0 + k * (barW + gap), base, barW, base - y(s.values[i]))} fill={s.color} />)}
-                {(i % every === 0 || i === last) && <text x={left + band * (i + 0.5)} y={H - 6} textAnchor="middle" className={cn('text-[10px]', hover === i ? 'fill-ink font-semibold' : 'fill-faint')}>{l}</text>}
+                {(i % every === 0 || i === last) && <text x={left + band * (i + 0.5)} y={H - 6} textAnchor="middle" className={cn('text-2xs', hover === i ? 'fill-ink font-semibold' : 'fill-muted')}>{l}</text>}
               </g>
             );
           })}
@@ -114,7 +114,7 @@ export function Columns({ labels, series, reference, tip, fmt, whole }: { labels
           {reference && reference.value > 0 && (
             <g>
               <line x1={left} x2={w - right} y1={y(reference.value)} y2={y(reference.value)} stroke="var(--color-ink-2)" strokeWidth={1.5} strokeDasharray="5 4" />
-              <text x={left + 4} y={y(reference.value) - 5} className="fill-ink-2 text-[10px] font-semibold">{reference.label}</text>
+              <text x={left + 4} y={y(reference.value) - 5} className="fill-ink-2 text-2xs font-semibold">{reference.label}</text>
             </g>
           )}
           {labels.map((_, i) => (
@@ -132,12 +132,13 @@ export function Columns({ labels, series, reference, tip, fmt, whole }: { labels
 }
 
 /** Ranked horizontal bars, each labelled with its value, for a single measure. */
-function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; value: number; note?: string }[]; value: (v: number) => string; color?: string }) {
+export function HBars({ rows, value, color = SERIES[0] }: { rows: { label: string; value: number; note?: string }[]; value: (v: number) => string; color?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <ul className="space-y-2">
       {rows.map((r) => (
-        <li key={r.label} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3 text-sm" title={r.note}>
+        // Long names are cut to fit the column, so the full name (and its note) is on hover.
+        <li key={r.label} className="grid grid-cols-[minmax(6rem,9rem)_1fr] items-center gap-3 text-sm" title={r.note ? `${r.label} · ${r.note}` : r.label}>
           <span className="truncate text-ink-2">{r.label}</span>
           <span className="flex items-center gap-2">
             <span className="h-3.5 rounded-r-[4px]" style={{ width: `${Math.max(1, (r.value / max) * 75)}%`, background: color }} />
@@ -163,7 +164,7 @@ export function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
   );
 }
 
-function Legend({ items }: { items: [string, string][] }) {
+export function Legend({ items }: { items: [string, string][] }) {
   return (
     <span className="flex flex-wrap gap-3 text-xs text-ink-2">
       {items.map(([name, color]) => <span key={name} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{name}</span>)}
@@ -178,7 +179,7 @@ export function ChartCard({ title, answer, legend, link, table, children, classN
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-muted">{title}</h3>
-          <p className="text-[15px] font-semibold text-ink">{answer}</p>
+          <p className="text-sm font-semibold text-ink">{answer}</p>
         </div>
         <button className="btn btn-ghost shrink-0 px-2" onClick={() => setAsTable(!asTable)} aria-label={asTable ? 'Show as chart' : 'Show as table'} title={asTable ? 'Show as chart' : 'Show as table'}>
           {asTable ? <BarChart3 className="h-4 w-4" /> : <Table2 className="h-4 w-4" />}

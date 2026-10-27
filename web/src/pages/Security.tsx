@@ -68,7 +68,7 @@ function TwoStep({ status, session, onChange }: { status: { twoFactorEnabled: bo
           <ShieldCheck className="h-5 w-5" /> Two-step sign-in is on
         </h2>
         <p className="mt-2 text-sm text-muted">Save these recovery codes somewhere safe, away from your phone (printed, or in a password manager). If you lose your phone, each code signs you in once. They won’t be shown again.</p>
-        <ul className="mt-4 grid grid-cols-2 gap-2 rounded-md bg-paper p-4 font-mono text-[15px]">
+        <ul className="mt-4 grid grid-cols-2 gap-2 rounded-md bg-paper p-4 font-mono text-sm">
           {codes.map((c) => (
             <li key={c}>{c}</li>
           ))}

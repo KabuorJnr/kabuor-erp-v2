@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  Activity, Armchair, BarChart3, Bot, Brain, Briefcase, Building2, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Activity, Armchair, BarChart3, BookOpen, Bot, Brain, Briefcase, Building2, Landmark, LayoutDashboard, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Handshake, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -61,6 +61,7 @@ export default function Shell({ session }: { session: Session }) {
           title: '',
           links: [
             { to: '/', label: t('Today'), icon: Home, end: true },
+            can(session, 'reports') && { to: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
             can(session, 'reports') && { to: '/intelligence', label: 'Intelligence', icon: Brain },
             (can(session, 'sell') || can(session, 'finance') || can(session, 'buy') || can(session, 'admin')) && { to: '/agents', label: 'Agents', icon: Bot },
           ],
@@ -79,11 +80,14 @@ export default function Shell({ session }: { session: Session }) {
           ],
         },
         {
-          title: 'Money',
+          // The finance department's corner: its overview first, then the daily money work, then the books.
+          title: 'Finance',
           links: [
+            can(session, 'reports') && { to: '/finance', label: 'Finance overview', icon: Landmark, end: true },
             can(session, 'sales.view') && { to: '/money-in', label: t('Money in'), icon: Wallet },
             can(session, 'buy.view') && { to: '/purchases', label: t('Purchases'), icon: ShoppingBag },
             can(session, 'finance') && { to: '/reconcile', label: 'Reconcile', icon: ListChecks },
+            can(session, 'reports') && { to: '/finance/ledger', label: 'Accounts & ledger', icon: BookOpen },
             can(session, 'reports') && { to: '/reports', label: t('Reports'), icon: BarChart3 },
           ],
         },
@@ -91,9 +95,10 @@ export default function Shell({ session }: { session: Session }) {
           title: 'Operations',
           links: [
             can(session, 'stock.view') && { to: '/stock', label: t('Stock'), icon: Package },
+            can(session, 'stock.view') && { to: '/fleet', label: 'Fleet & dispatch', icon: Truck },
             can(session, 'stock.view') && { to: '/assets', label: 'Assets', icon: Armchair },
             can(session, 'make') && { to: '/production', label: 'Production', icon: Factory },
-            can(session, 'buy.view') && { to: '/suppliers', label: t('Suppliers'), icon: Truck },
+            can(session, 'buy.view') && { to: '/suppliers', label: t('Suppliers'), icon: Handshake },
           ],
         },
         {
@@ -134,9 +139,9 @@ export default function Shell({ session }: { session: Session }) {
   const navList = (dense?: boolean) =>
     visible.map((g, i) => (
       <div key={g.title || i} className={cn(i > 0 && (dense ? 'mt-3' : 'mt-4'))}>
-        {g.title && <p className="mb-1 px-3 text-[11px] font-semibold tracking-wider text-faint uppercase">{g.title}</p>}
+        {g.title && <p className="mb-1 px-3 text-2xs font-semibold tracking-wider text-faint uppercase">{g.title}</p>}
         {g.links.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cn('flex items-center gap-3 rounded-md px-3 py-2 text-[15px] font-medium transition', isActive ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-paper')}>
+          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cn('flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition', isActive ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-paper')}>
             <n.icon className="h-[18px] w-[18px]" />
             {n.label}
           </NavLink>
@@ -180,7 +185,7 @@ export default function Shell({ session }: { session: Session }) {
               <LogOut className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex items-center justify-center gap-3 pt-1 text-[11px] text-muted">
+          <div className="flex items-center justify-center gap-3 pt-1 text-2xs text-muted">
             <NavLink to="/terms" className="hover:text-ink">Terms</NavLink>
             <span className="text-faint">·</span>
             <NavLink to="/privacy" className="hover:text-ink">Privacy</NavLink>
@@ -214,7 +219,7 @@ export default function Shell({ session }: { session: Session }) {
         <header className="sticky top-0 z-30 hidden h-14 items-center gap-4 border-b border-line bg-white/95 px-8 backdrop-blur lg:flex print:hidden">
           <button onClick={() => setTellMe(true)} className="flex h-9 w-full max-w-md items-center gap-2.5 rounded-md bg-paper px-3 text-sm text-faint ring-1 ring-line hover:ring-faint">
             <Search className="h-4 w-4" /> Tell me what you want to do
-            <kbd className="ml-auto rounded border border-line bg-white px-1.5 text-[11px] text-muted">Ctrl K</kbd>
+            <kbd className="ml-auto rounded border border-line bg-white px-1.5 text-2xs text-muted">Ctrl K</kbd>
           </button>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => setAssistant(true)} className="flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold text-indigo hover:bg-paper">
@@ -234,23 +239,23 @@ export default function Shell({ session }: { session: Session }) {
       {/* Phone tab bar */}
       <nav style={{ gridTemplateColumns: `repeat(${phoneTabs.length + 1}, minmax(0, 1fr))` }} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden" aria-label="Main">
         {phoneTabs.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cn('flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold', isActive ? 'text-brand' : 'text-muted')}>
+          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cn('flex flex-col items-center gap-0.5 py-2 text-2xs font-semibold', isActive ? 'text-brand' : 'text-muted')}>
             <n.icon className="h-5 w-5" />
             {n.label}
           </NavLink>
         ))}
-        <button onClick={() => setMore(true)} className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold text-muted" aria-label="More sections">
+        <button onClick={() => setMore(true)} className="flex flex-col items-center gap-0.5 py-2 text-2xs font-semibold text-muted" aria-label="More sections">
           <Menu className="h-5 w-5" />
           More
         </button>
       </nav>
 
       <Sheet open={more} onClose={() => setMore(false)} title={session.company.name}>
-        <button onClick={() => (setMore(false), setAssistant(true))} className="mb-4 flex w-full items-center gap-3 rounded-md bg-ink px-3 py-3 text-[15px] font-semibold text-white">
+        <button onClick={() => (setMore(false), setAssistant(true))} className="mb-4 flex w-full items-center gap-3 rounded-md bg-ink px-3 py-3 text-sm font-semibold text-white">
           <Sparkles className="h-[18px] w-[18px] text-gold" /> {t('Ask Msaidizi')}
         </button>
         {navList(true)}
-        <button onClick={() => setSession(null)} className="mt-6 flex w-full items-center gap-3 rounded-md px-3 py-2 text-[15px] font-medium text-muted">
+        <button onClick={() => setSession(null)} className="mt-6 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted">
           <LogOut className="h-[18px] w-[18px]" /> {t('Sign out')} ({session.user.name})
         </button>
       </Sheet>

@@ -127,7 +127,7 @@ export default function Leave() {
               {l.status === 'Pending' ? (
                 <span className="flex gap-2">
                   <button className="btn btn-ghost py-2" disabled={busy === l.id} onClick={() => decide(l.id, false)}>
-                    <X className="h-4 w-4" /> No
+                    <X className="h-4 w-4" /> Decline
                   </button>
                   <button className="btn btn-primary py-2" disabled={busy === l.id} onClick={() => decide(l.id, true)}>
                     {busy === l.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve

@@ -96,7 +96,7 @@ public class PayrollFlowTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = $"{role} Person", email, phone = "0700 111 222", role, password = "role-password-1" }));
         var c = factory.CreateClient();
-        var login = await Ok(await c.PostAsJsonAsync("/api/auth/login", new { email, password = "role-password-1" }));
+        var login = await TestSignIn.First(c, email, "role-password-1");
         c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("token").GetString());
         return c;
     }

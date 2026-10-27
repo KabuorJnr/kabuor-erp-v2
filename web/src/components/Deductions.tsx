@@ -277,7 +277,7 @@ export function MyDeductions({ deductions, onChange }: { deductions: Deduction[]
               {state.busy === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} I agree
             </button>
             <button onClick={() => decide(d, false)} disabled={Boolean(state.busy)} className="btn btn-ghost">
-              <X className="h-4 w-4" /> No
+              <X className="h-4 w-4" /> I don’t agree
             </button>
           </div>
         </div>

@@ -289,7 +289,7 @@ function Questions({ call, items, onChange }: { call: any; items: any[]; onChang
       {items.map((i) => (
         <li key={i.id} className="card space-y-2 p-4">
           <p className="flex justify-between text-sm"><b>{i.number}</b><span className="text-muted">{i.status === 'Won' ? 'Done' : i.status === 'Lost' ? 'Closed' : i.status === 'Open' ? 'Waiting for the business' : 'Answered'}</span></p>
-          {i.messages.map((m: any, k: number) => <p key={k} className={cn('rounded-md px-3 py-2 text-sm', m.from === 'customer' ? 'bg-paper' : 'bg-brand-soft')}><span className="block text-[11px] text-muted">{m.from === 'customer' ? 'You' : m.author} · {day(m.at)}</span>{m.text}</p>)}
+          {i.messages.map((m: any, k: number) => <p key={k} className={cn('rounded-md px-3 py-2 text-sm', m.from === 'customer' ? 'bg-paper' : 'bg-brand-soft')}><span className="block text-2xs text-muted">{m.from === 'customer' ? 'You' : m.author} · {day(m.at)}</span>{m.text}</p>)}
           <div className="flex gap-2">
             <input className="field" placeholder="Reply" value={reply[i.id] ?? ''} onChange={(e) => setReply({ ...reply, [i.id]: e.target.value })} />
             <button className="btn btn-primary" disabled={!(reply[i.id] ?? '').trim()} onClick={() => call(`/inquiries/${i.id}/messages`, { body: { text: reply[i.id] } }).then(() => (setReply({ ...reply, [i.id]: '' }), onChange()))}>Send</button>

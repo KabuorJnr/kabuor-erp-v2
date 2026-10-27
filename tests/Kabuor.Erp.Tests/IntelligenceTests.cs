@@ -28,7 +28,7 @@ public class IntelligenceTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         var made = await Ok(await owner.PostAsJsonAsync("/api/settings/users", new { name = "Mercy Achieng", email, role = "Sales", password = "another-long-password" }));
         var sales = factory.CreateClient();
-        var login = await Ok(await sales.PostAsJsonAsync("/api/auth/login", new { email, password = "another-long-password" }));
+        var login = await TestSignIn.First(sales, email, "another-long-password");
         sales.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("token").GetString());
         var portal = await Ok(await owner.PutAsJsonAsync("/api/settings/portal", new { enabled = true }));
         return (owner, sales, login.GetProperty("user").GetProperty("id").GetGuid(), portal.GetProperty("slug").GetString()!);
@@ -185,5 +185,24 @@ public class IntelligenceTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var report = await Ok(await owner.GetAsync("/api/insights/inquiries"));
         Assert.Equal("Price too high", report.GetProperty("lostReasons")[0].GetProperty("reason").GetString());
         Assert.Equal(0.0, report.GetProperty("conversion").GetDouble());
+    }
+
+    [Fact]
+    public async Task A_cached_answer_reads_exactly_like_a_fresh_one()
+    {
+        // The inbox, the insights and the quote audit are cached for a few seconds; the second load used to come back
+        // with "Name" and "Subject" instead of "name" and "subject", and the inbox showed empty rows.
+        var (owner, _, _, _) = await Setup($"Cache Shop {Guid.NewGuid():N}");
+        await Ok(await owner.PostAsJsonAsync("/api/inquiries", new { name = "Walk-in", phone = "0700111222", message = "Do you have 28 gauge sheets in green?", channel = "WalkIn" }));
+        foreach (var url in new[] { "/api/inquiries?status=active", "/api/insights/quote-variance" })
+        {
+            var fresh = (await Ok(await owner.GetAsync(url))).GetRawText();
+            var cached = (await Ok(await owner.GetAsync(url))).GetRawText();
+            Assert.Equal(fresh, cached);
+        }
+        var row = (await Ok(await owner.GetAsync("/api/inquiries?status=active"))).GetProperty("items")[0];
+        Assert.Equal("Walk-in", row.GetProperty("name").GetString());
+        Assert.Equal("Do you have 28 gauge sheets in green?", row.GetProperty("subject").GetString());
+        Assert.StartsWith("ENQ-", row.GetProperty("number").GetString());
     }
 }

@@ -36,12 +36,12 @@ export default function Proposals({ onChange, compact }: { onChange?: () => void
         {data.map((p) => (
           <li key={p.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-medium">{p.summary}</p>
+              <p className="text-sm font-medium">{p.summary}</p>
               <p className="text-xs text-muted">{dateTime(p.createdAt)}</p>
             </div>
             <div className="flex gap-2">
               <button className="btn btn-ghost py-2" disabled={busy === p.id} onClick={() => decide(p, false)}>
-                <X className="h-4 w-4" /> No
+                <X className="h-4 w-4" /> Dismiss
               </button>
               <button className={p.kind === 'send_reminder' ? 'btn btn-mpesa py-2' : 'btn btn-primary py-2'} disabled={busy === p.id} onClick={() => decide(p, true)}>
                 {busy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : p.kind === 'send_reminder' ? <MessageCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}

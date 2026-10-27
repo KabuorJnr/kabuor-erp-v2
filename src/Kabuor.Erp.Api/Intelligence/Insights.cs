@@ -342,16 +342,10 @@ public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache me
             return memCached;
         }
 
-        var redisCached = await appCache.GetStringAsync(cacheKey);
-        if (!string.IsNullOrEmpty(redisCached))
+        if (await appCache.GetAnswerAsync(cacheKey) is { } shared)
         {
-            try
-            {
-                var parsed = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(redisCached);
-                memoryCache.Set(cacheKey, parsed, TimeSpan.FromSeconds(30));
-                return parsed;
-            }
-            catch {}
+            memoryCache.Set(cacheKey, shared, TimeSpan.FromSeconds(30));
+            return shared;
         }
 
         var today = Clock.Today;
@@ -384,12 +378,7 @@ public sealed class InsightsService(ErpDb db, LinkService links, IMemoryCache me
             stockAccuracy = (double?)accuracy.accuracy,
         };
         memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(30));
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(result);
-            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(60));
-        }
-        catch {}
+        await appCache.SetAnswerAsync(cacheKey, result, TimeSpan.FromSeconds(60));
         return result;
     }
 }

@@ -306,7 +306,7 @@ export default function Pos() {
                   <Download className="h-3.5 w-3.5 text-brand" /> Install App
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-semibold text-good">
+                <span className="inline-flex items-center gap-1 rounded-full bg-good-soft px-2 py-0.5 text-2xs font-semibold text-good">
                   <span className="h-1.5 w-1.5 rounded-full bg-good" /> Kiosk App
                 </span>
               )}
@@ -477,13 +477,15 @@ function ProductTile({ item, inTicket, onAdd }: { item: CatalogItem; inTicket: n
     <button
       onClick={onAdd}
       aria-label={`Add ${item.name}, ${ksh(item.price)}`}
-      className={cn('relative flex min-h-[7rem] flex-col rounded-md bg-white p-3 text-left ring-1 transition active:scale-[0.98]', inTicket ? 'ring-2 ring-brand' : 'ring-line hover:ring-faint', out && 'opacity-60')}
+      title={item.name}
+      className={cn('relative flex min-h-[8rem] flex-col rounded-md bg-white p-3 text-left ring-1 transition active:scale-[0.98]', inTicket ? 'ring-2 ring-brand' : 'ring-line hover:ring-faint', out && 'opacity-60')}
     >
       {inTicket > 0 && <span className="num absolute top-2 right-2 grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-xs font-bold text-white">{inTicket}</span>}
-      <span className="line-clamp-2 pr-6 text-[15px] leading-snug font-semibold">{item.name}</span>
+      {/* Three lines: the size or colour that tells two products apart is usually at the end of the name. */}
+      <span className="line-clamp-3 pr-6 text-sm leading-snug font-semibold">{item.name}</span>
       <span className="mt-1 flex min-w-0 items-center gap-1.5">
         <Stock item={item} />
-        {item.code && <span className="truncate font-mono text-[11px] text-faint">· {item.code}</span>}
+        {item.code && <span className="truncate font-mono text-2xs text-faint">· {item.code}</span>}
       </span>
       <span className="num mt-auto pt-2 font-display text-lg font-bold">{ksh(item.price)}</span>
     </button>
@@ -496,7 +498,7 @@ function ProductRow({ item, inTicket, onAdd }: { item: CatalogItem; inTicket: nu
     <li>
       <button onClick={onAdd} className={cn('flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-paper', out && 'opacity-60')}>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{item.name}</span>
+          <span className="line-clamp-2 font-semibold">{item.name}</span>
           <span className="text-xs text-faint">{item.code || item.unit}</span>
         </span>
         <Stock item={item} />
@@ -544,7 +546,7 @@ function TicketPanel(p: {
             {p.lines.map(({ item, quantity }) => (
               <li key={item.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{item.name}</p>
+                  <p className="line-clamp-2 text-sm font-semibold">{item.name}</p>
                   <p className="num text-xs text-muted">{ksh(item.price)} each</p>
                 </div>
                 <div className="flex items-center rounded-md ring-1 ring-line">
@@ -583,7 +585,7 @@ function TicketPanel(p: {
         {p.tillOpen ? (
           <button onClick={p.onPay} disabled={!p.lines.length} className="btn btn-primary mt-3 w-full py-3.5 text-base">
             {p.lines.length ? <>Charge {ksh(p.total)}</> : 'Add products to charge'}
-            <kbd className="ml-1 hidden rounded bg-white/20 px-1.5 text-[11px] lg:inline">F2</kbd>
+            <kbd className="ml-1 hidden rounded bg-white/20 px-1.5 text-2xs lg:inline">F2</kbd>
           </button>
         ) : (
           <button onClick={p.onOpenTill} className="btn btn-ghost mt-3 w-full py-3.5 text-base">
@@ -927,7 +929,7 @@ function ReceiptView({ receipt: r, cashier, onNext }: { receipt: Receipt; cashie
           <p className="mt-1 font-display text-lg font-bold text-good">Paid · {ksh(r.total)}</p>
           {r.changeGiven > 0 && <p className="num font-display text-2xl font-bold text-ink">Give change: {ksh(r.changeGiven)}</p>}
         </div>
-        <div className="receipt-paper flex-1 overflow-y-auto px-5 py-4 font-mono text-[12px] leading-relaxed print:mx-auto print:overflow-visible print:px-0">
+        <div className="receipt-paper flex-1 overflow-y-auto px-5 py-4 font-mono text-2xs leading-relaxed print:mx-auto print:overflow-visible print:px-0">
           <div className="text-center">
             <b className="block text-sm">{r.company.name}</b>
             {r.company.kraPin && <p>PIN {r.company.kraPin}</p>}
@@ -951,7 +953,7 @@ function ReceiptView({ receipt: r, cashier, onNext }: { receipt: Receipt; cashie
           {r.tax > 0 && <p className="flex justify-between text-muted"><span>Includes VAT</span><span>{ksh(r.tax)}</span></p>}
           <p className="flex justify-between"><span>{METHOD_LABEL[r.paymentMethod] ?? r.paymentMethod}{r.paymentMethod === 'Mpesa' && r.reference ? ` ${r.reference}` : ''}</span><span>{ksh(r.amountPaid)}</span></p>
           {r.changeGiven > 0 && <p className="flex justify-between"><span>Change</span><span>{ksh(r.changeGiven)}</span></p>}
-          {etims && <p className="mt-3 text-center text-[11px] text-muted">{etims}</p>}
+          {etims && <p className="mt-3 text-center text-2xs text-muted">{etims}</p>}
           <p className="mt-2 text-center">Asante! Karibu tena.</p>
         </div>
         <div className="flex gap-2 border-t border-line bg-paper p-3 print:hidden">

@@ -9,12 +9,12 @@ import { api, can, useApi, useSession } from '../lib/api';
 import { cn, ksh } from '../lib/format';
 import { Chips, ErrorNote, Sheet } from './ui';
 
-type Kpi = {
+export type Kpi = {
   key: string; group: string; name: string; unit: 'ksh' | '%' | 'count' | 'hours' | 'days'; higherIsBetter: boolean; link: string; explain: string;
   value: number | null; target: number | null; dueByNow: number | null; status: 'met' | 'close' | 'behind' | 'none'; previous: number | null; change: number | null;
   projected: number | null; trend: { from: string; value: number | null }[];
 };
-type Card = { period: string; from: string; to: string; shownTo: string; elapsedShare: number; met: number; close: number; behind: number; withoutTarget: number; kpis: Kpi[] };
+export type Card = { period: string; from: string; to: string; shownTo: string; elapsedShare: number; met: number; close: number; behind: number; withoutTarget: number; kpis: Kpi[] };
 
 const shillings = (cents: number) => ksh(Math.round(cents / 100) * 100);
 export function fmt(k: Pick<Kpi, 'unit'>, v: number | null) {
@@ -28,12 +28,12 @@ export function fmt(k: Pick<Kpi, 'unit'>, v: number | null) {
   }
 }
 
-const STATUS: Record<Kpi['status'], [string, string]> = {
+export const STATUS: Record<Kpi['status'], [string, string]> = {
   met: ['On target', 'bg-good-soft text-good'], close: ['Nearly there', 'bg-warn-soft text-warn'], behind: ['Behind', 'bg-bad-soft text-bad'], none: ['No target', 'bg-paper text-muted ring-1 ring-line'],
 };
 
 /** Six periods as a line: one series, its name is the tile's, so no legend; the last point is marked. */
-function Spark({ points, good }: { points: (number | null)[]; good: boolean }) {
+export function Spark({ points, good }: { points: (number | null)[]; good: boolean }) {
   const vals = points.map((p) => p ?? null);
   const known = vals.filter((v): v is number => v != null);
   if (known.length < 2) return <span className="block h-8" />;
@@ -58,7 +58,7 @@ function Tile({ k }: { k: Kpi }) {
     <Link to={k.link} className="card flex flex-col gap-1.5 p-3.5 transition hover:ring-faint" title={k.explain}>
       <span className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-muted">{k.name}</span>
-        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', tone)}>{label}</span>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold', tone)}>{label}</span>
       </span>
       <span className="num text-xl font-bold">{fmt(k, k.value)}</span>
       <span className="text-xs text-muted">

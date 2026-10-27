@@ -114,12 +114,7 @@ public sealed class QuoteAuditService(ErpDb db, AppCache appCache, RequestContex
     public async Task<object> AllVariances(int days = 90)
     {
         var cacheKey = $"variances:{ctx.CompanyId}:{days}";
-        var cached = await appCache.GetStringAsync(cacheKey);
-        if (!string.IsNullOrEmpty(cached))
-        {
-            try { return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(cached); }
-            catch {}
-        }
+        if (await appCache.GetAnswerAsync(cacheKey) is { } cached) return cached;
 
         var since = Clock.Today.AddDays(-days);
         var invoices = await db.SalesDocs.AsNoTracking().Include(d => d.Lines).Include(d => d.Customer)
@@ -194,12 +189,7 @@ public sealed class QuoteAuditService(ErpDb db, AppCache appCache, RequestContex
             })
         };
 
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(result);
-            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(60));
-        }
-        catch {}
+        await appCache.SetAnswerAsync(cacheKey, result, TimeSpan.FromSeconds(60));
 
         return result;
     }

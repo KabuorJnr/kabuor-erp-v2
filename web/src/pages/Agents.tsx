@@ -122,7 +122,7 @@ function TaskCard({ t, onDone }: { t: Task; onDone: () => void }) {
           </Status>
         )}
       </div>
-      <h2 className="mt-2 font-semibold text-[16px] leading-snug">{t.title}</h2>
+      <h2 className="mt-2 font-semibold text-base leading-snug">{t.title}</h2>
       {t.detail && <p className="mt-1 text-sm text-muted">{t.detail}</p>}
 
       {review && t.action === 'send_reminder' && (
@@ -197,7 +197,7 @@ function AgentCard({ a, onChange, onEdit }: { a: Agent; onChange: () => void; on
           <Bot className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 font-semibold">{a.name}{a.custom && <span className="rounded-full bg-paper px-2 py-0.5 text-[11px] font-semibold text-muted ring-1 ring-line">Yours</span>}</h2>
+          <h2 className="flex items-center gap-2 font-semibold">{a.name}{a.custom && <span className="rounded-full bg-paper px-2 py-0.5 text-2xs font-semibold text-muted ring-1 ring-line">Yours</span>}</h2>
           <p className="text-sm text-muted">{a.job}</p>
           {a.trigger && <p className="mt-1 flex items-center gap-1 text-xs text-indigo"><Zap className="h-3.5 w-3.5" /> Also wakes up: {a.trigger.charAt(0).toLowerCase() + a.trigger.slice(1)}</p>}
         </div>

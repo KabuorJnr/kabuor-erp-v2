@@ -7,19 +7,11 @@ import Connections from '../components/Connections';
 import { PromptSetup } from '../components/MpesaPrompt';
 import { PriceLists, UnitsEditor, unitsBody, type UnitRow } from '../components/Trade';
 import { useSearchParams } from 'react-router';
-import { ksh, toCents } from '../lib/format';
+import { cn, ksh, toCents } from '../lib/format';
 import { Chips, ErrorNote, Field, Loading, PageHeader, Sheet, Status } from '../components/ui';
 import { ScanButton } from '../components/Scanner';
-
-const ROLES: [string, string][] = [
-  ['Owner', 'Everything, including people and settings'],
-  ['Accountant', 'Finance, payments, matching, ledger and reports'],
-  ['Procurement', 'Suppliers, purchase orders, vendor bills and receiving'],
-  ['Sales', 'Point of sale (POS), customers, quotes, invoices and recording payments'],
-  ['Storekeeper', 'Items, stock levels, warehouse transfers and counts'],
-  ['HR', 'Employees, leave and payroll (approval stays with the owner or accountant)'],
-  ['Viewer', 'Can look, can’t change anything (never sees salaries)'],
-];
+import Team from '../components/Team';
+import ActivityLog from '../components/ActivityLog';
 
 function Company() {
   const { data, error, reload } = useApi<any>('/settings/company');
@@ -55,13 +47,14 @@ function Company() {
     }
   };
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+    // Side by side only on very wide screens: next to the settings menu the form was left two 165px columns.
+    <div className="grid gap-5 2xl:grid-cols-[1fr_22rem]">
       <form onSubmit={save} className="card space-y-4 p-4 sm:p-5">
         <Field label="Business name">
           <input className="field" value={f.name} onChange={set('name')} required />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Industry / Sector" hint="Workflow rules & module defaults.">
+          <Field label="Industry" hint="Decides which sections and setup steps you see.">
             <select className="field" value={f.industry ?? 'general'} onChange={(e) => setF({ ...f, industry: e.target.value })}>
               <option value="general">General Business & Trading</option>
               <option value="distribution">Wholesale & Distribution</option>
@@ -71,7 +64,7 @@ function Company() {
               <option value="services">Services & Consulting</option>
             </select>
           </Field>
-          <Field label="Accounting Period Lock Date" hint="Blocks backdating invoices & bills.">
+          <Field label="Books closed up to" hint="Nothing can be dated on or before this day, so filed months stay as filed.">
             <input type="date" className="field" value={f.accountingLockDate ?? ''} onChange={(e) => setF({ ...f, accountingLockDate: e.target.value || null })} />
           </Field>
         </div>
@@ -131,82 +124,6 @@ function Company() {
         <p className="text-xs text-muted">Keep it private: it contains a secret key for your business.</p>
       </aside>
     </div>
-  );
-}
-
-function Team() {
-  const { data, error, reload } = useApi<any[]>('/settings/users');
-  const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ name: '', email: '', phone: '', role: 'Sales', password: '' });
-  const [state, setState] = useState({ busy: false, error: '' });
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setState({ busy: true, error: '' });
-    try {
-      await api('/settings/users', { body: f });
-      setAdding(false);
-      setF({ name: '', email: '', phone: '', role: 'Sales', password: '' });
-      reload();
-      setState({ busy: false, error: '' });
-    } catch (err) {
-      setState({ busy: false, error: (err as Error).message });
-    }
-  };
-  if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (!data) return <Loading />;
-  return (
-    <>
-      <div className="mb-3 flex justify-end">
-        <button className="btn btn-primary" onClick={() => setAdding(true)}>
-          <Plus className="h-4 w-4" /> Add a person
-        </button>
-      </div>
-      <ul className="card divide-y divide-line">
-        {data.map((u) => (
-          <li key={u.id} className="flex items-center gap-3 px-4 py-3">
-            <span className="min-w-0 flex-1">
-              <b className="block truncate">{u.name}</b>
-              <span className="text-sm text-muted">{u.email}</span>
-            </span>
-            <Status tone={u.role === 'Owner' ? 'info' : 'plain'}>{u.role}</Status>
-          </li>
-        ))}
-      </ul>
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Add a person">
-        <form onSubmit={submit} className="space-y-4">
-          <Field label="Name">
-            <input className="field" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          </Field>
-          <Field label="Email (they sign in with it)">
-            <input className="field" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-          </Field>
-          <Field label="Phone">
-            <input className="field" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
-          </Field>
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-semibold">What they can do</legend>
-            <div className="space-y-1.5">
-              {ROLES.filter(([r]) => r !== 'Owner').map(([r, desc]) => (
-                <label key={r} className="flex cursor-pointer items-start gap-2.5 rounded-md bg-white p-3 ring-1 ring-line has-[:checked]:ring-2 has-[:checked]:ring-brand">
-                  <input type="radio" name="role" className="mt-1 accent-[var(--color-brand)]" checked={f.role === r} onChange={() => setF({ ...f, role: r })} />
-                  <span>
-                    <b className="block text-sm">{r}</b>
-                    <span className="text-xs text-muted">{desc}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <Field label="Starting password" hint="At least 10 characters. Share it with them privately.">
-            <input className="field" type="text" required minLength={10} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
-          </Field>
-          {state.error && <ErrorNote>{state.error}</ErrorNote>}
-          <button className="btn btn-primary w-full py-3" disabled={state.busy}>
-            {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Add {f.name.split(' ')[0] || 'person'}
-          </button>
-        </form>
-      </Sheet>
-    </>
   );
 }
 
@@ -383,7 +300,7 @@ function EtimsSetup() {
   };
   const live = data.mode !== 'Test' && data.connected;
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-4 2xl:grid-cols-[1fr_20rem]">
       <section className="card space-y-4 p-5">
         <div className={live ? 'rounded-md bg-good-soft p-3 text-sm text-good' : 'rounded-md bg-warn-soft p-3 text-sm text-warn'}>
           {live ? (
@@ -437,29 +354,60 @@ function EtimsSetup() {
   );
 }
 
+const SECTIONS: { title: string; tabs: [string, string, string][] }[] = [
+  { title: 'Business', tabs: [['company', 'Business & M-Pesa', 'Name, KRA PIN, VAT, how customers pay'], ['etims', 'KRA eTIMS', 'Signing invoices with KRA'], ['items', 'Products & services', 'What you sell and its prices'], ['prices', 'Price lists', 'Wholesale and customer prices']] },
+  { title: 'People & access', tabs: [['team', 'Team', 'Who signs in and what they can do'], ['activity', 'Activity', 'Every change, and who made it']] },
+  { title: 'Data', tabs: [['move', 'Move in (import)', 'Bring lists from Excel, QuickBooks, Sage'], ['connections', 'Connections', 'Shop, webhooks and other apps']] },
+  { title: 'Account', tabs: [['plan', 'Plan & billing', 'Your plan and paying by M-Pesa']] },
+];
+
 export default function Settings() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') ?? 'company';
+  const all = SECTIONS.flatMap((s) => s.tabs);
+  const tab = all.some(([id]) => id === params.get('tab')) ? params.get('tab')! : 'company';
   const setTab = (t: string) => setParams({ tab: t }, { replace: true });
+  const current = all.find(([id]) => id === tab)!;
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="mb-4">
-        <Chips label="Settings" value={tab} onChange={setTab} options={[['company', 'Business & M-Pesa'], ['etims', 'KRA eTIMS'], ['items', 'Products & services'], ['prices', 'Price lists'], ['team', 'Team'], ['move', 'Move in (import)'], ['connections', 'Connections'], ['plan', 'Plan & billing']]} />
-      </div>
-      {tab === 'company' && (
-        <div className="space-y-5">
-          <Company />
-          <PromptSetup />
+      <div className="lg:grid lg:grid-cols-[14rem_1fr] lg:gap-8">
+        {/* On a computer: the sections down the side, grouped. On a phone: one row of chips. */}
+        <nav className="hidden lg:block" aria-label="Settings">
+          {SECTIONS.map((sec) => (
+            <div key={sec.title} className="mb-4">
+              <p className="mb-1 px-3 text-2xs font-semibold tracking-wider text-faint uppercase">{sec.title}</p>
+              {sec.tabs.map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined} className={cn('block w-full rounded-md px-3 py-2 text-left text-sm font-medium', tab === id ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-white')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="mb-4 lg:hidden">
+          <Chips label="Settings" value={tab} onChange={setTab} options={all.map(([id, label]) => [id, label] as [string, string])} />
         </div>
-      )}
-      {tab === 'items' && <Items />}
-      {tab === 'team' && <Team />}
-      {tab === 'etims' && <EtimsSetup />}
-      {tab === 'move' && <MoveIn />}
-      {tab === 'plan' && <PlanSettings />}
-      {tab === 'connections' && <Connections />}
-      {tab === 'prices' && <PriceLists />}
+        <div className="min-w-0">
+          <header className="mb-4 hidden lg:block">
+            <h2 className="font-display text-xl font-bold">{current[1]}</h2>
+            <p className="text-sm text-muted">{current[2]}</p>
+          </header>
+          {tab === 'company' && (
+            <div className="space-y-5">
+              <Company />
+              <PromptSetup />
+            </div>
+          )}
+          {tab === 'items' && <Items />}
+          {tab === 'team' && <Team />}
+          {tab === 'activity' && <ActivityLog />}
+          {tab === 'etims' && <EtimsSetup />}
+          {tab === 'move' && <MoveIn />}
+          {tab === 'plan' && <PlanSettings />}
+          {tab === 'connections' && <Connections />}
+          {tab === 'prices' && <PriceLists />}
+        </div>
+      </div>
     </>
   );
 }

@@ -15,7 +15,7 @@ public sealed record PortalSettingsInput(bool Enabled, string? Slug);
 
 public static class IntelligenceEndpoints
 {
-    static string BaseUrl(HttpRequest r) => $"{r.Scheme}://{r.Host}";
+    static string BaseUrl(HttpRequest r) => PublicUrl.Of(r);
     static DateOnly From(DateOnly? f) => f ?? Clock.Today.AddDays(-89);
     static DateOnly To(DateOnly? t) => t ?? Clock.Today;
 
@@ -43,8 +43,9 @@ public static class IntelligenceEndpoints
         staff.MapGet("/insights/journey/{id:guid}", (Guid id, InsightsService s) => s.Journey(id)).RequireAuthorization(Policies.SalesView);
         // The leaderboard is for the whole team to see.
         staff.MapGet("/insights/salespeople", (InsightsService s, int? year) => s.Salespeople(year ?? Clock.Today.Year));
+        // Most invoices never started as a quote: that's "nothing to compare" (204), not a missing page.
         staff.MapGet("/sales/{id:guid}/variance", async (Guid id, QuoteAuditService audit) =>
-            await audit.AuditDoc(id) is { } res ? Results.Ok(res) : Results.NotFound(new { error = "No variance report found for this document." })).RequireAuthorization(Policies.SalesView);
+            await audit.AuditDoc(id) is { } res ? Results.Ok(res) : Results.NoContent()).RequireAuthorization(Policies.SalesView);
 
         // ---------- tracking links ----------
         var links = staff.MapGroup("/links").RequireAuthorization(Policies.Crm);
@@ -68,7 +69,7 @@ public static class IntelligenceEndpoints
             };
         });
         inbox.MapGet("/{id:guid}/variance", async (Guid id, QuoteAuditService audit) =>
-            await audit.AuditInquiry(id) is { } res ? Results.Ok(res) : Results.NotFound(new { error = "No quote/invoice variance found for this inquiry." }));
+            await audit.AuditInquiry(id) is { } res ? Results.Ok(res) : Results.NoContent());
         inbox.MapPost("", (InquiryInput input, InquiryService s) => s.Create(input)).RequireAuthorization(Policies.Sell);
         inbox.MapPost("/{id:guid}/reply", async (Guid id, ReplyInput input, InquiryService s) => { var i = await s.Reply(id, input); return new { i.Id, status = i.Status.ToString() }; }).RequireAuthorization(Policies.Sell);
         inbox.MapPost("/{id:guid}/assign", async (Guid id, AssignInput input, InquiryService s) => { var i = await s.Assign(id, input); return new { i.Id, i.AssignedName }; }).RequireAuthorization(Policies.Sell);

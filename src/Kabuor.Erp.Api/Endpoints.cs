@@ -19,6 +19,7 @@ public sealed record CompanyInput(string Name, string? KraPin, string? Phone, st
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
 public sealed record UserInput(string Name, string Email, string? Phone, Role Role, string Password);
+public sealed record RoleInput(Role Role);
 public sealed record AllocateInput(List<AllocationInput> Allocations);
 
 public static class Endpoints
@@ -44,16 +45,22 @@ public static class Endpoints
         me.MapPost("/sign-out-everywhere", async (AuthService s) => { await s.SignOutEverywhere(); return Results.NoContent(); });
 
         // Safaricom's answer to a subscription prompt (the secret in the URL is ours, from configuration).
-        api.MapPost("/billing/mpesa/{secret}", async (string secret, System.Text.Json.Nodes.JsonObject body, IConfiguration config, Kabuor.Erp.Billing.BillingService s) =>
+        api.MapPost("/billing/mpesa/{secret}", async (string secret, System.Text.Json.Nodes.JsonObject body, Kabuor.Erp.Billing.BillingMpesa mpesa, Kabuor.Erp.Billing.BillingService s) =>
         {
-            if (string.IsNullOrEmpty(config["Billing:Mpesa:CallbackSecret"]) || secret != config["Billing:Mpesa:CallbackSecret"]) return Results.NotFound();
+            if (!mpesa.SecretMatches(secret)) return Results.NotFound();
             await s.Callback(body);
             return MpesaAck();
         });
 
         // Public: who to contact about privacy, and where the data lives (for the privacy notice and terms).
         // Public settings the web app needs before sign-in: where to report browser errors (empty = off).
-        api.MapGet("/client-config", (IConfiguration config) => new { sentryDsn = config["Sentry:BrowserDsn"] ?? config["Sentry:Dsn"] ?? "", environment = config["Sentry:Environment"] ?? "production" });
+        // And what opening an account costs, so sign-up can say so before anyone starts.
+        api.MapGet("/client-config", (IConfiguration config) => new
+        {
+            sentryDsn = config["Sentry:BrowserDsn"] ?? config["Sentry:Dsn"] ?? "", environment = config["Sentry:Environment"] ?? "production",
+            payToStart = Kabuor.Erp.Billing.Plans.PayToStart(config),
+            plans = Kabuor.Erp.Billing.Plans.All(config).Select(p => new { p.Id, p.Name, p.Monthly }),
+        });
         api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "21 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
@@ -239,7 +246,7 @@ public static class Endpoints
             return await s.Get(id);
         }).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/void", (Guid id, SalesService s) => s.Void(id)).RequireAuthorization(Policies.Finance);
-        docs.MapPost("/{id:guid}/mpesa-request", (Guid id, StkRequestInput input, StkService s, HttpRequest req) => s.Request(id, input, $"{req.Scheme}://{req.Host}")).RequireAuthorization(Policies.Sell);
+        docs.MapPost("/{id:guid}/mpesa-request", (Guid id, StkRequestInput input, StkService s, HttpRequest req) => s.Request(id, input, PublicUrl.Of(req))).RequireAuthorization(Policies.Sell);
         docs.MapGet("/{id:guid}/mpesa-requests", (Guid id, StkService s) => s.ForInvoice(id));
         docs.MapPost("/{id:guid}/to-invoice", (Guid id, SalesService s) => s.ToInvoice(id)).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/etims", async (Guid id, SalesService s) =>
@@ -293,6 +300,30 @@ public static class Endpoints
             r.CashFlow(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
         reports.MapGet("/withheld", (ReportService r, DateOnly? from, DateOnly? to) =>
             r.Withheld(from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today));
+        // Files: any report as a spreadsheet or CSV (or as tables for the printable view), and a month's numbers as one
+        // workbook to send on. Balance sheet, trial balance and debtors are "as at" the end date.
+        const string XlsxType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        reports.MapGet("/export/{report}", async (string report, string? format, DateOnly? from, DateOnly? to, ReportExports x) =>
+        {
+            var (f, t) = (from ?? new DateOnly(Clock.Today.Year, Clock.Today.Month, 1), to ?? Clock.Today);
+            var sheet = await x.One(report, f, t);
+            if (format == "json") return Results.Ok(new { sheets = new[] { ReportExports.ToJson(sheet) } });
+            var period = report is "balance-sheet" or "trial-balance" or "aging" ? $"at {t:yyyy-MM-dd}" : $"{f:yyyy-MM-dd} to {t:yyyy-MM-dd}";
+            var company = await x.CompanyName();
+            return format == "csv"
+                ? Results.File([.. System.Text.Encoding.UTF8.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(Xlsx.Csv(sheet))], "text/csv", ReportExports.FileName(company, sheet.Name, period, "csv"))
+                : Results.File(Xlsx.Write([sheet]), XlsxType, ReportExports.FileName(company, sheet.Name, period, "xlsx"));
+        });
+        reports.MapGet("/monthly", async (string? month, string? format, ReportExports x) =>
+        {
+            var m = DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", out var d) ? d : new DateOnly(Clock.Today.Year, Clock.Today.Month, 1);
+            var sheets = await x.Monthly(m);
+            var company = await x.CompanyName();
+            return format == "json"
+                ? Results.Ok(new { company, month = m, sheets = sheets.Select(ReportExports.ToJson) })
+                : Results.File(Xlsx.Write(sheets), XlsxType, ReportExports.FileName(company, "Monthly report", m.ToString("yyyy-MM"), "xlsx"));
+        });
+
         // KRA VAT3 registers, to paste into the iTax return template.
         reports.MapGet("/itax/sales.csv", async (ReportService r, DateOnly? from, DateOnly? to, string? rate) =>
         {
@@ -328,7 +359,8 @@ public static class Endpoints
         // ---------- subscription ----------
         var billing = app_.MapGroup("/billing").RequireAuthorization(Policies.Admin);
         billing.MapGet("", (Kabuor.Erp.Billing.BillingService s) => s.Status());
-        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, $"{req.Scheme}://{req.Host}"));
+        billing.MapPost("/pay", (Kabuor.Erp.Billing.PayInput input, Kabuor.Erp.Billing.BillingService s, HttpRequest req) => s.Pay(input, PublicUrl.Of(req))).RequireRateLimiting("prompts");
+        billing.MapPost("/payments/{id:guid}/check", (Guid id, Kabuor.Erp.Billing.BillingService s) => s.Check(id));
 
         // ---------- moving in: CSV from Excel, QuickBooks, Sage, Zoho ----------
         var import = app_.MapGroup("/import").RequireAuthorization(Policies.Admin);
@@ -350,7 +382,7 @@ public static class Endpoints
         settings.MapGet("/company", async (ErpDb db, HttpRequest req) =>
         {
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
-            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{req.Scheme}://{req.Host}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
+            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{PublicUrl.Of(req)}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
         }).RequireAuthorization(Policies.Admin);
         settings.MapGet("/mpesa-prompt", (StkService s) => s.Setup()).RequireAuthorization(Policies.Admin);
         settings.MapPut("/mpesa-prompt", (StkSetupInput input, StkService s) => s.Save(input)).RequireAuthorization(Policies.Admin);
@@ -368,7 +400,12 @@ public static class Endpoints
             await db.SaveChangesAsync();
             return Results.NoContent();
         }).RequireAuthorization(Policies.Admin);
-        settings.MapGet("/users", async (ErpDb db) => await db.Users.OrderBy(u => u.Name).Select(u => new { u.Id, u.Name, u.Email, u.Phone, Role = u.Role.ToString(), u.Active }).ToListAsync()).RequireAuthorization(Policies.Admin);
+        settings.MapGet("/users", async (ErpDb db) => await db.Users.OrderBy(u => u.Name)
+            .Select(u => new { u.Id, u.Name, u.Email, u.Phone, Role = u.Role.ToString(), u.Active, u.TwoFactorEnabled, u.MustChangePassword, u.LastSignInAt, u.LockedUntil, u.CreatedAt }).ToListAsync()).RequireAuthorization(Policies.Admin);
+        settings.MapPut("/users/{id:guid}/role", async (Guid id, RoleInput input, AuthService s) => { var u = await s.ChangeRole(id, input.Role); return new { u.Id, Role = u.Role.ToString() }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/deactivate", async (Guid id, AuthService s) => { var u = await s.SetActive(id, false); return new { u.Id, u.Active }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/activate", async (Guid id, AuthService s) => { var u = await s.SetActive(id, true); return new { u.Id, u.Active }; }).RequireAuthorization(Policies.Admin);
+        settings.MapPost("/users/{id:guid}/reset-password", (Guid id, AuthService s) => s.ResetPassword(id)).RequireAuthorization(Policies.Admin);
         settings.MapPost("/users", async (UserInput input, AuthService s) =>
         {
             var u = await s.AddUser(input.Name, input.Email, input.Phone ?? "", input.Role, input.Password);
@@ -392,6 +429,8 @@ public static class Endpoints
         SearchEndpoints.Map(app_);
         ProductionEndpoints.Map(app_);
         DispatchEndpoints.Map(app_);
+        RecruitmentEndpoints.Map(app_);
+        Kabuor.Erp.Finance.FinanceEndpoints.Map(app_);
         Assistant.AssistantEndpoints.Map(app_);
     }
 

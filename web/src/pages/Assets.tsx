@@ -138,7 +138,7 @@ export default function Assets() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <code className="shrink-0 rounded bg-paper px-1.5 py-0.5 text-xs font-semibold ring-1 ring-line">{a.tag}</code>
-                      <b className="truncate text-[15px]">{a.name}</b>
+                      <b className="truncate text-sm">{a.name}</b>
                     </span>
                     <span className="mt-0.5 block truncate text-sm text-muted">
                       {[a.location, a.assignedTo && `with ${a.assignedTo}`, a.serialNumber && `S/N ${a.serialNumber}`].filter(Boolean).join(' · ') || a.categoryName}

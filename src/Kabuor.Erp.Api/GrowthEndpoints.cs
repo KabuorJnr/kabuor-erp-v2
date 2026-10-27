@@ -76,7 +76,7 @@ public static class GrowthEndpoints
         });
         mk.MapPost("/campaigns", async (CampaignInput input, MarketingService s) => Results.Created("", await s.Save(null, input))).RequireAuthorization(Policies.Sell);
         mk.MapPut("/campaigns/{id:guid}", (Guid id, CampaignInput input, MarketingService s) => s.Save(id, input)).RequireAuthorization(Policies.Sell);
-        mk.MapPost("/campaigns/{id:guid}/send", (Guid id, MarketingService s, HttpRequest r) => s.Send(id, $"{r.Scheme}://{r.Host}")).RequireAuthorization(Policies.Sell);
+        mk.MapPost("/campaigns/{id:guid}/send", (Guid id, MarketingService s, HttpRequest r) => s.Send(id, PublicUrl.Of(r))).RequireAuthorization(Policies.Sell);
         mk.MapPost("/campaigns/{id:guid}/recipients/{rid:guid}/sent", async (Guid id, Guid rid, MarketingService s) =>
         {
             await s.MarkSent(id, rid);

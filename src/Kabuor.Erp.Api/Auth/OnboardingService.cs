@@ -23,6 +23,8 @@ public sealed class OnboardingService(
 
         var hasCompanyProfile = !string.IsNullOrWhiteSpace(company.Name) &&
             (!string.IsNullOrWhiteSpace(company.Email) || !string.IsNullOrWhiteSpace(company.Phone));
+        // Invoices can be signed for KRA once the PIN is in (or the business says it isn't VAT registered).
+        var taxReady = company.KraPin.Length > 0 || !company.VatRegistered;
 
         var hasPaymentConfigured = !string.IsNullOrWhiteSpace(company.MpesaShortcode) ||
                                    !string.IsNullOrWhiteSpace(company.StkConsumerKey) ||
@@ -31,6 +33,10 @@ public sealed class OnboardingService(
         var hasCustomer = await db.Customers.AnyAsync();
         var hasItem = await db.Items.AnyAsync();
         var hasInvoice = await db.SalesDocs.AnyAsync(s => s.Kind == SalesDocKind.Invoice);
+        var hasTeam = await db.Users.CountAsync(u => u.Role != Role.Employee) > 1;
+        // Businesses that deliver their own goods start with their vehicles.
+        var delivers = company.Industry is "transportation" or "distribution";
+        var hasVehicle = delivers && await db.Assets.AnyAsync(a => a.Category == "VEH");
 
         int total = 4;
         int completed = 0;
@@ -39,17 +45,20 @@ public sealed class OnboardingService(
         if (hasItem) completed++;
         if (hasInvoice) completed++;
 
-        int percentage = (int)Math.Round((double)completed / total * 100);
+        var steps = new List<OnboardingStep>
+        {
+            new("tax", "Add your KRA PIN", "Printed on every invoice and needed to sign them with eTIMS.", taxReady, "/settings?tab=company", "Add PIN"),
+            new("mpesa", "Connect your M-Pesa till or paybill", "Payments customers make arrive here and match their invoices by themselves.", hasPaymentConfigured, "/settings?tab=company", "Connect M-Pesa"),
+            new("items", "Add what you sell", "Products and services with their prices, or bring your list in from Excel.", hasItem, "/settings?tab=items", "Add products"),
+            new("customers", "Add your customers", "Type them in, or import them from Excel, QuickBooks or Sage.", hasCustomer, "/customers", "Add customers"),
+            new("invoice", "Send your first invoice", "Signed for KRA and shared on WhatsApp in a minute.", hasInvoice, "/invoices/new", "New invoice"),
+            new("team", "Invite your team", "Each person gets their own login and sees only what their role needs.", hasTeam, "/settings?tab=team", "Add a person"),
+        };
+        if (delivers)
+            steps.Insert(4, new("fleet", "Add your vehicles", "Lorries, vans and motorbikes with their number plates, so trips and waybills can go out.", hasVehicle, "/fleet?view=vehicles", "Add vehicles"));
+        var done = steps.Count(x => x.Done);
 
-        string nextAction = !hasPaymentConfigured
-            ? "Connect your M-Pesa Paybill/Till number to start collecting money."
-            : !hasCustomer
-                ? "Add your first client or buyer."
-                : !hasItem
-                    ? "Add a product or service to your catalog."
-                    : !hasInvoice
-                        ? "Create and send your first invoice."
-                        : "You're all set! Ready to transact and grow.";
+        string nextAction = steps.FirstOrDefault(x => !x.Done)?.Title ?? "You're all set! Ready to transact and grow.";
 
         return new OnboardingStatus(
             CompanyProfileCompleted: hasCompanyProfile,
@@ -59,9 +68,10 @@ public sealed class OnboardingService(
             FirstInvoiceCreated: hasInvoice,
             TotalSteps: total,
             CompletedSteps: completed,
-            CompletionPercentage: percentage,
+            CompletionPercentage: (int)Math.Round((double)done / steps.Count * 100),
             IsReadyToTransact: hasPaymentConfigured && hasInvoice,
-            NextRecommendedAction: nextAction
+            NextRecommendedAction: nextAction,
+            Steps: steps
         );
     }
 
@@ -73,7 +83,7 @@ public sealed class OnboardingService(
         // 1. Configure payments if provided
         if (!string.IsNullOrWhiteSpace(input.MpesaShortcode))
         {
-            company.MpesaShortcode = input.MpesaShortcode.Trim();
+            company.MpesaShortcode = new string(input.MpesaShortcode.Where(char.IsDigit).ToArray());
             if (!string.IsNullOrWhiteSpace(input.StkEnvironment))
                 company.StkEnvironment = input.StkEnvironment.Trim();
         }

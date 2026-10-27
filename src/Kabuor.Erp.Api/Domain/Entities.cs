@@ -44,6 +44,9 @@ public sealed class Company
     public string Plan { get; set; } = "";
     public DateTimeOffset? TrialEndsAt { get; set; }
     public DateTimeOffset? PaidUntil { get; set; }
+    /// <summary>Signed up but hasn't paid yet (Billing:PayToStart): only the plan and payment screens open until the
+    /// first M-Pesa payment arrives. False for every company from before paying to start.</summary>
+    public bool AwaitingFirstPayment { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -96,6 +99,8 @@ public sealed class BillingPayment : ICompanyOwned
     public string RequestedBy { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PaidAt { get; set; }
+    /// <summary>When Safaricom was last asked how the prompt went (the callback can't always reach the server).</summary>
+    public DateTimeOffset? CheckedAt { get; set; }
 }
 
 public enum Role
@@ -661,6 +666,8 @@ public sealed class DispatchTrip : ICompanyOwned
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CompanyId { get; set; }
     public string TripNumber { get; set; } = "";
+    /// <summary>The vehicle from the asset register (category VEH), when the trip uses one of the business's own.</summary>
+    public Guid? VehicleId { get; set; }
     public string VehiclePlate { get; set; } = "";
     public string DriverName { get; set; } = "";
     public string DriverPhone { get; set; } = "";

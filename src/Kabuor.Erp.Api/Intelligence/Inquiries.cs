@@ -81,12 +81,7 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, AppCache appCache,
     {
         // "Mine" is per person, so it's cached per person; everyone else shares the company's list.
         var cacheKey = $"inquiries:{ctx.CompanyId}:{status ?? "all"}:{(mine ? $"mine:{ctx.UserId}" : "all")}";
-        var cached = await appCache.GetStringAsync(cacheKey);
-        if (!string.IsNullOrEmpty(cached))
-        {
-            try { return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(cached); }
-            catch {}
-        }
+        if (await appCache.GetAnswerAsync(cacheKey) is { } cached) return cached;
 
         var baseQuery = db.Inquiries.AsNoTracking();
         if (mine && ctx.UserId is { } uid) baseQuery = baseQuery.Where(i => i.AssignedUserId == uid);
@@ -144,12 +139,7 @@ public sealed class InquiryService(ErpDb db, Numbers numbers, AppCache appCache,
             items,
         };
 
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(result);
-            await appCache.SetStringAsync(cacheKey, json, TimeSpan.FromSeconds(20));
-        }
-        catch {}
+        await appCache.SetAnswerAsync(cacheKey, result, TimeSpan.FromSeconds(20));
 
         return result;
     }

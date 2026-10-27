@@ -38,7 +38,7 @@ export default function Inquiries() {
             <li key={i.id}>
               <button className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-paper" onClick={() => setOpen(i.id)}>
                 <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2"><b className="truncate">{i.name}</b><span className="text-xs text-muted">{i.number} · {label(i.channel)}</span>{i.broughtBy && <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand">via {i.broughtBy}</span>}</span>
+                  <span className="flex flex-wrap items-center gap-2"><b className="truncate">{i.name}</b><span className="text-xs text-muted">{i.number} · {label(i.channel)}</span>{i.broughtBy && <span className="rounded bg-brand-soft px-1.5 py-0.5 text-2xs font-medium text-brand">via {i.broughtBy}</span>}</span>
                   <span className="block truncate text-sm text-muted">{i.subject}</span>
                 </span>
                 <span className="shrink-0 text-right text-xs">
@@ -71,7 +71,7 @@ function InquiryQuoteVarianceCard({ inquiryId }: { inquiryId: string }) {
         <span className="font-semibold text-ink flex items-center gap-1.5">
           <Sparkles className="h-3.5 w-3.5 text-brand" /> Quote vs Invoice Audit
         </span>
-        <span className={cn('rounded-full px-2 py-0.5 font-bold text-[11px]',
+        <span className={cn('rounded-full px-2 py-0.5 font-bold text-2xs',
           isIdentical ? 'bg-good-soft text-good' : isDiscount ? 'bg-warn-soft text-warn' : 'bg-indigo-soft text-indigo'
         )}>
           {isIdentical ? 'Exact match' : `${v.varianceAmount > 0 ? '+' : ''}${ksh(v.varianceAmount)} (${v.variancePercent > 0 ? '+' : ''}${v.variancePercent}%)`}
@@ -82,9 +82,9 @@ function InquiryQuoteVarianceCard({ inquiryId }: { inquiryId: string }) {
         <div>Invoiced: <b className="text-ink">{ksh(v.invoicedTotal)}</b> ({v.invoiceNumber})</div>
       </div>
       <div className="rounded bg-paper p-2 text-ink">
-        <p className="font-medium text-[11px]"><b className="text-brand">Agent Explanation:</b> {v.agentSummary}</p>
+        <p className="font-medium text-2xs"><b className="text-brand">Agent Explanation:</b> {v.agentSummary}</p>
         {v.agentReasons?.length > 0 && (
-          <ul className="mt-1 list-inside list-disc text-[10px] text-muted space-y-0.5">
+          <ul className="mt-1 list-inside list-disc text-2xs text-muted space-y-0.5">
             {v.agentReasons.map((r: string, idx: number) => <li key={idx}>{r}</li>)}
           </ul>
         )}
@@ -125,7 +125,7 @@ function Thread({ id, onClose }: { id: string; onClose: () => void }) {
             {data.messages.map((m: any, i: number) => (
               <li key={i} className={cn('max-w-[85%] rounded-lg px-3 py-2 text-sm', m.from === 'customer' ? 'bg-paper' : 'ml-auto bg-brand-soft')}>
                 <p className="whitespace-pre-wrap">{m.text}</p>
-                <p className="mt-1 text-[11px] text-muted">{m.author} · {dateTime(m.at)}</p>
+                <p className="mt-1 text-2xs text-muted">{m.author} · {dateTime(m.at)}</p>
               </li>
             ))}
           </ol>

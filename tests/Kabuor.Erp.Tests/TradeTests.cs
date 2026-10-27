@@ -123,7 +123,7 @@ public class TradeTests(ErpFactory factory) : IClassFixture<ErpFactory>
         var email = $"{Guid.NewGuid():N}@example.com";
         await Ok(await c.PostAsJsonAsync("/api/settings/users", new { name = "Sales Person", email, role = "Sales", password = "another-long-password" }));
         var sales = factory.CreateClient();
-        var s = await Ok(await sales.PostAsJsonAsync("/api/auth/login", new { email, password = "another-long-password" }));
+        var s = await TestSignIn.First(sales, email, "another-long-password");
         sales.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", s.GetProperty("token").GetString());
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.PostAsync($"/api/sales/{Id(inv)}/issue?overLimit=true", null)).StatusCode);
 

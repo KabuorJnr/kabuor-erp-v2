@@ -85,6 +85,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<AssetEvent> AssetEvents => Set<AssetEvent>();
     public DbSet<DispatchTrip> DispatchTrips => Set<DispatchTrip>();
+    public DbSet<JobOpening> JobOpenings => Set<JobOpening>();
+    public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<DeliveryItem> DeliveryItems => Set<DeliveryItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -187,6 +189,9 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<DispatchTrip>().HasMany(x => x.Deliveries).WithOne().HasForeignKey(x => x.TripId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<DeliveryItem>().HasQueryFilter(x => x.CompanyId == ctx.CompanyId);
         b.Entity<DeliveryItem>().HasIndex(x => new { x.CompanyId, x.WaybillNumber });
+        b.Entity<DeliveryItem>().HasIndex(x => new { x.CompanyId, x.SalesDocId });
+        b.Entity<DispatchTrip>().HasIndex(x => new { x.CompanyId, x.VehicleId, x.Status });
+        b.Entity<Candidate>().HasIndex(x => new { x.CompanyId, x.OpeningId, x.Stage });
 
         // Lookups the app does all the time, indexed with the company first.
         b.Entity<User>().HasIndex(x => x.Email).IsUnique().HasFilter("\"Email\" <> ''"); // one login per email across the platform
@@ -308,7 +313,9 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
     }
 
-    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey"];
+    // Never copied into the audit trail (which the owner and accountant can read): passwords, keys and the secrets
+    // behind two-step sign-in, M-Pesa prompts, KRA eTIMS and signed webhooks. The log says they changed, not to what.
+    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey", "TotpSecret", "RecoveryCodes", "StkConsumerKey", "StkConsumerSecret", "StkPasskey", "CmcKey", "Secret"];
 
     void StampAndAudit()
     {
@@ -370,6 +377,9 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
             EntityState.Deleted => props.ToDictionary(p => p.Metadata.Name, p => p.OriginalValue),
             _ => props.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue),
         };
+        if (e.State == EntityState.Modified)
+            foreach (var p in e.Properties.Where(p => p.IsModified && Secret.Contains(p.Metadata.Name)))
+                map[p.Metadata.Name] = "(changed)";
         return JsonSerializer.Serialize(map);
     }
 }

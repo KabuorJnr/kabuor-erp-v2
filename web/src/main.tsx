@@ -7,6 +7,7 @@ import { reportError, startMonitoring } from './lib/monitoring';
 import { can, getSession, useSession, type Permission } from './lib/api';
 import Shell from './components/Shell';
 import { ChooseOwnPassword, SignIn, SignUp } from './pages/Auth';
+import Activate from './pages/Activate';
 import Today from './pages/Today';
 import { InvoiceList } from './pages/Invoices';
 import InvoiceEditor from './pages/InvoiceEditor';
@@ -21,6 +22,7 @@ import PurchaseView from './pages/PurchaseView';
 import { SupplierList, SupplierView } from './pages/Suppliers';
 import Stock from './pages/Stock';
 import Assets from './pages/Assets';
+import Fleet from './pages/Fleet';
 import { EmployeeList, EmployeeView } from './pages/Employees';
 import Leave from './pages/Leave';
 import { PayrollList, PayrollRun } from './pages/Payroll';
@@ -41,6 +43,10 @@ import Security from './pages/Security';
 import Reconcile from './pages/Reconcile';
 import EtimsInbox from './pages/EtimsInbox';
 import Platform from './pages/Platform';
+import Finance from './pages/Finance';
+import LedgerPage from './pages/Ledger';
+import MonthlyReport from './pages/MonthlyReport';
+import Dashboards from './pages/Dashboards';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -67,6 +73,14 @@ function App() {
       </Routes>
     );
   if (session.user.mustChangePassword) return <ChooseOwnPassword session={session} />;
+  if (session.company.awaitingFirstPayment)
+    return (
+      <Routes>
+        <Route path="privacy" element={<Privacy />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="*" element={<Activate session={session} />} />
+      </Routes>
+    );
   return (
     <Routes>
       <Route path="privacy" element={<Privacy />} />
@@ -106,6 +120,7 @@ function App() {
         <Route path="suppliers/:id" element={<Need p="buy.view"><SupplierView /></Need>} />
         <Route path="stock" element={<Need p="stock.view"><Stock /></Need>} />
         <Route path="assets" element={<Need p="stock.view"><Assets /></Need>} />
+        <Route path="fleet" element={<Need p="stock.view"><Fleet /></Need>} />
         <Route path="people" element={<Need p="people"><EmployeeList /></Need>} />
         <Route path="people/:id" element={<Need p="people"><EmployeeView /></Need>} />
         <Route path="recruitment" element={<Need p="people"><Recruitment /></Need>} />
@@ -123,6 +138,10 @@ function App() {
         <Route path="campaigns/:id" element={<Need p="crm"><CampaignView /></Need>} />
         <Route path="money-in" element={<Need p="sales.view"><Payments /></Need>} />
         <Route path="reports" element={<Need p="reports"><Reports /></Need>} />
+        <Route path="reports/monthly" element={<Need p="reports"><MonthlyReport /></Need>} />
+        <Route path="dashboards" element={<Need p="reports"><Dashboards /></Need>} />
+        <Route path="finance" element={<Need p="reports"><Finance /></Need>} />
+        <Route path="finance/ledger" element={<Need p="reports"><LedgerPage /></Need>} />
         <Route path="agents" element={<Agents />} />
         <Route path="security" element={<Security />} />
         <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />

@@ -317,8 +317,9 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
 
       {state.error && <ErrorNote>{state.error}</ErrorNote>}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="card p-4 space-y-4 lg:col-span-1">
+      {/* Details beside the lines only on very wide screens; otherwise they sit above in two columns, so neither side is squeezed. */}
+      <div className="grid gap-4 2xl:grid-cols-3">
+        <div className="card grid content-start gap-4 p-4 sm:grid-cols-2 2xl:col-span-1 2xl:grid-cols-1">
           <Field label="Supplier" hint="Who are you buying from?">
             <SupplierPicker value={supplier} onChange={setSupplier} />
           </Field>
@@ -379,7 +380,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
           </Field>
         </div>
 
-        <div className="card p-4 space-y-4 lg:col-span-2">
+        <div className="card p-4 space-y-4 2xl:col-span-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ink">Line items</h2>
             <button
@@ -478,7 +479,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
 
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-12 items-center">
                   <div className="sm:col-span-3">
-                    <label className="text-[11px] font-semibold text-muted block mb-1">Quantity</label>
+                    <label className="text-2xs font-semibold text-muted block mb-1">Quantity</label>
                     <input
                       className="field text-sm"
                       type="number"
@@ -489,7 +490,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                     />
                   </div>
                   <div className="sm:col-span-4">
-                    <label className="text-[11px] font-semibold text-muted block mb-1">Unit Cost (KSh, incl VAT)</label>
+                    <label className="text-2xs font-semibold text-muted block mb-1">Unit cost (KSh, incl. VAT)</label>
                     <input
                       className="field text-sm"
                       type="number"
@@ -501,7 +502,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                     />
                   </div>
                   <div className="sm:col-span-3">
-                    <label className="text-[11px] font-semibold text-muted block mb-1">Tax</label>
+                    <label className="text-2xs font-semibold text-muted block mb-1">Tax</label>
                     <select
                       className="field text-sm"
                       value={l.taxType}
@@ -515,7 +516,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                     </select>
                   </div>
                   <div className="sm:col-span-2 text-right pt-4">
-                    <span className="text-xs text-muted block">Line Total</span>
+                    <span className="text-xs text-muted block">Line total</span>
                     <b className="num text-sm font-semibold">
                       {ksh(Math.round((parseFloat(l.quantity) || 0) * toCents(l.unitCost)))}
                     </b>
@@ -530,7 +531,7 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-12 items-end">
                       {its.length > 0 && (
                         <div className="sm:col-span-3">
-                          <label className="text-[11px] font-semibold text-muted block mb-1">Bought by the</label>
+                          <label className="text-2xs font-semibold text-muted block mb-1">Bought by the</label>
                           <select className="field text-sm" value={l.unit ?? ''} onChange={(e) => updateLine(l.key, { unit: e.target.value || undefined })}>
                             <option value="">{it.unit}</option>
                             {its.map((x) => <option key={x.name} value={x.name}>{x.name} ({x.factor} {it.unit})</option>)}
@@ -540,11 +541,11 @@ export default function PurchaseEditor({ kind: defaultKind }: { kind?: 'Order' |
                       {it.trackBatches && (
                         <>
                           <div className="sm:col-span-4">
-                            <label className="text-[11px] font-semibold text-muted block mb-1">Batch / lot number</label>
+                            <label className="text-2xs font-semibold text-muted block mb-1">Batch / lot number</label>
                             <input className="field text-sm" required value={l.batchNo ?? ''} onChange={(e) => updateLine(l.key, { batchNo: e.target.value })} placeholder="From the packaging" />
                           </div>
                           <div className="sm:col-span-3">
-                            <label className="text-[11px] font-semibold text-muted block mb-1">Expiry</label>
+                            <label className="text-2xs font-semibold text-muted block mb-1">Expiry</label>
                             <input className="field text-sm" type="date" value={l.expiry ?? ''} onChange={(e) => updateLine(l.key, { expiry: e.target.value })} />
                           </div>
                         </>
