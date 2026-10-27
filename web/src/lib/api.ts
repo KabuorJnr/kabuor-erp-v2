@@ -136,4 +136,5 @@ export function useSession() {
 /** What each part of the app needs. The server decides who has which (Auth.cs, Policies) and sends the list with
  * the sign-in, so the menu, pages, tiles and buttons always agree with what the API will allow. */
 export type Permission = 'read' | 'sales.view' | 'sell' | 'pos' | 'crm' | 'finance' | 'reports' | 'stock.view' | 'stock' | 'buy.view' | 'buy' | 'make' | 'people' | 'admin';
-export const can = (s: Session | null, p: Permission) => Boolean(s?.user.permissions?.includes(p));
+export const can = (s: Session | null, p: Permission) =>
+  Boolean(s?.user?.isPlatformAdmin || s?.user?.role === 'Owner' || s?.user?.permissions?.includes(p));

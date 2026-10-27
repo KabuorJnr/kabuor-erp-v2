@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { Component, StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router';
 import './index.css';
@@ -47,6 +47,31 @@ import Finance from './pages/Finance';
 import LedgerPage from './pages/Ledger';
 import MonthlyReport from './pages/MonthlyReport';
 import Dashboards from './pages/Dashboards';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error) {
+    reportError(error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card mx-auto mt-12 max-w-md p-6 text-center shadow-lg">
+          <p className="text-lg font-bold">Something went wrong</p>
+          <p className="mt-1 text-sm text-muted">We encountered an unexpected error displaying this section.</p>
+          <div className="mt-4 flex justify-center gap-3">
+            <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+            <Link to="/" className="btn btn-ghost" onClick={() => this.setState({ hasError: false, error: null })}>Back to Today</Link>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -142,6 +167,7 @@ function App() {
         <Route path="dashboards" element={<Need p="reports"><Dashboards /></Need>} />
         <Route path="finance" element={<Need p="reports"><Finance /></Need>} />
         <Route path="finance/ledger" element={<Need p="reports"><LedgerPage /></Need>} />
+        <Route path="ledger" element={<Need p="reports"><LedgerPage /></Need>} />
         <Route path="agents" element={<Agents />} />
         <Route path="security" element={<Security />} />
         <Route path="purchases/etims" element={<Need p="finance"><EtimsInbox /></Need>} />
@@ -160,7 +186,9 @@ startMonitoring();
 createRoot(document.getElementById('root')!, { onUncaughtError: (e) => (reportError(e), console.error(e)), onCaughtError: (e) => reportError(e) }).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </BrowserRouter>
   </StrictMode>,
 );

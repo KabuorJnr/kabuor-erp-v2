@@ -233,6 +233,13 @@ public static partial class SchemaSync
                 user.PasswordHash = hasher.HashPassword(user, "admin");
                 await db.SaveChangesAsync();
             }
+
+            var hasAccounts = await db.Accounts.IgnoreQueryFilters().AnyAsync(a => a.CompanyId == company.Id);
+            if (!hasAccounts)
+            {
+                db.Accounts.AddRange(Accounting.SystemAccounts.Starter(company.Id));
+                await db.SaveChangesAsync();
+            }
         }
         catch { /* best-effort bootstrap */ }
     }

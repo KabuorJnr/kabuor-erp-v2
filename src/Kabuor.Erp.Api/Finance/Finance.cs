@@ -96,6 +96,11 @@ public sealed class FinanceService(ErpDb db, ReportService reports, Ledger ledge
     /// debits, the rest as credits).</summary>
     public async Task<object> Accounts()
     {
+        if (!await db.Accounts.AnyAsync())
+        {
+            db.Accounts.AddRange(SystemAccounts.Starter(db.CompanyId));
+            await db.SaveChangesAsync();
+        }
         var b = await reports.Balances(null, Clock.Today);
         return b.OrderBy(x => x.Code).Select(x => new
         {

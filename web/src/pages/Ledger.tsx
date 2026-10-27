@@ -31,35 +31,40 @@ const SOURCE: Record<string, string> = {
 
 function Accounts({ accounts, onOpen }: { accounts: Account[]; onOpen: (a: Account) => void }) {
   const [q, setQ] = useState('');
-  const shown = accounts.filter((a) => !q || `${a.code} ${a.name}`.toLowerCase().includes(q.toLowerCase()));
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+  const shown = safeAccounts.filter((a) => !q || `${a.code ?? ''} ${a.name ?? ''}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="mb-3"><SearchBox value={q} onChange={setQ} placeholder="Search account code or name" /></div>
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b border-line bg-paper text-left text-xs text-muted">
-            <tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Account</th><th className="px-4 py-2.5 text-right">Balance</th></tr>
-          </thead>
-          <tbody>
-            {TYPES.map(([type, label]) => {
-              const list = shown.filter((a) => a.type === type);
-              if (list.length === 0) return null;
-              return (
-                <Fragment key={type}>
-                  <tr className="bg-paper/60"><td colSpan={2} className="px-4 pt-3 pb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">{label}</td><td className="num px-4 pt-3 pb-1.5 text-right text-xs font-semibold text-muted">{ksh(list.reduce((s, a) => s + a.balance, 0))}</td></tr>
-                  {list.map((a) => (
-                    <tr key={a.id} onClick={() => onOpen(a)} className="cursor-pointer border-t border-line/70 hover:bg-paper">
-                      <td className="num px-4 py-2.5 text-muted">{a.code}</td>
-                      <td className="px-4 py-2.5"><span className="font-medium">{a.name}</span>{!a.system && <span className="ml-2 text-xs text-faint">yours</span>}</td>
-                      <td className={cn('num px-4 py-2.5 text-right font-semibold whitespace-nowrap', a.balance === 0 && 'font-normal text-faint', a.balance < 0 && 'text-bad')}>{a.balance === 0 ? '—' : ksh(a.balance)}</td>
-                    </tr>
-                  ))}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {shown.length === 0 ? (
+        <Empty title="No accounts found">{q ? 'Try another search term.' : 'No accounts exist yet. Click "+ Add account" to create one.'}</Empty>
+      ) : (
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="border-b border-line bg-paper text-left text-xs text-muted">
+              <tr><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Account</th><th className="px-4 py-2.5 text-right">Balance</th></tr>
+            </thead>
+            <tbody>
+              {TYPES.map(([type, label]) => {
+                const list = shown.filter((a) => a.type === type);
+                if (list.length === 0) return null;
+                return (
+                  <Fragment key={type}>
+                    <tr className="bg-paper/60"><td colSpan={2} className="px-4 pt-3 pb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">{label}</td><td className="num px-4 pt-3 pb-1.5 text-right text-xs font-semibold text-muted">{ksh(list.reduce((s, a) => s + (a.balance || 0), 0))}</td></tr>
+                    {list.map((a) => (
+                      <tr key={a.id} onClick={() => onOpen(a)} className="cursor-pointer border-t border-line/70 hover:bg-paper">
+                        <td className="num px-4 py-2.5 text-muted">{a.code}</td>
+                        <td className="px-4 py-2.5"><span className="font-medium">{a.name}</span>{!a.system && <span className="ml-2 text-xs text-faint">yours</span>}</td>
+                        <td className={cn('num px-4 py-2.5 text-right font-semibold whitespace-nowrap', (a.balance || 0) === 0 && 'font-normal text-faint', (a.balance || 0) < 0 && 'text-bad')}>{(a.balance || 0) === 0 ? '—' : ksh(a.balance)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }
@@ -78,7 +83,10 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
   }, [q]);
   const params = new URLSearchParams({ take: String(take), ...(accountId && { accountId }), ...(query && { q: query }), ...(from && { from }), ...(to && { to }) });
   const { data, error, loading, reload } = useApi<Journal>(`/finance/journal?${params}`);
-  const account = accounts.find((a) => a.id === accountId);
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+  const account = safeAccounts.find((a) => a.id === accountId);
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const total = typeof data?.total === 'number' ? data.total : 0;
 
   const reverse = async (e: Entry) => {
     if (!confirm(`Reverse “${e.memo}”? A mirror entry is posted today; the original stays in the books.`)) return;
@@ -111,7 +119,7 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
           <option value="">All accounts</option>
           {TYPES.map(([type, label]) => (
             <optgroup key={type} label={label}>
-              {accounts.filter((a) => a.type === type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+              {safeAccounts.filter((a) => a.type === type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
             </optgroup>
           ))}
         </select>
@@ -123,7 +131,7 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
         <span>
-          {data ? `${data.total.toLocaleString('en-KE')} entr${data.total === 1 ? 'y' : 'ies'}` : ' '}
+          {data ? `${total.toLocaleString('en-KE')} entr${total === 1 ? 'y' : 'ies'}` : ' '}
           {account && <> in <b className="text-ink">{account.code} {account.name}</b> · balance <b className="num text-ink">{ksh(account.balance)}</b></>}
         </span>
         <button className="btn btn-ghost py-1.5" onClick={exportExcel} disabled={state.busy === 'export'} title="The general ledger for these dates as an Excel workbook (this month if no dates are set)">
@@ -131,12 +139,12 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
         </button>
       </div>
       {(error || state.error) && <ErrorNote>{error || state.error}</ErrorNote>}
-      {loading && !data ? <Loading /> : !data?.items.length ? (
+      {loading && !data ? <Loading /> : items.length === 0 ? (
         <Empty title="No entries match">{query || accountId || from || to ? 'Try another account, word or date.' : 'Entries appear here as invoices, payments and bills are posted.'}</Empty>
       ) : (
         <div className="card overflow-hidden">
           <ul className="divide-y divide-line">
-            {data.items.map((e) => (
+            {items.map((e) => (
               <li key={e.id}>
                 <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-paper" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}>
                   {open === e.id ? <ChevronDown className="h-4 w-4 shrink-0 text-muted" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted" />}
@@ -155,7 +163,7 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
                     <table className="w-full text-sm">
                       <thead className="text-left text-xs text-muted"><tr><th className="py-1.5">Account</th><th className="py-1.5 text-right">Debit</th><th className="py-1.5 text-right">Credit</th></tr></thead>
                       <tbody>
-                        {e.lines.map((l, i) => (
+                        {(e.lines ?? []).map((l, i) => (
                           <tr key={i} className="border-t border-line/70">
                             <td className="py-1.5"><button className="text-left hover:text-brand" onClick={() => setAccountId(l.accountId)}>{l.code} · {l.name}</button></td>
                             <td className="num py-1.5 text-right">{l.debit ? ksh(l.debit) : ''}</td>
@@ -174,9 +182,9 @@ function Ledger({ accounts, accountId, setAccountId, canPost, onChanged }: { acc
               </li>
             ))}
           </ul>
-          {data.items.length < data.total && (
+          {items.length < total && (
             <button className="w-full border-t border-line py-3 text-sm font-semibold text-brand hover:bg-paper" onClick={() => setTake((t) => t + 50)}>
-              Show more ({(data.total - data.items.length).toLocaleString('en-KE')} older)
+              Show more ({(total - items.length).toLocaleString('en-KE')} older)
             </button>
           )}
         </div>
@@ -193,6 +201,7 @@ function NewJournal({ accounts, onDone }: { accounts: Account[]; onDone: () => v
   const [memo, setMemo] = useState('');
   const [lines, setLines] = useState<Line[]>([{ key: 1, accountId: '', debit: '', credit: '' }, { key: 2, accountId: '', debit: '', credit: '' }]);
   const [state, setState] = useState({ busy: false, error: '' });
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
   const dr = lines.reduce((s, l) => s + cents(l.debit), 0);
   const cr = lines.reduce((s, l) => s + cents(l.credit), 0);
   const used = lines.filter((l) => l.accountId && (cents(l.debit) || cents(l.credit)));
@@ -224,7 +233,7 @@ function NewJournal({ accounts, onDone }: { accounts: Account[]; onDone: () => v
                 <option value="">Choose an account…</option>
                 {TYPES.map(([type, label]) => (
                   <optgroup key={type} label={label}>
-                    {accounts.filter((a) => a.type === type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                    {safeAccounts.filter((a) => a.type === type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
                   </optgroup>
                 ))}
               </select>
@@ -256,7 +265,8 @@ function NewJournal({ accounts, onDone }: { accounts: Account[]; onDone: () => v
 function NewAccount({ accounts, onDone }: { accounts: Account[]; onDone: (a: Account) => void }) {
   const [f, setF] = useState({ code: '', name: '', type: 'Expense' as Account['type'] });
   const [state, setState] = useState({ busy: false, error: '' });
-  const taken = accounts.some((a) => a.code.toLowerCase() === f.code.trim().toLowerCase());
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
+  const taken = safeAccounts.some((a) => a.code.toLowerCase() === f.code.trim().toLowerCase());
   const save = async () => {
     setState({ busy: true, error: '' });
     try {
@@ -298,7 +308,7 @@ export default function LedgerPage() {
   const accountId = params.get('account') ?? '';
   const sheet = params.get('new');
   const accounts = useApi<Account[]>('/finance/accounts');
-  const list = useMemo(() => accounts.data ?? [], [accounts.data]);
+  const list = useMemo(() => Array.isArray(accounts.data) ? accounts.data : [], [accounts.data]);
   const go = (next: Record<string, string>) => setParams(Object.fromEntries(Object.entries(next).filter(([, v]) => v)), { replace: true });
 
   return (
