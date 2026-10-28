@@ -88,6 +88,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<JobOpening> JobOpenings => Set<JobOpening>();
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<DeliveryItem> DeliveryItems => Set<DeliveryItem>();
+    public DbSet<DriverPing> DriverPings => Set<DriverPing>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -191,6 +192,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<DeliveryItem>().HasIndex(x => new { x.CompanyId, x.WaybillNumber });
         b.Entity<DeliveryItem>().HasIndex(x => new { x.CompanyId, x.SalesDocId });
         b.Entity<DispatchTrip>().HasIndex(x => new { x.CompanyId, x.VehicleId, x.Status });
+        b.Entity<DispatchTrip>().HasIndex(x => x.DriverToken);
+        b.Entity<DriverPing>().HasIndex(x => new { x.CompanyId, x.TripId, x.At });
         b.Entity<Candidate>().HasIndex(x => new { x.CompanyId, x.OpeningId, x.Stage });
 
         // Lookups the app does all the time, indexed with the company first.
@@ -315,7 +318,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
 
     // Never copied into the audit trail (which the owner and accountant can read): passwords, keys and the secrets
     // behind two-step sign-in, M-Pesa prompts, KRA eTIMS and signed webhooks. The log says they changed, not to what.
-    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey", "TotpSecret", "RecoveryCodes", "StkConsumerKey", "StkConsumerSecret", "StkPasskey", "CmcKey", "Secret"];
+    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey", "TotpSecret", "RecoveryCodes", "StkConsumerKey", "StkConsumerSecret", "StkPasskey", "CmcKey", "Secret", "DriverToken"];
 
     void StampAndAudit()
     {
@@ -344,6 +347,9 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
                         throw new UnauthorizedAccessException($"Tenant violation: cannot modify or delete {e.Entity.GetType().Name} belonging to another company.");
                 }
             }
+            // Location pings, and the trip's last position they move, would bury the trail people read: stamped and guarded
+            // like everything else above, but not audited.
+            if (e.Entity is DriverPing || (e.Entity is DispatchTrip && e.State == EntityState.Modified && e.Properties.Where(p => p.IsModified).All(p => p.Metadata.Name.StartsWith("Last")))) continue;
             var companyId = e.Entity switch
             {
                 ICompanyOwned o => o.CompanyId,

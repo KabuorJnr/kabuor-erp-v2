@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, DollarSign, FileCheck, Loader2, PackageCheck, Printer, XCircle } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { day, dateTime, ksh, prettyPhone, toCents } from '../lib/format';
+import { dateTime, dayYear, ksh, prettyPhone, toCents } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { ErrorNote, Field, Loading, PageHeader, Sheet } from '../components/ui';
 import { PurchaseStatusBadge } from './Purchases';
+import { DocBox, DocFooter, Letterhead, printAs, Stamp, useLetterhead } from '../components/PrintDoc';
 
 type Line = {
   id: string;
@@ -42,7 +43,7 @@ type PurchaseDoc = {
   balance: number;
   notes: string;
   supplierId: string;
-  supplier: { id: string; name: string; number: string; phone: string; kraPin: string };
+  supplier: { id: string; name: string; number: string; phone: string; kraPin: string; email?: string; address?: string };
   lines: Line[];
 };
 
@@ -152,6 +153,7 @@ export default function PurchaseView() {
 
   const [paying, setPaying] = useState(false);
   const [state, setState] = useState({ busy: false, error: '' });
+  const lh = useLetterhead();
 
   const { data, error, reload } = useApi<{
     document: PurchaseDoc;
@@ -217,8 +219,8 @@ export default function PurchaseView() {
           }`}
           actions={
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-ghost" onClick={() => window.print()}>
-                <Printer className="h-4 w-4" /> Print
+              <button type="button" className="btn btn-ghost" onClick={() => printAs(`${isBill ? 'Bill' : 'Purchase order'} ${doc.number} · ${doc.supplier.name}`)}>
+                <Printer className="h-4 w-4" /> Print / PDF
               </button>
 
               {isDraft && can(session, isBill ? 'finance' : 'stock') && (
@@ -263,112 +265,118 @@ export default function PurchaseView() {
 
       {state.error && <ErrorNote>{state.error}</ErrorNote>}
 
-      <div className="card p-6 sm:p-8 space-y-6">
-        <div className="flex flex-wrap justify-between gap-4 border-b border-line pb-6">
-          <div>
-            <span className="text-xs uppercase tracking-wider font-bold text-muted block mb-1">
-              {isBill ? 'Supplier Bill' : 'Purchase Order'}
-            </span>
-            <h2 className="text-2xl font-bold font-display text-ink">{doc.number}</h2>
-            <div className="mt-2">
-              <PurchaseStatusBadge d={doc} />
-            </div>
-          </div>
-          <div className="text-right sm:text-right">
-            <span className="text-xs uppercase tracking-wider font-semibold text-muted block">Supplier</span>
-            <Link
-              to={`/suppliers/${doc.supplier.id}`}
-              className="text-base font-bold text-brand hover:underline"
-            >
+      {/* The document as the supplier sees it (and as it prints). */}
+      <article className="card doc relative min-w-0 p-5 sm:p-10 print:p-0 print:ring-0">
+        {isDraft ? <Stamp word="Draft" tone="plain" /> : doc.status === 'Void' ? <Stamp word="Void" tone="bad" /> : isBill && doc.status === 'Paid' ? <Stamp word="Paid" tone="good" /> : null}
+        <Letterhead
+          title={isBill ? 'Supplier bill' : 'Purchase order'}
+          number={doc.number}
+          facts={[
+            [isBill ? 'Bill date' : 'Order date', dayYear(doc.issueDate)],
+            [isBill ? 'Due' : 'Deliver by', dayYear(doc.dueDate)],
+            ...(doc.supplierRef ? [[isBill ? 'Their invoice' : 'Their ref.', doc.supplierRef] as [string, string]] : []),
+          ]}
+        />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <DocBox label={isBill ? 'From supplier' : 'Supplier'}>
+            <Link to={`/suppliers/${doc.supplier.id}`} className="font-semibold text-ink hover:text-brand print:no-underline">
               {doc.supplier.name}
             </Link>
-            {doc.supplier.kraPin && (
-              <p className="text-xs text-muted font-mono">PIN: {doc.supplier.kraPin}</p>
-            )}
-            {doc.supplier.phone && <p className="text-xs text-muted">{prettyPhone(doc.supplier.phone)}</p>}
-          </div>
+            <div className="mt-0.5 text-xs leading-relaxed text-ink-2">
+              {doc.supplier.address && <p className="whitespace-pre-line">{doc.supplier.address}</p>}
+              {[prettyPhone(doc.supplier.phone), doc.supplier.email].filter(Boolean).length > 0 && <p>{[prettyPhone(doc.supplier.phone), doc.supplier.email].filter(Boolean).join('  ·  ')}</p>}
+              {doc.supplier.kraPin && <p>KRA PIN {doc.supplier.kraPin}</p>}
+            </div>
+          </DocBox>
+          <DocBox label={isBill ? 'Received into' : 'Deliver to'}>
+            <p className="font-semibold text-ink">{lh.name}</p>
+            <div className="mt-0.5 text-xs leading-relaxed text-ink-2">
+              <p>{location || 'Main store'}</p>
+              {(lh.address || lh.county) && <p>{[lh.address, lh.county].filter(Boolean).join(', ')}</p>}
+            </div>
+            <div className="mt-2 print:hidden">
+              <PurchaseStatusBadge d={doc} />
+            </div>
+          </DocBox>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-sm border-b border-line pb-6">
-          <div>
-            <span className="text-xs text-muted block">Issue Date</span>
-            <b className="font-medium text-ink">{day(doc.issueDate)}</b>
-          </div>
-          <div>
-            <span className="text-xs text-muted block">Due Date</span>
-            <b className="font-medium text-ink">{day(doc.dueDate)}</b>
-          </div>
-          <div>
-            <span className="text-xs text-muted block">Supplier Ref</span>
-            <b className="font-medium text-ink">{doc.supplierRef || '—'}</b>
-          </div>
-          <div>
-            <span className="text-xs text-muted block">Store Location</span>
-            <b className="font-medium text-ink">{location || 'Main'}</b>
-          </div>
-        </div>
-
-        <div>
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-xs text-muted font-semibold">
+        <div className="mt-6 overflow-x-auto print:overflow-visible">
+          <table className="doc-table min-w-[30rem]">
+            <thead>
               <tr>
-                <th className="py-2.5">Item / Description</th>
-                <th className="py-2.5 text-right">Quantity</th>
-                <th className="py-2.5 text-right">Unit Cost (incl. VAT)</th>
-                <th className="py-2.5 text-right">Tax</th>
-                <th className="py-2.5 text-right">Total</th>
+                <th className="w-8">#</th>
+                <th>Item / description</th>
+                <th className="text-right">Qty</th>
+                <th className="text-right">Unit cost (incl. VAT)</th>
+                <th className="text-right">VAT</th>
+                <th className="text-right">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
-              {doc.lines.map((l) => (
+            <tbody>
+              {doc.lines.map((l, i) => (
                 <tr key={l.id}>
-                  <td className="py-3 pr-2">
-                    <p className="font-semibold text-ink">{l.description}</p>
-                  </td>
-                  <td className="py-3 text-right num font-medium">{l.quantity}</td>
-                  <td className="py-3 text-right num font-medium">{ksh(l.unitCost)}</td>
-                  <td className="py-3 text-right text-xs text-muted">{ksh(l.tax)}</td>
-                  <td className="py-3 text-right num font-semibold">{ksh(l.total)}</td>
+                  <td className="num text-muted">{i + 1}</td>
+                  <td className="font-medium text-ink">{l.description}</td>
+                  <td className="num text-right">{l.quantity}</td>
+                  <td className="num text-right">{ksh(l.unitCost)}</td>
+                  <td className="num text-right text-muted">{ksh(l.tax)}</td>
+                  <td className="num text-right font-semibold">{ksh(l.total)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-col items-end border-t border-line pt-4 space-y-1.5 text-sm">
-          <div className="w-full max-w-xs flex justify-between text-muted">
-            <span>Net total</span>
-            <span className="num">{ksh(doc.net)}</span>
+        <div className="mt-5 flex flex-wrap items-start justify-between gap-6">
+          <div className="max-w-sm min-w-0 flex-1 text-sm">
+            {doc.notes && (
+              <>
+                <p className="text-2xs font-semibold tracking-wide text-muted uppercase">Notes</p>
+                <p className="mt-1 whitespace-pre-line text-ink-2">{doc.notes}</p>
+              </>
+            )}
           </div>
-          <div className="w-full max-w-xs flex justify-between text-muted">
-            <span>VAT</span>
-            <span className="num">{ksh(doc.tax)}</span>
-          </div>
-          <div className="w-full max-w-xs flex justify-between font-bold text-base text-ink border-t border-line pt-2">
-            <span>Total</span>
-            <span className="num text-lg">{ksh(doc.total)}</span>
-          </div>
-          {isBill && (
-            <>
-              <div className="w-full max-w-xs flex justify-between text-muted">
-                <span>Paid</span>
-                <span className="num text-good">{ksh(doc.paid)}</span>
-              </div>
-              <div className="w-full max-w-xs flex justify-between font-bold text-sm text-bad border-t border-line pt-1">
-                <span>Balance due</span>
-                <span className="num">{ksh(doc.total - doc.paid)}</span>
-              </div>
-            </>
-          )}
+          <dl className="w-full max-w-72 space-y-1.5 text-sm break-inside-avoid">
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Subtotal (before VAT)</dt>
+              <dd className="num">{ksh(doc.net)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">VAT</dt>
+              <dd className="num">{ksh(doc.tax)}</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t-2 border-ink pt-2 text-base font-bold">
+              <dt>Total</dt>
+              <dd className="num">{ksh(doc.total)}</dd>
+            </div>
+            {isBill && (
+              <>
+                <div className="flex justify-between gap-4 text-good">
+                  <dt>Paid</dt>
+                  <dd className="num">−{ksh(doc.paid)}</dd>
+                </div>
+                <div className="flex justify-between gap-4 rounded-sm bg-brand-soft px-2 py-1.5 font-bold">
+                  <dt>Balance due</dt>
+                  <dd className="num">{ksh(doc.total - doc.paid)}</dd>
+                </div>
+              </>
+            )}
+          </dl>
         </div>
 
-        {doc.notes && (
-          <div className="rounded-lg bg-paper p-3 text-sm text-muted">
-            <span className="font-semibold text-xs block mb-0.5">Notes:</span>
-            {doc.notes}
+        {!isBill && (
+          <div className="mt-10 grid grid-cols-3 gap-5 text-2xs text-muted break-inside-avoid">
+            {['Authorised by', 'Signature', 'Date'].map((s) => (
+              <p key={s} className="border-t border-ink pt-1">{s}</p>
+            ))}
           </div>
         )}
-      </div>
+
+        <DocFooter>
+          {isBill ? 'Our record of this supplier’s bill.' : `Please quote ${doc.number} on your delivery note and invoice.`}
+          {lh.phone && ` Questions? Call ${prettyPhone(lh.phone)}.`}
+        </DocFooter>
+      </article>
 
       {payments.length > 0 && (
         <section className="card p-4 sm:p-5 print:hidden">

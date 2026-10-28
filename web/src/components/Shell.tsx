@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
-  Activity, Armchair, BarChart3, BookOpen, Bot, Brain, Briefcase, Building2, Landmark, LayoutDashboard, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Handshake, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, UserRound, Users, Wallet, Banknote,
+  Activity, Armchair, BarChart3, BookOpen, Bot, Brain, Briefcase, Building2, Landmark, LayoutDashboard, Link2, MessageCircleQuestion, CalendarDays, ListChecks, ShieldCheck, Factory, FileText, Handshake, Home, Kanban, LogOut, Megaphone, Menu, Package, Quote, Search, Settings as Cog, ShoppingBag, Sparkles, Store, Truck, MapPinned, UserRound, Users, Wallet, Banknote,
 } from 'lucide-react';
 import { can, setSession, type Session } from '../lib/api';
 import { cn } from '../lib/format';
@@ -96,7 +96,8 @@ export default function Shell({ session }: { session: Session }) {
           title: 'Operations',
           links: [
             can(session, 'stock.view') && { to: '/stock', label: t('Stock'), icon: Package },
-            can(session, 'stock.view') && { to: '/fleet', label: 'Fleet & dispatch', icon: Truck },
+            can(session, 'fleet.view') && { to: '/fleet', label: 'Fleet & dispatch', icon: Truck, end: true },
+            can(session, 'fleet.view') && { to: '/fleet/live', label: 'Live map', icon: MapPinned },
             can(session, 'stock.view') && { to: '/assets', label: 'Assets', icon: Armchair },
             can(session, 'make') && { to: '/production', label: 'Production', icon: Factory },
             can(session, 'buy.view') && { to: '/suppliers', label: t('Suppliers'), icon: Handshake },

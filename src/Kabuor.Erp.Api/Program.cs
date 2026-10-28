@@ -130,6 +130,7 @@ builder.Services.AddHttpClient("daraja", c => c.Timeout = TimeSpan.FromSeconds(3
 builder.Services.AddScoped<Kabuor.Erp.Crm.CrmService>();
 builder.Services.AddScoped<Kabuor.Erp.Production.ProductionService>();
 builder.Services.AddScoped<Kabuor.Erp.Dispatch.DispatchService>();
+builder.Services.AddScoped<Kabuor.Erp.Dispatch.DriverLinks>();
 builder.Services.AddScoped<Kabuor.Erp.Recruitment.RecruitmentService>();
 builder.Services.AddScoped<Kabuor.Erp.Marketing.MarketingService>();
 builder.Services.AddScoped<Kabuor.Erp.Agents.AgentService>();
@@ -182,6 +183,9 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("assistant", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.User.FindFirst("sub")?.Value ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(10) }));
     // M-Pesa prompts land on someone's phone: a few an hour per business is plenty for paying, too few to pester anyone.
     o.AddPolicy("prompts", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.User.FindFirst("cid")?.Value ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromHours(1) }));
+
+    // A driver's phone sends its location every 15 seconds or so for a whole shift: counted per link, with room to spare.
+    o.AddPolicy("drive", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Request.Path.Value?.Split('/').ElementAtOrDefault(3) ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(15) }));
 
     // Global flood protection across all API routes
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
@@ -263,7 +267,7 @@ app.Use(async (ctx, next) =>
     h["Cross-Origin-Resource-Policy"] = "same-origin";
     h["X-Permitted-Cross-Domain-Policies"] = "none";
     // Only this site's own scripts, styles, fonts and API: injected scripts and other sites' code can't run.
-    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests;";
+    h.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; font-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests;";
     if (ctx.Request.IsHttps) h.StrictTransportSecurity = "max-age=31536000; includeSubDomains";
     await next();
 });
