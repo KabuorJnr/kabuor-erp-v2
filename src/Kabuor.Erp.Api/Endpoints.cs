@@ -444,6 +444,7 @@ public static class Endpoints
         SearchEndpoints.Map(app_);
         ProductionEndpoints.Map(app_);
         DispatchEndpoints.Map(app_);
+        DispatchEndpoints.MapDriverLinks(api);
         RecruitmentEndpoints.Map(app_);
         Kabuor.Erp.Finance.FinanceEndpoints.Map(app_);
         Assistant.AssistantEndpoints.Map(app_);

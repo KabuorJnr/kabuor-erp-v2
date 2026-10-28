@@ -20,6 +20,7 @@ export const ROLES: [string, string][] = [
   ['Procurement', 'Suppliers, purchase orders, vendor bills and receiving'],
   ['Sales', 'Point of sale (POS), customers, quotes, invoices and recording payments'],
   ['Storekeeper', 'Items, stock, transfers, counts, fleet and dispatch'],
+  ['Dispatcher', 'The fleet and dispatch office: trips, waybills, drivers and the live map (nothing else)'],
   ['HR', 'Employees, hiring, leave and payroll (approval stays with the owner or accountant)'],
   ['Viewer', 'Can look, can’t change anything (never sees salaries)'],
 ];
