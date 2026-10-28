@@ -827,6 +827,12 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<DateTimeOffset?>("PodConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<double?>("PodLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("PodLng")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("PodNotes")
                         .IsRequired()
                         .HasColumnType("text");
@@ -885,6 +891,28 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("DriverToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double?>("LastAccuracy")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LastHeading")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LastLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LastLng")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTimeOffset?>("LastPingAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("LastSpeed")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Notes")
                         .IsRequired()
                         .HasColumnType("text");
@@ -910,12 +938,50 @@ namespace Kabuor.Erp.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DriverToken");
+
                     b.HasIndex("CompanyId", "TripNumber")
                         .IsUnique();
 
                     b.HasIndex("CompanyId", "VehicleId", "Status");
 
                     b.ToTable("DispatchTrips");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.DriverPing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<double?>("Accuracy")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double?>("Heading")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Lat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Lng")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("Speed")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("TripId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "TripId", "At");
+
+                    b.ToTable("DriverPings");
                 });
 
             modelBuilder.Entity("Kabuor.Erp.Domain.Employee", b =>

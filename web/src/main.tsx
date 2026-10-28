@@ -24,6 +24,8 @@ import { SupplierList, SupplierView } from './pages/Suppliers';
 import Stock from './pages/Stock';
 import Assets from './pages/Assets';
 import Fleet from './pages/Fleet';
+import DispatchMap from './pages/DispatchMap';
+import Drive from './pages/Drive';
 import { EmployeeList, EmployeeView } from './pages/Employees';
 import Leave from './pages/Leave';
 import { PayrollList, PayrollRun } from './pages/Payroll';
@@ -66,6 +68,7 @@ function App() {
     return (
       <Routes>
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/d/:token" element={<Drive />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/s/:slug" element={<Shop />} />
         <Route path="/terms" element={<Terms />} />
@@ -86,6 +89,7 @@ function App() {
       <Route path="privacy" element={<Privacy />} />
       <Route path="s/:slug" element={<Shop />} />
       <Route path="terms" element={<Terms />} />
+      <Route path="d/:token" element={<Drive />} />
       <Route element={<Shell session={session} />}>
         <Route
           index
@@ -94,6 +98,8 @@ function App() {
               <Navigate to="/portal" replace />
             ) : session.user.role === 'Sales' ? (
               <Navigate to="/pos" replace />
+            ) : session.user.role === 'Dispatcher' ? (
+              <Navigate to="/fleet/live" replace />
             ) : (
               <Today />
             )
@@ -117,7 +123,8 @@ function App() {
         <Route path="suppliers/:id" element={<Need p="buy.view"><SupplierView /></Need>} />
         <Route path="stock" element={<Need p="stock.view"><Stock /></Need>} />
         <Route path="assets" element={<Need p="stock.view"><Assets /></Need>} />
-        <Route path="fleet" element={<Need p="stock.view"><Fleet /></Need>} />
+        <Route path="fleet" element={<Need p="fleet.view"><Fleet /></Need>} />
+        <Route path="fleet/live" element={<Need p="fleet.view"><DispatchMap /></Need>} />
         <Route path="people" element={<Need p="people"><EmployeeList /></Need>} />
         <Route path="people/:id" element={<Need p="people"><EmployeeView /></Need>} />
         <Route path="recruitment" element={<Need p="people"><Recruitment /></Need>} />

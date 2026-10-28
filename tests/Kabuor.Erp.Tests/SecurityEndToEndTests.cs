@@ -26,7 +26,8 @@ public class SecurityEndToEndTests(ErpFactory factory) : IClassFixture<ErpFactor
     sealed record Api(string Method, string Pattern, string[] Policies);
 
     /// <summary>What anyone may call without signing in: health, signing up and in, Safaricom's callbacks (each
-    /// checks its own secret in the URL), the web app's public settings, a business's public shop, the API, and the
+    /// checks its own secret in the URL), the web app's public settings, a business's public shop, the API, a driver's
+    /// trip link (its secret token opens one trip on the road), and the
     /// fixed "not found" for API addresses that match nothing (it holds no data).</summary>
     static readonly HashSet<string> Public =
     [
@@ -34,6 +35,7 @@ public class SecurityEndToEndTests(ErpFactory factory) : IClassFixture<ErpFactor
         "/api/billing/mpesa/{secret}", "/api/client-config", "/api/legal",
         "/api/mpesa/stk/{key}", "/api/mpesa/c2b/{key}/validation", "/api/mpesa/c2b/{key}/confirmation",
         "/api/{**path}",
+        "/api/drive/{token}/", "/api/drive/{token}/ping", "/api/drive/{token}/drops/{dropId:guid}",
     ];
     // The public API (/api/v1) answers to an API key the owner made, checked on every call.
     static bool IsPublic(string pattern) => Public.Contains(pattern) || pattern.StartsWith("/api/public/{slug}") || pattern.StartsWith("/api/v1/");

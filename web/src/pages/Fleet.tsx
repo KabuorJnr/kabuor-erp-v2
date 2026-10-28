@@ -3,11 +3,11 @@
 // trip from the invoices that haven't gone out yet onto a vehicle that's free, prints a waybill per drop, and records
 // who received each one (or why it came back). Vehicles are the asset register's Vehicles; each shows whether it's
 // free, out on a trip or off the road.
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
-import { CheckCircle2, Loader2, MapPin, Phone, Plus, Printer, Send, Truck, XCircle } from 'lucide-react';
-import { api, can, useApi, useSession } from '../lib/api';
-import { cn, dateTime, day, dayYear, ksh, prettyPhone } from '../lib/format';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
+import { CheckCircle2, Copy, Loader2, MapPin, MapPinned, MessageCircle, Phone, Plus, Printer, Send, Truck, XCircle } from 'lucide-react';
+import { api, can, getSession, useApi, useSession } from '../lib/api';
+import { cn, dateTime, day, dayYear, ksh, msisdn, prettyPhone } from '../lib/format';
 import { DocBox, DocFooter, Letterhead, PrintSheet, useLetterhead } from '../components/PrintDoc';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, Sheet, Stat, Status } from '../components/ui';
 
@@ -139,9 +139,56 @@ function Waybills({ trip, onDone }: { trip: Trip; onDone: () => void }) {
   );
 }
 
+/** The driver's private link, sent on WhatsApp: on it they share location while the trip is out (the office's live
+ * map) and confirm each drop from their phone. Made when the trip is opened, so sending it is one tap. */
+function DriverLink({ trip }: { trip: Trip }) {
+  const live = trip.status === 'Draft' || trip.status === 'Dispatched' || trip.status === 'Delivered';
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!live) return;
+    api<{ url: string }>(`/dispatch/trips/${trip.id}/driver-link`, { body: {} }).then((r) => setUrl(r.url), (e) => setError((e as Error).message));
+  }, [trip.id, live]);
+  if (!live) return null;
+  const phone = msisdn(trip.driverPhone);
+  const text = `Hello ${trip.driverName}, this is your trip ${trip.tripNumber}${trip.routeName ? ` (${trip.routeName})` : ''} for ${getSession()?.company.name ?? 'us'}: ${url}\nOpen it, tap Start sharing, and tap Done at each drop.`;
+  return (
+    <section className="rounded-md bg-brand-soft p-3 text-sm">
+      <p className="font-semibold">Driver’s link</p>
+      <p className="text-ink-2">{trip.driverName} opens it on their phone to share location on the live map and confirm each drop. No login needed.</p>
+      {error ? (
+        <p className="mt-2 text-bad">{error}</p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {phone && (
+            <a className={cn('btn btn-mpesa', !url && 'pointer-events-none opacity-50')} target="_blank" rel="noreferrer" href={url ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : undefined}>
+              <MessageCircle className="h-4 w-4" /> Send on WhatsApp
+            </a>
+          )}
+          <button
+            className="btn btn-ghost"
+            disabled={!url}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(url);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {}
+            }}
+          >
+            {copied ? <CheckCircle2 className="h-4 w-4 text-good" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Fleet() {
   const session = useSession();
-  const canEdit = can(session, 'stock');
+  const canEdit = can(session, 'fleet');
+  const canAddVehicle = can(session, 'stock'); // vehicles live on the asset register
   const [params, setParams] = useSearchParams();
   const view = params.get('view') === 'vehicles' ? 'vehicles' : 'trips';
   const [filter, setFilter] = useState<'open' | 'Draft' | 'Dispatched' | 'Completed' | 'Cancelled' | 'all'>('open');
@@ -174,16 +221,21 @@ export default function Fleet() {
         title="Fleet & dispatch"
         subtitle="Plan trips from issued invoices, print waybills, and confirm every delivery."
         actions={
-          canEdit && (
-            <>
+          <>
+            {canEdit && (
               <button className="btn btn-primary" onClick={() => setPlanning(true)}>
                 <Plus className="h-4 w-4" /> Plan a trip
               </button>
+            )}
+            <Link to="/fleet/live" className="btn btn-ghost">
+              <MapPinned className="h-4 w-4" /> Live map
+            </Link>
+            {canAddVehicle && (
               <button className="btn btn-ghost" onClick={() => setAddingVehicle(true)}>
                 <Truck className="h-4 w-4" /> Add a vehicle
               </button>
-            </>
-          )
+            )}
+          </>
         }
       />
 
@@ -345,6 +397,7 @@ function TripDetail({ id, canEdit, onChange }: { id: string; canEdit: boolean; o
       </header>
 
       {t.notes && <p className="rounded-md bg-paper p-3 text-sm ring-1 ring-line">{t.notes}</p>}
+      {canEdit && <DriverLink trip={t} />}
       {err && <ErrorNote>{err}</ErrorNote>}
 
       <div className="flex flex-wrap gap-2">
