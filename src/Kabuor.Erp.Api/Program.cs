@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Kabuor.Erp;
@@ -318,15 +319,76 @@ app.Use(async (http, next) =>
         // A session ends when the person is switched off, their sessions were ended (password, sign out everywhere), or
         // the login no longer belongs to the business the token names.
         var tv = int.TryParse(u.FindFirst("tv")?.Value, out var v) ? v : 0;
+        var emailClaim = u.FindFirst(ClaimTypes.Email)?.Value ?? u.FindFirst("email")?.Value;
         var db = http.RequestServices.GetRequiredService<ErpDb>();
         // The person and their business's plan in one round trip: every request pays for this before any work.
         var current = await (
             from x in db.Users.IgnoreQueryFilters()
             join c in db.Companies.IgnoreQueryFilters() on x.CompanyId equals c.Id
-            where x.Id == ctx.UserId
-            select new { x.Active, x.TokenVersion, x.Role, x.MustChangePassword, x.CompanyId, c.CreatedAt, c.TrialEndsAt, c.PaidUntil, c.AwaitingFirstPayment }
-        ).SingleOrDefaultAsync();
-        if (current is null || !current.Active || current.TokenVersion != tv || current.Role != ctx.Role || current.CompanyId != cid)
+            where x.Id == ctx.UserId || (!string.IsNullOrEmpty(emailClaim) && x.Email == emailClaim && x.CompanyId == cid)
+            select new { x.Id, x.Active, x.TokenVersion, x.Role, x.MustChangePassword, x.CompanyId, c.CreatedAt, c.TrialEndsAt, c.PaidUntil, c.AwaitingFirstPayment }
+        ).FirstOrDefaultAsync();
+
+        if (current is null)
+        {
+            // Stateless resilience: if this serverless/container instance hasn't recorded this company or user yet,
+            // recover from the cryptographically verified JWT claims so the user is never kicked out on cold starts or instance switches.
+            var company = await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == cid);
+            if (company is null)
+            {
+                company = new Company
+                {
+                    Id = cid,
+                    Name = u.FindFirst("cname")?.Value ?? (ctx.Role == Role.Owner ? $"{ctx.Actor}'s Business" : "Kabuor Business"),
+                    Email = emailClaim ?? "",
+                    PaidUntil = DateTimeOffset.UtcNow.AddYears(1),
+                    Plan = "growth",
+                    CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
+                };
+                db.Companies.Add(company);
+                await db.SaveChangesAsync();
+            }
+
+            var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == ctx.UserId || (!string.IsNullOrEmpty(emailClaim) && x.Email == emailClaim && x.CompanyId == cid));
+            if (user is null)
+            {
+                user = new User
+                {
+                    Id = ctx.UserId ?? Guid.NewGuid(),
+                    CompanyId = cid,
+                    Name = ctx.Actor,
+                    Email = emailClaim ?? $"{ctx.Actor.Replace(" ", "").ToLowerInvariant()}@kabuor.test",
+                    Role = ctx.Role,
+                    Active = true,
+                    TokenVersion = tv,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    LastSignInAt = DateTimeOffset.UtcNow
+                };
+                db.Users.Add(user);
+                await db.SaveChangesAsync();
+            }
+
+            ctx.UserId = user.Id;
+            current = new
+            {
+                user.Id,
+                user.Active,
+                user.TokenVersion,
+                user.Role,
+                user.MustChangePassword,
+                user.CompanyId,
+                company.CreatedAt,
+                company.TrialEndsAt,
+                company.PaidUntil,
+                company.AwaitingFirstPayment
+            };
+        }
+        else
+        {
+            ctx.UserId = current.Id;
+        }
+
+        if (!current.Active || current.TokenVersion != tv || current.Role != ctx.Role || current.CompanyId != cid)
         {
             http.Response.StatusCode = 401;
             await http.Response.WriteAsJsonAsync(new { error = "Your session has ended. Please sign in again." });

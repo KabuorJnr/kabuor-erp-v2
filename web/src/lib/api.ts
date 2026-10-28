@@ -19,7 +19,9 @@ export type Role = 'Owner' | 'Accountant' | 'Sales' | 'Storekeeper' | 'Viewer' |
 export function getSession(): Session | null {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Session | null;
-    return s && Array.isArray(s.user.permissions) ? s : null; // saved before permissions came with the sign-in
+    if (!s || !s.token || !s.user || !s.company) return null;
+    if (!Array.isArray(s.user.permissions)) s.user.permissions = [];
+    return s;
   } catch {
     return null;
   }

@@ -105,8 +105,14 @@ public static partial class SchemaSync
 
     static async Task SyncSqlite(ErpDb db)
     {
+        try 
+        { 
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 15000;"); 
+        } 
+        catch { }
         await db.Database.EnsureCreatedAsync();
-        try { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 15000;"); } catch { }
         // Tables first, then missing columns, then indexes (a new index can be on a column added just now).
         var indexes = new List<string>();
         foreach (var raw in db.Database.GenerateCreateScript().Split(";", StringSplitOptions.RemoveEmptyEntries))
@@ -245,6 +251,11 @@ public static partial class SchemaSync
     }
 
     public static readonly Guid DemoCompanyId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    public static readonly Guid AmaniOwnerUserId = Guid.Parse("33333333-3333-3333-3333-333333330001");
+    public static readonly Guid AmaniAccountantUserId = Guid.Parse("33333333-3333-3333-3333-333333330002");
+    public static readonly Guid AmaniSalesUserId = Guid.Parse("33333333-3333-3333-3333-333333330003");
+    public static readonly Guid AmaniStoreUserId = Guid.Parse("33333333-3333-3333-3333-333333330004");
+    public static readonly Guid AmaniHrUserId = Guid.Parse("33333333-3333-3333-3333-333333330005");
 
     static async Task SeedDemoBusiness(ErpDb db)
     {
@@ -275,20 +286,21 @@ public static partial class SchemaSync
             var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Domain.User>();
             var staffDefs = new[]
             {
-                ("Grace Wambui", "owner@amani.test", "0712000001", Domain.Role.Owner, "Amani-owner-2026!"),
-                ("Peter Otieno", "peter@amani.test", "0712000002", Domain.Role.Accountant, "Amani-peter-2026"),
-                ("Mercy Achieng", "mercy@amani.test", "0712000003", Domain.Role.Sales, "Amani-mercy-2026"),
-                ("Joseph Mutua", "joseph@amani.test", "0712000004", Domain.Role.Storekeeper, "Amani-joseph-2026"),
-                ("Faith Njeri", "faith@amani.test", "0712000005", Domain.Role.HR, "Amani-faith-2026"),
+                (AmaniOwnerUserId, "Grace Wambui", "owner@amani.test", "0712000001", Domain.Role.Owner, "Amani-owner-2026!"),
+                (AmaniAccountantUserId, "Peter Otieno", "peter@amani.test", "0712000002", Domain.Role.Accountant, "Amani-peter-2026"),
+                (AmaniSalesUserId, "Mercy Achieng", "mercy@amani.test", "0712000003", Domain.Role.Sales, "Amani-mercy-2026"),
+                (AmaniStoreUserId, "Joseph Mutua", "joseph@amani.test", "0712000004", Domain.Role.Storekeeper, "Amani-joseph-2026"),
+                (AmaniHrUserId, "Faith Njeri", "faith@amani.test", "0712000005", Domain.Role.HR, "Amani-faith-2026"),
             };
 
-            foreach (var (name, email, phone, role, pass) in staffDefs)
+            foreach (var (id, name, email, phone, role, pass) in staffDefs)
             {
-                var u = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Email == email && x.CompanyId == company.Id);
+                var u = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id || (x.Email == email && x.CompanyId == company.Id));
                 if (u is null)
                 {
                     u = new Domain.User
                     {
+                        Id = id,
                         CompanyId = company.Id,
                         Name = name,
                         Email = email,
@@ -300,6 +312,15 @@ public static partial class SchemaSync
                     };
                     u.PasswordHash = hasher.HashPassword(u, pass);
                     db.Users.Add(u);
+                }
+                else
+                {
+                    u.Id = id;
+                    u.Name = name;
+                    u.Role = role;
+                    u.Active = true;
+                    u.CompanyId = company.Id;
+                    u.PasswordHash = hasher.HashPassword(u, pass);
                 }
             }
             await db.SaveChangesAsync();

@@ -70,7 +70,7 @@ public sealed class TokenIssuer(IConfiguration config)
         return s;
     }
 
-    public string Issue(User u)
+    public string Issue(User u, string? companyName = null)
     {
         var claims = new List<Claim>
         {
@@ -79,6 +79,12 @@ public sealed class TokenIssuer(IConfiguration config)
             new("role", u.Role.ToString()),
             new("name", u.Name),
         };
+        if (!string.IsNullOrEmpty(u.Email))
+        {
+            claims.Add(new Claim("email", u.Email));
+            claims.Add(new Claim(ClaimTypes.Email, u.Email));
+        }
+        if (!string.IsNullOrEmpty(companyName)) claims.Add(new Claim("cname", companyName));
         if (u.EmployeeId is { } eid) claims.Add(new Claim("eid", eid.ToString()));
         claims.Add(new Claim("tv", u.TokenVersion.ToString()));
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
@@ -477,7 +483,7 @@ public sealed class AuthService(ErpDb db, RequestContext ctx, TokenIssuer tokens
     {
         var isPlatformAdmin = Platform.PlatformService.IsAdmin(config, u.Email);
         return new(
-            tokens.Issue(u),
+            tokens.Issue(u, c.Name),
             new { u.Id, u.Name, u.Email, Role = u.Role.ToString(), u.Language, u.EmployeeId, u.MustChangePassword, u.TwoFactorEnabled, isPlatformAdmin, permissions = Policies.For(u.Role) },
             new { c.Id, c.Name, c.KraPin, c.VatRegistered, c.Industry, c.AccountingLockDate, c.AwaitingFirstPayment });
     }
