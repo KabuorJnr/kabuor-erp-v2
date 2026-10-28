@@ -6,9 +6,10 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ArrowLeft, FileSpreadsheet, Loader2, Printer } from 'lucide-react';
 import { download, useApi } from '../lib/api';
-import { cn, todayIso } from '../lib/format';
+import { cn, dayYear, todayIso } from '../lib/format';
 import { ErrorNote, Loading, PageHeader } from '../components/ui';
 import SheetTable, { cellText, type SheetData } from '../components/SheetTable';
+import { DocFooter, Letterhead, printAs } from '../components/PrintDoc';
 
 type Pack = { company: string; month: string; sheets: SheetData[] };
 
@@ -83,7 +84,7 @@ export default function MonthlyReport() {
               <button className="btn btn-primary" onClick={excel} disabled={busy || !data}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} Download Excel
               </button>
-              <button className="btn btn-ghost" onClick={() => window.print()} disabled={!data}>
+              <button className="btn btn-ghost" onClick={() => printAs(`Monthly report ${label} · ${data?.company ?? ''}`)} disabled={!data}>
                 <Printer className="h-4 w-4" /> Print or save as PDF
               </button>
             </>
@@ -92,30 +93,36 @@ export default function MonthlyReport() {
         {problem && <ErrorNote>{problem}</ErrorNote>}
       </div>
 
-      {/* On paper: the business and month as a heading, since the app's own header doesn't print. */}
+      {/* On paper: the letterhead, since the app's own header doesn't print. */}
       {data && (
-        <header className="mb-4 hidden print:block">
-          <p className="text-sm text-muted">{data.company}</p>
-          <h1 className="font-display text-2xl font-bold">Monthly report · {label}</h1>
-        </header>
+        <div className="doc mb-6 hidden print:block">
+          <Letterhead title="Monthly report" number={label} facts={[['Prepared', dayYear(todayIso())]]} />
+        </div>
       )}
 
       {error ? <ErrorNote>{error}</ErrorNote> : loading && !data ? <Loading /> : summary ? (
-        <div className="space-y-5">
+        <div className="doc space-y-5">
           <Headlines summary={summary} />
-          <section className="card p-4 sm:p-5 print:break-inside-avoid">
-            <h2 className="font-display text-lg font-bold">{summary.title}</h2>
-            <p className="mb-3 text-sm text-muted">{summary.subtitle}</p>
+          <section className="card p-4 sm:p-5 print:rounded-none print:p-0 print:pt-2 print:ring-0">
+            <div className="print:break-after-avoid">
+              <h2 className="font-display text-lg font-bold">{summary.title}</h2>
+              <p className="mb-3 text-sm text-muted">{summary.subtitle}</p>
+            </div>
             <SheetTable sheet={summary} />
           </section>
           <div className="grid gap-5 xl:grid-cols-2 print:block">
             {tables.map((t) => (
-              <section key={t.name} className="card min-w-0 p-4 sm:p-5 print:mt-5 print:break-inside-avoid">
-                <h2 className="font-display text-lg font-bold">{t.name}</h2>
-                <p className="mb-3 text-sm text-muted">{t.subtitle}</p>
+              <section key={t.name} className="card min-w-0 p-4 sm:p-5 print:mt-8 print:rounded-none print:p-0 print:ring-0">
+                <div className="print:break-after-avoid">
+                  <h2 className="font-display text-lg font-bold">{t.name}</h2>
+                  <p className="mb-3 text-sm text-muted">{t.subtitle}</p>
+                </div>
                 <SheetTable sheet={t} compact />
               </section>
             ))}
+          </div>
+          <div className="hidden print:block">
+            <DocFooter>Amounts in KSh, as recorded in Kabuor ERP on {dayYear(todayIso())}. The Excel workbook holds the same tables.</DocFooter>
           </div>
         </div>
       ) : null}

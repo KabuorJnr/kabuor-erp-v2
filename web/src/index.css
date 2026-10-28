@@ -105,3 +105,138 @@
     display: none;
   }
 }
+
+/* Printed documents (components/PrintDoc.tsx). A4 with page numbers, the brand colours kept on paper, a slightly
+   smaller type scale so an invoice fits one page, and the app hidden while a separate sheet (waybills) prints. */
+@utility doc-table {
+  @apply w-full border-collapse text-sm;
+  & th {
+    @apply bg-brand-soft px-2.5 py-2 text-2xs tracking-wide text-ink uppercase;
+    text-align: left;
+  }
+  & th.text-right {
+    text-align: right;
+  }
+  & td {
+    @apply border-b border-line px-2.5 py-2.5 align-top;
+  }
+  & tr {
+    break-inside: avoid;
+  }
+}
+.print-sheet {
+  display: none;
+}
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm;
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font: 8pt 'Onest', sans-serif;
+    color: #8a8db0;
+  }
+}
+@media print {
+  html:has(.doc) {
+    font-size: 13px;
+  }
+  body {
+    background: #fff;
+  }
+  .doc,
+  .doc * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body:has(> .print-sheet) > #root {
+    display: none;
+  }
+  .print-sheet {
+    display: block;
+  }
+  thead {
+    display: table-header-group;
+  }
+}
+
+/* The dispatch office's live map (pages/DispatchMap.tsx): muted streets so vehicles stand out, Uber-style. */
+.dispatch-map .leaflet-tile-pane {
+  filter: grayscale(0.55) saturate(0.8) contrast(1.05);
+}
+.dispatch-map .leaflet-container,
+.dispatch-map.leaflet-container {
+  font-family: var(--font-sans);
+  background: var(--color-paper);
+}
+.veh {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 6px;
+  transform: translate(-14px, -14px);
+  cursor: pointer;
+}
+.veh-dot {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  color: #fff;
+  background: var(--color-ink);
+  box-shadow: 0 0 0 3px #fff, 0 2px 8px rgb(10 11 30 / 0.35);
+}
+.veh-dot svg {
+  width: 16px;
+  height: 16px;
+}
+.veh-dot i {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #fff;
+}
+.veh-moving .veh-dot {
+  background: var(--color-good);
+}
+.veh-stopped .veh-dot {
+  background: var(--color-warn);
+}
+.veh-quiet .veh-dot {
+  background: var(--color-bad);
+}
+.veh-on .veh-dot {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--color-brand), 0 2px 10px rgb(10 11 30 / 0.4);
+}
+.veh-label {
+  white-space: nowrap;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(10 11 30 / 0.25);
+}
+.drop-pin {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  transform: translate(-11px, -11px);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff, 0 1px 4px rgb(10 11 30 / 0.3);
+}
+.drop-good {
+  background: var(--color-good);
+}
+.drop-warn {
+  background: var(--color-warn);
+}
+.drop-bad {
+  background: var(--color-bad);
+}

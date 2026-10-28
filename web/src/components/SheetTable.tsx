@@ -23,8 +23,8 @@ export default function SheetTable({ sheet, compact }: { sheet: SheetData; compa
   const right = sheet.columns.map((_, i) => sheet.rows.some((r) => numeric(r.cells[i] ?? null)));
   if (sheet.rows.length === 0) return <p className="text-sm text-muted">{sheet.note ?? 'Nothing in this period.'}</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className={cn('w-full text-sm', compact ? 'min-w-[28rem]' : 'min-w-[32rem]')}>
+    <div className="overflow-x-auto print:overflow-visible">
+      <table className={cn('w-full text-sm print:min-w-0 print:text-xs', compact ? 'min-w-[28rem]' : 'min-w-[32rem]')}>
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
             {sheet.columns.map((c, i) => <th key={i} className={cn('px-2 py-2 first:pl-0', right[i] && 'text-right')}>{c}</th>)}

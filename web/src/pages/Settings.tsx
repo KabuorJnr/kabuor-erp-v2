@@ -7,17 +7,91 @@ import Connections from '../components/Connections';
 import { PromptSetup } from '../components/MpesaPrompt';
 import { PriceLists, UnitsEditor, unitsBody, type UnitRow } from '../components/Trade';
 import { useSearchParams } from 'react-router';
-import { cn, ksh, toCents } from '../lib/format';
+import { cn, dayYear, ksh, todayIso, toCents } from '../lib/format';
+import { Letterhead } from '../components/PrintDoc';
 import { Chips, ErrorNote, Field, Loading, PageHeader, Sheet, Status } from '../components/ui';
 import { ScanButton } from '../components/Scanner';
 import Team from '../components/Team';
 import ActivityLog from '../components/ActivityLog';
+
+/** Shrinks a picked logo to letterhead size in the browser (at most 600×200, enough for print), keeping a
+ * transparent background as PNG and falling back to WebP if that's still too big to store. */
+async function logoDataUrl(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const scale = Math.min(1, 600 / img.naturalWidth, 200 / img.naturalHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const png = canvas.toDataURL('image/png');
+    return png.length < 380_000 ? png : canvas.toDataURL('image/webp', 0.9);
+  } catch {
+    throw new Error('That picture couldn’t be read. Use a PNG or JPG.');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** The logo, and the letterhead as it prints: owners see what customers will get before they send anything. */
+function LetterheadSetup({ logo, onChange }: { logo: string; onChange: () => void }) {
+  const [state, setState] = useState({ busy: false, error: '' });
+  const save = async (dataUrl: string) => {
+    setState({ busy: true, error: '' });
+    try {
+      await api('/settings/company/logo', { method: 'PUT', body: { dataUrl } });
+      onChange();
+    } catch (e) {
+      setState({ busy: false, error: (e as Error).message });
+    }
+  };
+  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      await save(await logoDataUrl(file));
+    } catch (err) {
+      setState({ busy: false, error: (err as Error).message });
+    }
+  };
+  return (
+    <section className="card space-y-4 p-4 sm:p-5 2xl:col-span-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Your letterhead</h2>
+          <p className="text-sm text-muted">On every invoice, quote, waybill, purchase order and report you print or save as PDF.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className={cn('btn btn-ghost cursor-pointer', state.busy && 'pointer-events-none opacity-50')}>
+            {state.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {logo ? 'Change logo' : 'Add your logo'}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={pick} disabled={state.busy} />
+          </label>
+          {logo && (
+            <button type="button" className="btn btn-ghost text-bad" disabled={state.busy} onClick={() => save('')}>
+              Remove logo
+            </button>
+          )}
+        </div>
+      </div>
+      {state.error && <ErrorNote>{state.error}</ErrorNote>}
+      <div className="rounded-md bg-white p-5 ring-1 ring-line">
+        <Letterhead title="Invoice" number="INV-0001" facts={[['Invoice date', dayYear(todayIso())]]} />
+      </div>
+      {!logo && <p className="text-xs text-muted">No logo yet: your initials stand in. A PNG with a clear background prints best.</p>}
+    </section>
+  );
+}
 
 function Company() {
   const { data, error, reload } = useApi<any>('/settings/company');
   const [f, setF] = useState<any>(null);
   const [state, setState] = useState({ busy: false, error: '', saved: false });
   const [copied, setCopied] = useState(false);
+  const [version, setVersion] = useState(0); // redraws the letterhead preview after a save
   useEffect(() => {
     if (data) setF({
       name: data.name,
@@ -25,6 +99,7 @@ function Company() {
       phone: data.phone,
       email: data.email,
       county: data.county,
+      address: data.address ?? '',
       vatRegistered: data.vatRegistered,
       mpesaShortcode: data.mpesaShortcode,
       preventNegativeStock: data.preventNegativeStock ?? false,
@@ -42,6 +117,7 @@ function Company() {
       await api('/settings/company', { method: 'PUT', body: f });
       setState({ busy: false, error: '', saved: true });
       reload();
+      setVersion((v) => v + 1);
     } catch (err) {
       setState({ busy: false, error: (err as Error).message, saved: false });
     }
@@ -74,6 +150,9 @@ function Company() {
           </Field>
           <Field label="County">
             <input className="field" value={f.county} onChange={set('county')} placeholder="e.g. Nairobi" />
+          </Field>
+          <Field label="Address" hint="Printed under your name on invoices, waybills and reports.">
+            <input className="field" value={f.address} onChange={set('address')} placeholder="e.g. Amani House, Moi Avenue · P.O. Box 1234-00100" />
           </Field>
           <Field label="Phone">
             <input className="field" value={f.phone} onChange={set('phone')} inputMode="tel" />
@@ -123,6 +202,7 @@ function Company() {
         </button>
         <p className="text-xs text-muted">Keep it private: it contains a secret key for your business.</p>
       </aside>
+      <LetterheadSetup key={version} logo={data.logo ?? ''} onChange={() => (reload(), setVersion((v) => v + 1))} />
     </div>
   );
 }

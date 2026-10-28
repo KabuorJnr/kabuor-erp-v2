@@ -31,11 +31,13 @@ public static class Policies
     public const string Buy = "buy";              // raise orders and bills
     public const string Make = "make";            // recipes and production runs
     public const string People = "people";        // employees, salaries, leave, payroll
+    public const string FleetView = "fleet.view"; // vehicles, trips, waybills and the live map
+    public const string Fleet = "fleet";          // plan and send out trips, driver links, proof of delivery
     public const string Admin = "admin";          // users and company settings
 
     public static readonly Dictionary<string, Role[]> Roles = new()
     {
-        [Read] = [Role.Owner, Role.Accountant, Role.Sales, Role.Storekeeper, Role.Viewer, Role.HR, Role.Procurement],
+        [Read] = [Role.Owner, Role.Accountant, Role.Sales, Role.Storekeeper, Role.Viewer, Role.HR, Role.Procurement, Role.Dispatcher],
         [SalesView] = [Role.Owner, Role.Accountant, Role.Sales, Role.Viewer],
         [Sell] = [Role.Owner, Role.Accountant, Role.Sales],
         [Pos] = [Role.Owner, Role.Sales],
@@ -48,6 +50,8 @@ public static class Policies
         [Buy] = [Role.Owner, Role.Accountant, Role.Procurement, Role.Storekeeper], // orders create no debt; bills still need Finance
         [Make] = [Role.Owner, Role.Storekeeper],
         [People] = [Role.Owner, Role.Accountant, Role.HR],
+        [FleetView] = [Role.Owner, Role.Accountant, Role.Storekeeper, Role.Procurement, Role.Viewer, Role.Dispatcher],
+        [Fleet] = [Role.Owner, Role.Accountant, Role.Storekeeper, Role.Procurement, Role.Dispatcher],
         [Admin] = [Role.Owner],
     };
 

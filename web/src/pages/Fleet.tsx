@@ -3,11 +3,12 @@
 // trip from the invoices that haven't gone out yet onto a vehicle that's free, prints a waybill per drop, and records
 // who received each one (or why it came back). Vehicles are the asset register's Vehicles; each shows whether it's
 // free, out on a trip or off the road.
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
-import { CheckCircle2, Loader2, MapPin, Phone, Plus, Printer, Send, Truck, XCircle } from 'lucide-react';
-import { api, can, useApi, useSession } from '../lib/api';
-import { cn, dateTime, day, ksh, prettyPhone } from '../lib/format';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
+import { CheckCircle2, Copy, Loader2, MapPin, MapPinned, MessageCircle, Phone, Plus, Printer, Send, Truck, XCircle } from 'lucide-react';
+import { api, can, getSession, useApi, useSession } from '../lib/api';
+import { cn, dateTime, day, dayYear, ksh, msisdn, prettyPhone } from '../lib/format';
+import { DocBox, DocFooter, Letterhead, PrintSheet, useLetterhead } from '../components/PrintDoc';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, Sheet, Stat, Status } from '../components/ui';
 
 type TripStatus = 'Draft' | 'Dispatched' | 'Delivered' | 'Completed' | 'Cancelled';
@@ -19,6 +20,7 @@ type TripRow = {
 type Drop = {
   id: string; waybillNumber: string; customerName: string; deliveryAddress: string; contactPhone: string; status: DropStatus;
   recipientName: string; podNotes: string; podConfirmedAt: string | null; invoiceNumber: string | null; invoiceTotal: number | null; salesDocId: string | null;
+  items: { description: string; quantity: number; unit: string }[];
 };
 type Trip = Omit<TripRow, 'deliveriesCount' | 'deliveredCount' | 'failedCount' | 'pendingCount'> & { notes: string; deliveries: Drop[] };
 type Counts = { all: number; open: number; draft: number; dispatched: number; delivered: number; completed: number; cancelled: number };
@@ -40,43 +42,153 @@ const VEHICLE: Record<Vehicle['state'], [string, 'good' | 'info' | 'warn' | 'bad
   available: ['Free', 'good'], out: ['Out on a trip', 'info'], repair: ['Under repair', 'warn'], lost: ['Off the road', 'bad'],
 };
 
-const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-/** One A4 page per drop: the waybill the driver carries and the customer signs. */
-function printWaybills(trip: Trip, business: string) {
-  const w = window.open('', '_blank');
-  if (!w) return alert('Allow pop-ups for this site to print waybills.');
-  const pages = trip.deliveries.map((d) => `<section>
-    <header><div><b>${esc(business)}</b><small>Waybill / delivery note</small></div><div class="n">${esc(d.waybillNumber)}</div></header>
-    <table>
-      <tr><th>Deliver to</th><td><b>${esc(d.customerName)}</b><br>${esc(d.deliveryAddress)}${d.contactPhone ? `<br>${esc(prettyPhone(d.contactPhone))}` : ''}</td></tr>
-      ${d.invoiceNumber ? `<tr><th>Invoice</th><td>${esc(d.invoiceNumber)}${d.invoiceTotal != null ? ` · ${esc(ksh(d.invoiceTotal))}` : ''}</td></tr>` : ''}
-      <tr><th>Trip</th><td>${esc(trip.tripNumber)} · ${esc(trip.routeName)}</td></tr>
-      <tr><th>Vehicle</th><td>${esc(trip.vehiclePlate)}</td></tr>
-      <tr><th>Driver</th><td>${esc(trip.driverName)}${trip.driverPhone ? ` · ${esc(prettyPhone(trip.driverPhone))}` : ''}</td></tr>
-      <tr><th>Sent out</th><td>${trip.dispatchedAt ? esc(dateTime(trip.dispatchedAt)) : '&nbsp;'}</td></tr>
-    </table>
-    <p class="note">Received in good order unless noted below.</p>
-    <div class="sign"><div>Received by (name)</div><div>Signature</div><div>Date and time</div></div>
-    <div class="notes">Notes / items returned</div>
-  </section>`);
-  w.document.write(`<!doctype html><title>Waybills ${esc(trip.tripNumber)}</title><style>
-    @page{size:A4;margin:16mm}body{margin:0;font-family:Arial,sans-serif;color:#111;font-size:11pt}
-    section{break-after:page}section:last-child{break-after:auto}
-    header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:14px}
-    header b{display:block;font-size:15pt}header small{color:#555}.n{font-size:16pt;font-weight:bold;letter-spacing:.5px}
-    table{width:100%;border-collapse:collapse}th{width:28%;text-align:left;color:#555;font-weight:normal;vertical-align:top;padding:6px 0}td{padding:6px 0}
-    tr+tr th,tr+tr td{border-top:1px solid #ddd}.note{margin-top:18px;color:#555}
-    .sign{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px;margin-top:36px}.sign div{border-top:1px solid #111;padding-top:4px;font-size:9pt;color:#555}
-    .notes{margin-top:30px;height:90px;border:1px solid #bbb;padding:6px;font-size:9pt;color:#555}
-    </style>${pages.join('')}`);
-  w.document.close();
-  setTimeout(() => w.print(), 300);
+/** One A4 page per drop: the waybill the driver carries and the customer checks the goods against and signs. */
+function Waybills({ trip, onDone }: { trip: Trip; onDone: () => void }) {
+  return (
+    <PrintSheet name={`Waybills ${trip.tripNumber} · ${trip.routeName}`} onDone={onDone}>
+      {trip.deliveries.map((d, i) => (
+        <section key={d.id} className={cn('relative', i < trip.deliveries.length - 1 && 'break-after-page')}>
+          <Letterhead
+            title="Waybill"
+            number={d.waybillNumber}
+            facts={[
+              ['Date', trip.dispatchedAt ? dayYear(trip.dispatchedAt) : dayYear(trip.createdAt)],
+              ['Trip', trip.tripNumber],
+              ['Drop', `${i + 1} of ${trip.deliveries.length}`],
+            ]}
+          />
+          <div className="mt-6 grid grid-cols-2 gap-4">
+            <DocBox label="Deliver to">
+              <p className="text-base font-semibold text-ink">{d.customerName}</p>
+              <div className="mt-0.5 text-xs leading-relaxed text-ink-2">
+                {d.deliveryAddress && <p className="whitespace-pre-line">{d.deliveryAddress}</p>}
+                {d.contactPhone && <p>{prettyPhone(d.contactPhone)}</p>}
+              </div>
+            </DocBox>
+            <DocBox label="Carried by">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
+                <dt className="text-muted">Vehicle</dt>
+                <dd className="font-semibold text-ink">{trip.vehiclePlate}</dd>
+                <dt className="text-muted">Driver</dt>
+                <dd className="font-semibold text-ink">
+                  {trip.driverName}
+                  {trip.driverPhone && ` · ${prettyPhone(trip.driverPhone)}`}
+                </dd>
+                <dt className="text-muted">Route</dt>
+                <dd className="text-ink">{trip.routeName}</dd>
+                <dt className="text-muted">Left at</dt>
+                <dd className="text-ink">{trip.dispatchedAt ? dateTime(trip.dispatchedAt) : '________________'}</dd>
+              </dl>
+            </DocBox>
+          </div>
+
+          <table className="doc-table mt-6">
+            <thead>
+              <tr>
+                <th className="w-8">#</th>
+                <th>Goods</th>
+                <th className="text-right">Qty sent</th>
+                <th className="w-28 text-right">Qty received</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.items.length ? (
+                d.items.map((l, n) => (
+                  <tr key={n}>
+                    <td className="num text-muted">{n + 1}</td>
+                    <td className="font-medium text-ink">{l.description}</td>
+                    <td className="num text-right whitespace-nowrap">
+                      {l.quantity}
+                      {l.unit && <span className="text-muted"> {l.unit}</span>}
+                    </td>
+                    <td className="border-l border-line" />
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className="text-muted">Goods as listed on the attached invoice.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {d.invoiceNumber && (
+            <p className="mt-2 text-right text-xs text-muted">
+              For invoice <b className="num text-ink">{d.invoiceNumber}</b>
+              {d.invoiceTotal != null && <> · value <b className="num text-ink">{ksh(d.invoiceTotal)}</b></>}
+            </p>
+          )}
+
+          <div className="mt-6 h-24 rounded-md p-3 text-2xs font-semibold tracking-wide text-muted uppercase ring-1 ring-line">Notes, shortages or goods returned</div>
+
+          <p className="mt-6 text-sm text-ink-2">Received the goods above in good order and condition, unless noted.</p>
+          <div className="mt-10 grid grid-cols-4 gap-5 text-2xs text-muted">
+            {['Received by (name)', 'Signature', 'Date and time', 'Stamp'].map((s) => (
+              <p key={s} className="border-t border-ink pt-1">{s}</p>
+            ))}
+          </div>
+          <div className="mt-10 grid grid-cols-4 gap-5 text-2xs text-muted">
+            <p className="border-t border-ink pt-1">Driver’s signature</p>
+            <p className="border-t border-ink pt-1">Released by (store)</p>
+          </div>
+
+          <DocFooter>The driver brings this signed copy back to the store.</DocFooter>
+        </section>
+      ))}
+    </PrintSheet>
+  );
+}
+
+/** The driver's private link, sent on WhatsApp: on it they share location while the trip is out (the office's live
+ * map) and confirm each drop from their phone. Made when the trip is opened, so sending it is one tap. */
+function DriverLink({ trip }: { trip: Trip }) {
+  const live = trip.status === 'Draft' || trip.status === 'Dispatched' || trip.status === 'Delivered';
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!live) return;
+    api<{ url: string }>(`/dispatch/trips/${trip.id}/driver-link`, { body: {} }).then((r) => setUrl(r.url), (e) => setError((e as Error).message));
+  }, [trip.id, live]);
+  if (!live) return null;
+  const phone = msisdn(trip.driverPhone);
+  const text = `Hello ${trip.driverName}, this is your trip ${trip.tripNumber}${trip.routeName ? ` (${trip.routeName})` : ''} for ${getSession()?.company.name ?? 'us'}: ${url}\nOpen it, tap Start sharing, and tap Done at each drop.`;
+  return (
+    <section className="rounded-md bg-brand-soft p-3 text-sm">
+      <p className="font-semibold">Driver’s link</p>
+      <p className="text-ink-2">{trip.driverName} opens it on their phone to share location on the live map and confirm each drop. No login needed.</p>
+      {error ? (
+        <p className="mt-2 text-bad">{error}</p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {phone && (
+            <a className={cn('btn btn-mpesa', !url && 'pointer-events-none opacity-50')} target="_blank" rel="noreferrer" href={url ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : undefined}>
+              <MessageCircle className="h-4 w-4" /> Send on WhatsApp
+            </a>
+          )}
+          <button
+            className="btn btn-ghost"
+            disabled={!url}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(url);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {}
+            }}
+          >
+            {copied ? <CheckCircle2 className="h-4 w-4 text-good" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default function Fleet() {
   const session = useSession();
-  const canEdit = can(session, 'stock');
+  const canEdit = can(session, 'fleet');
+  const canAddVehicle = can(session, 'stock'); // vehicles live on the asset register
   const [params, setParams] = useSearchParams();
   const view = params.get('view') === 'vehicles' ? 'vehicles' : 'trips';
   const [filter, setFilter] = useState<'open' | 'Draft' | 'Dispatched' | 'Completed' | 'Cancelled' | 'all'>('open');
@@ -109,16 +221,21 @@ export default function Fleet() {
         title="Fleet & dispatch"
         subtitle="Plan trips from issued invoices, print waybills, and confirm every delivery."
         actions={
-          canEdit && (
-            <>
+          <>
+            {canEdit && (
               <button className="btn btn-primary" onClick={() => setPlanning(true)}>
                 <Plus className="h-4 w-4" /> Plan a trip
               </button>
+            )}
+            <Link to="/fleet/live" className="btn btn-ghost">
+              <MapPinned className="h-4 w-4" /> Live map
+            </Link>
+            {canAddVehicle && (
               <button className="btn btn-ghost" onClick={() => setAddingVehicle(true)}>
                 <Truck className="h-4 w-4" /> Add a vehicle
               </button>
-            </>
-          )
+            )}
+          </>
         }
       />
 
@@ -191,7 +308,7 @@ export default function Fleet() {
       )}
 
       <Sheet open={Boolean(openId)} onClose={() => open(null)} title="Trip" wide>
-        {openId && <TripDetail id={openId} canEdit={canEdit} business={session?.company.name ?? ''} onChange={refresh} />}
+        {openId && <TripDetail id={openId} canEdit={canEdit} onChange={refresh} />}
       </Sheet>
       <Sheet open={planning} onClose={() => setPlanning(false)} title="Plan a trip" wide>
         {planning && <PlanTrip fleet={fleet.data} invoices={toDeliver.data ?? []} onDone={(id) => { setPlanning(false); refresh(); open(id); }} onAddVehicle={() => setAddingVehicle(true)} />}
@@ -241,8 +358,10 @@ function Vehicles({ fleet, onOpenTrip, onAdd }: { fleet: ReturnType<typeof useAp
   );
 }
 
-function TripDetail({ id, canEdit, business, onChange }: { id: string; canEdit: boolean; business: string; onChange: () => void }) {
+function TripDetail({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
   const { data: t, error, reload } = useApi<Trip>(`/dispatch/trips/${id}`);
+  const [printing, setPrinting] = useState(false);
+  useLetterhead(); // loaded before Print is pressed, so the waybills have it
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [pod, setPod] = useState<string | null>(null);
@@ -267,6 +386,7 @@ function TripDetail({ id, canEdit, business, onChange }: { id: string; canEdit: 
 
   return (
     <div className="space-y-5">
+      {printing && <Waybills trip={t} onDone={() => setPrinting(false)} />}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-muted">{t.tripNumber}</p>
@@ -277,6 +397,7 @@ function TripDetail({ id, canEdit, business, onChange }: { id: string; canEdit: 
       </header>
 
       {t.notes && <p className="rounded-md bg-paper p-3 text-sm ring-1 ring-line">{t.notes}</p>}
+      {canEdit && <DriverLink trip={t} />}
       {err && <ErrorNote>{err}</ErrorNote>}
 
       <div className="flex flex-wrap gap-2">
@@ -290,7 +411,7 @@ function TripDetail({ id, canEdit, business, onChange }: { id: string; canEdit: 
             {busy === 'complete' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {open ? 'Back at the yard: complete trip' : 'Complete trip'}
           </button>
         )}
-        <button className="btn btn-ghost" onClick={() => printWaybills(t, business)}>
+        <button className="btn btn-ghost" onClick={() => setPrinting(true)}>
           <Printer className="h-4 w-4" /> Print {t.deliveries.length === 1 ? 'waybill' : `${t.deliveries.length} waybills`}
         </button>
         {canEdit && (t.status === 'Draft' || t.status === 'Dispatched') && !t.deliveries.some((d) => d.status === 'Delivered' || d.status === 'PartialReturn') && (

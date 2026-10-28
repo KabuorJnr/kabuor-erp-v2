@@ -14,12 +14,18 @@ export type Session = {
   user: { id: string; name: string; email: string; role: Role; language: 'en' | 'sw'; employeeId?: string | null; mustChangePassword?: boolean; twoFactorEnabled?: boolean; permissions?: Permission[] };
   company: { id: string; name: string; kraPin: string; vatRegistered: boolean; industry?: string; accountingLockDate?: string | null; awaitingFirstPayment?: boolean };
 };
-export type Role = 'Owner' | 'Accountant' | 'Sales' | 'Storekeeper' | 'Viewer' | 'HR' | 'Employee' | 'Procurement';
+export type Role = 'Owner' | 'Accountant' | 'Sales' | 'Storekeeper' | 'Viewer' | 'HR' | 'Employee' | 'Procurement' | 'Dispatcher';
 
 export function getSession(): Session | null {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Session | null;
-    return s && Array.isArray(s.user.permissions) ? s : null; // saved before permissions came with the sign-in
+    if (!s || !Array.isArray(s.user.permissions)) return null; // saved before permissions came with the sign-in
+    // Saved before fleet had its own permissions: every role that had stock had fleet too (Auth.cs), so add them
+    // rather than hide Fleet & dispatch until the next sign-in.
+    const p = s.user.permissions;
+    if (p.includes('stock.view') && !p.includes('fleet.view')) p.push('fleet.view');
+    if (p.includes('stock') && !p.includes('fleet')) p.push('fleet');
+    return s;
   } catch {
     return null;
   }
@@ -168,5 +174,5 @@ export function useSession() {
 
 /** What each part of the app needs. The server decides who has which (Auth.cs, Policies) and sends the list with
  * the sign-in, so the menu, pages, tiles and buttons always agree with what the API will allow. */
-export type Permission = 'read' | 'sales.view' | 'sell' | 'pos' | 'crm' | 'finance' | 'reports' | 'stock.view' | 'stock' | 'buy.view' | 'buy' | 'make' | 'people' | 'admin';
+export type Permission = 'read' | 'sales.view' | 'sell' | 'pos' | 'crm' | 'finance' | 'reports' | 'stock.view' | 'stock' | 'buy.view' | 'buy' | 'make' | 'people' | 'fleet.view' | 'fleet' | 'admin';
 export const can = (s: Session | null, p: Permission) => Boolean(s?.user.permissions?.includes(p));

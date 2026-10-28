@@ -16,6 +16,10 @@ public sealed class Company
     public string Phone { get; set; } = "";
     public string Email { get; set; } = "";
     public string County { get; set; } = "";
+    /// <summary>Street, building and P.O. Box, as printed under the name on invoices, waybills and reports.</summary>
+    public string Address { get; set; } = "";
+    /// <summary>The business's logo for its letterhead: a small PNG/JPEG/WebP data URL, resized in the browser.</summary>
+    public string Logo { get; set; } = "";
     public bool VatRegistered { get; set; } = true;
     /// <summary>The business's public address for its shop and customer portal (/s/{slug}); unique.</summary>
     public string Slug { get; set; } = "";
@@ -113,6 +117,7 @@ public enum Role
     HR,          // employees, leave and payroll
     Employee,    // self-service only: their own leave, payslips and P9 (nothing else in the business)
     Procurement, // suppliers, purchase orders, vendor bills, receiving
+    Dispatcher,  // the fleet and dispatch office: trips, waybills, drivers and the live map
 }
 
 public sealed class User : ICompanyOwned
@@ -678,6 +683,31 @@ public sealed class DispatchTrip : ICompanyOwned
     public string Notes { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<DeliveryItem> Deliveries { get; set; } = [];
+    /// <summary>The secret in the driver's link (/d/{token}): opens this trip's drops and shares the phone's location
+    /// while the trip is on the road. Made when the link is first sent; empty for trips from before driver links.</summary>
+    public string DriverToken { get; set; } = "";
+    /// <summary>Where the driver's phone last was, so the live map needs no trawl through the pings.</summary>
+    public double? LastLat { get; set; }
+    public double? LastLng { get; set; }
+    /// <summary>Metres per second and degrees from north, when the phone knows them.</summary>
+    public double? LastSpeed { get; set; }
+    public double? LastHeading { get; set; }
+    public double? LastAccuracy { get; set; }
+    public DateTimeOffset? LastPingAt { get; set; }
+}
+
+/// <summary>One reading of a driver's phone location while their trip was on the road: the trail on the live map.</summary>
+public sealed class DriverPing : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid TripId { get; set; }
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+    public double? Accuracy { get; set; }
+    public double? Speed { get; set; }
+    public double? Heading { get; set; }
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public enum DeliveryItemStatus { Pending, Dispatched, Delivered, PartialReturn, Failed }
@@ -697,5 +727,8 @@ public sealed class DeliveryItem : ICompanyOwned
     public string RecipientName { get; set; } = "";
     public string PodNotes { get; set; } = "";
     public DateTimeOffset? PodConfirmedAt { get; set; }
+    /// <summary>Where the driver's phone was when the drop was confirmed from the driver's link (proof it was there).</summary>
+    public double? PodLat { get; set; }
+    public double? PodLng { get; set; }
 }
 
