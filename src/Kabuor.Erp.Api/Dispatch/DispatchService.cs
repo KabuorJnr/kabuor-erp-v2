@@ -78,12 +78,15 @@ public sealed class DispatchService(ErpDb db, Numbers numbers)
         return trip;
     }
 
-    /// <summary>The trip with what a waybill needs: each drop's invoice number and total.</summary>
+    /// <summary>The trip with what a waybill needs: each drop's invoice number and total, and the goods on it so the
+    /// customer can check them off as they sign.</summary>
     public async Task<object> TripDetail(Guid id)
     {
         var trip = await GetTrip(id);
         var docIds = trip.Deliveries.Where(d => d.SalesDocId != null).Select(d => d.SalesDocId!.Value).ToList();
         var docs = await db.SalesDocs.Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => new { d.Number, d.Total });
+        var lines = (await db.SalesLines.Where(l => docIds.Contains(l.SalesDocId)).Select(l => new { l.SalesDocId, l.Description, l.Quantity, l.Unit }).ToListAsync())
+            .ToLookup(l => l.SalesDocId, l => new { l.Description, l.Quantity, l.Unit });
         return new
         {
             trip.Id, trip.TripNumber, trip.VehicleId, trip.VehiclePlate, trip.DriverName, trip.DriverPhone, trip.RouteName, trip.Notes,
@@ -94,6 +97,7 @@ public sealed class DispatchService(ErpDb db, Numbers numbers)
                 Status = d.Status.ToString(), d.RecipientName, d.PodNotes, d.PodConfirmedAt,
                 InvoiceNumber = d.SalesDocId is { } sid && docs.TryGetValue(sid, out var doc) ? doc.Number : null,
                 InvoiceTotal = d.SalesDocId is { } sid2 && docs.TryGetValue(sid2, out var doc2) ? doc2.Total : (long?)null,
+                Items = d.SalesDocId is { } sid3 ? lines[sid3].ToList() : [],
             }),
         };
     }

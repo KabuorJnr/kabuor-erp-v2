@@ -105,3 +105,56 @@
     display: none;
   }
 }
+
+/* Printed documents (components/PrintDoc.tsx). A4 with page numbers, the brand colours kept on paper, a slightly
+   smaller type scale so an invoice fits one page, and the app hidden while a separate sheet (waybills) prints. */
+@utility doc-table {
+  @apply w-full border-collapse text-sm;
+  & th {
+    @apply bg-brand-soft px-2.5 py-2 text-2xs tracking-wide text-ink uppercase;
+    text-align: left;
+  }
+  & th.text-right {
+    text-align: right;
+  }
+  & td {
+    @apply border-b border-line px-2.5 py-2.5 align-top;
+  }
+  & tr {
+    break-inside: avoid;
+  }
+}
+.print-sheet {
+  display: none;
+}
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm;
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font: 8pt 'Onest', sans-serif;
+    color: #8a8db0;
+  }
+}
+@media print {
+  html:has(.doc) {
+    font-size: 13px;
+  }
+  body {
+    background: #fff;
+  }
+  .doc,
+  .doc * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body:has(> .print-sheet) > #root {
+    display: none;
+  }
+  .print-sheet {
+    display: block;
+  }
+  thead {
+    display: table-header-group;
+  }
+}

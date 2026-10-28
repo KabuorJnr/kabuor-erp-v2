@@ -6,6 +6,7 @@ import { cn, dateTime, dayYear, ksh, msisdn, prettyPhone, toCents } from '../lib
 import { DocStatus } from './Invoices';
 import { RequestPayment } from '../components/MpesaPrompt';
 import { ErrorNote, Field, Loading, Sheet, Status } from '../components/ui';
+import { DocBox, DocFooter, Letterhead, printAs, Qr, Stamp, useLetterhead } from '../components/PrintDoc';
 
 const TAX_LABEL: Record<string, string> = { B_Standard16: '16%', E_Reduced8: '8%', C_ZeroRated: '0%', A_Exempt: 'Exempt', D_NonVat: 'Non-VAT' };
 
@@ -217,12 +218,16 @@ export default function InvoiceView() {
   const [paying, setPaying] = useState(false);
   const [prompting, setPrompting] = useState(false);
   const [state, setState] = useState({ busy: '', error: '' });
+  const lh = useLetterhead();
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return <Loading />;
   const d = data.document;
   const invoice = d.kind === 'Invoice';
   const balance = d.total - d.paid;
   const issued = d.status !== 'Draft' && d.status !== 'Void';
+  // VAT shown per rate (16%, 8%) the way KRA reads an invoice; rates that charge nothing aren't listed.
+  const vatByRate = [...(d.lines as any[]).reduce((m: Map<string, number>, l: any) => (l.tax ? m.set(TAX_LABEL[l.taxType], (m.get(TAX_LABEL[l.taxType]) ?? 0) + l.tax) : m), new Map<string, number>())];
+  if (!vatByRate.length && d.tax) vatByRate.push(['', d.tax]);
 
   const act = async (name: string, path: string, after?: (r: any) => void) => {
     setState({ busy: name, error: '' });
@@ -290,8 +295,8 @@ export default function InvoiceView() {
               <Wallet className="h-4 w-4" /> Record payment
             </button>
           )}
-          <button className="btn btn-ghost" onClick={() => window.print()} aria-label="Print or save as PDF">
-            <Printer className="h-4 w-4" />
+          <button className="btn btn-ghost" onClick={() => printAs(`${invoice ? 'Invoice' : 'Quote'} ${d.number} · ${d.customer?.name ?? ''}`)}>
+            <Printer className="h-4 w-4" /> Print / PDF
           </button>
         </div>
       </header>
@@ -320,101 +325,141 @@ export default function InvoiceView() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_18rem]">
         {/* The document as the customer sees it (and as it prints). */}
-        <article className="card min-w-0 p-5 sm:p-8 print:shadow-none print:ring-0">
-          <div className="flex flex-wrap justify-between gap-6">
-            <div>
-              <p className="font-display text-xl font-bold">{session?.company.name}</p>
-              {session?.company.kraPin && <p className="text-sm text-muted">KRA PIN {session.company.kraPin}</p>}
-            </div>
-            <div className="text-right">
-              <p className="font-display text-2xl font-bold tracking-tight uppercase">{invoice ? 'Invoice' : 'Quote'}</p>
-              <p className="text-sm text-muted">{d.number}</p>
-            </div>
-          </div>
-          <div className="mt-6 grid gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <p className="text-xs font-semibold text-muted uppercase">Bill to</p>
-              <p className="mt-1 font-semibold">{d.customer?.name}</p>
-              {d.customer?.phone && <p className="text-muted">{prettyPhone(d.customer.phone)}</p>}
-              {d.customer?.kraPin && <p className="text-muted">PIN {d.customer.kraPin}</p>}
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-muted uppercase">Date</p>
-              <p className="mt-1">{dayYear(d.issueDate)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-muted uppercase">{invoice ? 'Due' : 'Valid until'}</p>
-              <p className="mt-1">{dayYear(d.dueDate)}</p>
-            </div>
+        <article className="card doc relative min-w-0 p-5 sm:p-10 print:p-0 print:shadow-none print:ring-0">
+          {d.status === 'Draft' ? <Stamp word="Draft" tone="plain" /> : d.status === 'Void' ? <Stamp word="Void" tone="bad" /> : invoice && d.status === 'Paid' ? <Stamp word="Paid" tone="good" /> : null}
+          <Letterhead
+            title={invoice ? (session?.company.vatRegistered ? 'Tax invoice' : 'Invoice') : 'Quotation'}
+            number={d.number}
+            facts={[
+              [invoice ? 'Invoice date' : 'Date', dayYear(d.issueDate)],
+              [invoice ? 'Due' : 'Valid until', dayYear(d.dueDate)],
+              ...(d.customer?.number ? [['Customer no.', d.customer.number] as [string, string]] : []),
+            ]}
+          />
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_15rem]">
+            <DocBox label={invoice ? 'Bill to' : 'Prepared for'}>
+              <p className="font-semibold text-ink">{d.customer?.name}</p>
+              <div className="mt-0.5 text-xs leading-relaxed text-ink-2">
+                {d.customer?.address && <p className="whitespace-pre-line">{d.customer.address}</p>}
+                {[prettyPhone(d.customer?.phone), d.customer?.email].filter(Boolean).length > 0 && <p>{[prettyPhone(d.customer?.phone), d.customer?.email].filter(Boolean).join('  ·  ')}</p>}
+                {d.customer?.kraPin && <p>KRA PIN {d.customer.kraPin}</p>}
+              </div>
+            </DocBox>
+            {/* What the reader came for, in the brand colour: what to pay and by when. */}
+            <section className={cn('break-inside-avoid rounded-md p-4', invoice && issued && balance <= 0 ? 'bg-good-soft text-good' : 'bg-brand text-white')}>
+              <p className="text-2xs font-semibold tracking-wide uppercase opacity-80">{!invoice ? 'Quote total' : issued && balance <= 0 ? 'Paid in full' : d.paid > 0 ? 'Balance due' : 'Amount due'}</p>
+              <p className="num mt-1 font-display text-2xl font-bold">{ksh(invoice ? (issued ? Math.max(balance, 0) : d.total) : d.total)}</p>
+              <p className="mt-0.5 text-xs opacity-90">{!invoice ? `Valid until ${dayYear(d.dueDate)}` : issued && balance <= 0 ? `Thank you. Total ${ksh(d.total)}` : `By ${dayYear(d.dueDate)}`}</p>
+            </section>
           </div>
 
-          <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[30rem] text-sm">
-              <thead className="border-b border-line text-left text-xs text-muted">
+          <div className="mt-6 overflow-x-auto print:overflow-visible">
+            <table className="doc-table min-w-[30rem]">
+              <thead>
                 <tr>
-                  <th className="py-2 font-semibold">Description</th>
-                  <th className="py-2 text-right font-semibold">Qty</th>
-                  <th className="py-2 text-right font-semibold">Price</th>
-                  <th className="py-2 text-right font-semibold">Tax</th>
-                  <th className="py-2 text-right font-semibold">Amount</th>
+                  <th className="w-8">#</th>
+                  <th>Description</th>
+                  <th className="text-right">Qty</th>
+                  <th className="text-right">Unit price</th>
+                  <th className="text-right">VAT</th>
+                  <th className="text-right">Amount</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
-                {d.lines.map((l: any) => (
+              <tbody>
+                {d.lines.map((l: any, i: number) => (
                   <tr key={l.id}>
-                    <td className="py-2.5 pr-3">{l.description}</td>
-                    <td className="num py-2.5 text-right">{l.quantity}</td>
-                    <td className="num py-2.5 text-right">{ksh(l.unitPrice)}</td>
-                    <td className="py-2.5 text-right text-muted">{TAX_LABEL[l.taxType]}</td>
-                    <td className="num py-2.5 text-right font-medium">{ksh(l.total)}</td>
+                    <td className="num text-muted">{i + 1}</td>
+                    <td className="font-medium text-ink">{l.description}</td>
+                    <td className="num text-right whitespace-nowrap">
+                      {l.quantity}
+                      {l.unit && <span className="text-muted"> {l.unit}</span>}
+                    </td>
+                    <td className="num text-right">{ksh(l.unitPrice)}</td>
+                    <td className="text-right text-muted">{TAX_LABEL[l.taxType]}</td>
+                    <td className="num text-right font-semibold">{ksh(l.total)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <dl className="mt-4 ml-auto max-w-xs space-y-1.5 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted">Before VAT</dt>
-              <dd className="num">{ksh(d.net)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted">VAT</dt>
-              <dd className="num">{ksh(d.tax)}</dd>
-            </div>
-            <div className="flex justify-between border-t border-line pt-2 text-base font-bold">
-              <dt>Total</dt>
-              <dd className="num">{ksh(d.total)}</dd>
-            </div>
-            {d.paid > 0 && (
-              <>
-                <div className="flex justify-between text-good">
-                  <dt>Paid</dt>
-                  <dd className="num">−{ksh(d.paid)}</dd>
-                </div>
-                <div className="flex justify-between font-bold">
-                  <dt>Balance</dt>
-                  <dd className="num">{ksh(balance)}</dd>
-                </div>
-              </>
-            )}
-          </dl>
-          {d.notes && <p className="mt-6 text-sm whitespace-pre-line text-ink-2">{d.notes}</p>}
-          {invoice && issued && (
-            <div className="mt-6 grid gap-3 border-t border-line pt-4 text-sm sm:grid-cols-2">
-              <p>
-                <b className="block">How to pay</b>
-                <span className="text-muted">{payLine}</span>
-              </p>
-              {d.etimsStatus === 'Signed' && (
-                <p>
-                  <b className="block">KRA eTIMS</b>
-                  <span className="text-muted break-all">
-                    {d.etimsInvoiceNo} · {d.etimsControlCode}
-                  </span>
-                </p>
+
+          <div className="mt-5 flex flex-wrap items-start justify-between gap-6">
+            <div className="max-w-sm min-w-0 flex-1 text-sm">
+              {d.notes && (
+                <>
+                  <p className="text-2xs font-semibold tracking-wide text-muted uppercase">Notes</p>
+                  <p className="mt-1 whitespace-pre-line text-ink-2">{d.notes}</p>
+                </>
               )}
             </div>
-          )}
+            <dl className="w-full max-w-72 space-y-1.5 text-sm break-inside-avoid">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">Subtotal (before VAT)</dt>
+                <dd className="num">{ksh(d.net)}</dd>
+              </div>
+              {vatByRate.map(([rate, tax]) => (
+                <div key={rate} className="flex justify-between gap-4">
+                  <dt className="text-muted">VAT {rate}</dt>
+                  <dd className="num">{ksh(tax)}</dd>
+                </div>
+              ))}
+              <div className="flex justify-between gap-4 border-t-2 border-ink pt-2 text-base font-bold">
+                <dt>Total</dt>
+                <dd className="num">{ksh(d.total)}</dd>
+              </div>
+              {d.paid > 0 && (
+                <>
+                  <div className="flex justify-between gap-4 text-good">
+                    <dt>Paid</dt>
+                    <dd className="num">−{ksh(d.paid)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4 rounded-sm bg-brand-soft px-2 py-1.5 font-bold">
+                    <dt>Balance due</dt>
+                    <dd className="num">{ksh(balance)}</dd>
+                  </div>
+                </>
+              )}
+            </dl>
+          </div>
+
+          {(invoice && issued) || d.etimsStatus === 'Signed' ? (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              {invoice && issued && balance > 0 && (
+                <DocBox label="How to pay">
+                  {data.payTo.paybill ? (
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
+                      <dt className="text-muted">M-Pesa Paybill</dt>
+                      <dd className="num font-bold text-ink">{data.payTo.paybill}</dd>
+                      <dt className="text-muted">Account no.</dt>
+                      <dd className="num font-bold text-ink">{d.number}</dd>
+                    </dl>
+                  ) : (
+                    <p className="text-ink-2">{payLine}</p>
+                  )}
+                </DocBox>
+              )}
+              {d.etimsStatus === 'Signed' && (
+                <section className="flex break-inside-avoid items-start justify-between gap-4 rounded-md bg-paper p-4 text-sm ring-1 ring-line">
+                  <div className="min-w-0">
+                    <p className="mb-1.5 text-2xs font-semibold tracking-wide text-muted uppercase">KRA eTIMS</p>
+                    <dl className="text-xs leading-relaxed">
+                      <dt className="text-muted">CU invoice no.</dt>
+                      <dd className="num font-semibold break-all text-ink">{d.etimsInvoiceNo}</dd>
+                      <dt className="mt-1 text-muted">Control code</dt>
+                      <dd className="num font-semibold break-all text-ink">{d.etimsControlCode}</dd>
+                    </dl>
+                  </div>
+                  {d.etimsQrUrl && <Qr value={d.etimsQrUrl} size={80} label="Scan to check this invoice with KRA" />}
+                </section>
+              )}
+            </div>
+          ) : null}
+
+          <DocFooter>
+            {invoice ? 'Thank you for your business.' : 'Thank you for the opportunity. Reply to confirm and we’ll get started.'}
+            {lh.phone && ` Questions? Call ${prettyPhone(lh.phone)}.`}
+          </DocFooter>
         </article>
 
         <aside className="space-y-4 print:hidden">

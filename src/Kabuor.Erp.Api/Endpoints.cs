@@ -15,7 +15,8 @@ namespace Kabuor.Erp;
 
 public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
 public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null, string? Brand = null, string? Barcode = null);
-public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null, string? Industry = null, DateOnly? AccountingLockDate = null);
+public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null, string? Industry = null, DateOnly? AccountingLockDate = null, string? Address = null);
+public sealed record LogoInput(string? DataUrl);
 public sealed record AcceptPurchaseInput(Guid? AccountId);
 public sealed record RejectPurchaseInput(string? Reason);
 public sealed record UserInput(string Name, string Email, string? Phone, Role Role, string Password);
@@ -382,7 +383,7 @@ public static class Endpoints
         settings.MapGet("/company", async (ErpDb db, HttpRequest req) =>
         {
             var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
-            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{PublicUrl.Of(req)}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
+            return new { c.Id, c.Name, c.KraPin, c.Phone, c.Email, c.County, c.Address, c.Logo, c.VatRegistered, c.MpesaShortcode, c.PreventNegativeStock, c.Industry, c.AccountingLockDate, mpesaConfirmationUrl = $"{PublicUrl.Of(req)}/api/mpesa/c2b/{c.MpesaCallbackKey}/confirmation" };
         }).RequireAuthorization(Policies.Admin);
         settings.MapGet("/mpesa-prompt", (StkService s) => s.Setup()).RequireAuthorization(Policies.Admin);
         settings.MapPut("/mpesa-prompt", (StkSetupInput input, StkService s) => s.Save(input)).RequireAuthorization(Policies.Admin);
@@ -397,9 +398,23 @@ public static class Endpoints
             c.PreventNegativeStock = input.PreventNegativeStock ?? c.PreventNegativeStock;
             if (!string.IsNullOrWhiteSpace(input.Industry)) c.Industry = input.Industry.Trim().ToLowerInvariant();
             c.AccountingLockDate = input.AccountingLockDate;
+            if (input.Address is not null) c.Address = input.Address.Trim();
             await db.SaveChangesAsync();
             return Results.NoContent();
         }).RequireAuthorization(Policies.Admin);
+        settings.MapPut("/company/logo", async (LogoInput input, ErpDb db) =>
+        {
+            var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
+            c.Logo = Letterhead.CheckLogo(input.DataUrl);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        }).RequireAuthorization(Policies.Admin);
+        // What every printed invoice, waybill and report carries at the top, for anyone who can print one.
+        app_.MapGet("/company/letterhead", async (ErpDb db) =>
+        {
+            var c = await db.Companies.SingleAsync(x => x.Id == db.CompanyId);
+            return new { c.Name, c.KraPin, c.Phone, c.Email, c.County, c.Address, c.Logo, c.VatRegistered };
+        });
         settings.MapGet("/users", async (ErpDb db) => await db.Users.OrderBy(u => u.Name)
             .Select(u => new { u.Id, u.Name, u.Email, u.Phone, Role = u.Role.ToString(), u.Active, u.TwoFactorEnabled, u.MustChangePassword, u.LastSignInAt, u.LockedUntil, u.CreatedAt }).ToListAsync()).RequireAuthorization(Policies.Admin);
         settings.MapPut("/users/{id:guid}/role", async (Guid id, RoleInput input, AuthService s) => { var u = await s.ChangeRole(id, input.Role); return new { u.Id, Role = u.Role.ToString() }; }).RequireAuthorization(Policies.Admin);

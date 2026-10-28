@@ -24,6 +24,32 @@ public static class CsvCell
     }
 }
 
+/// <summary>The logo printed on the business's documents. Only PNG, JPEG or WebP (never SVG, which can carry
+/// script), checked by its first bytes rather than by what it claims to be, and small: the browser resizes it first.</summary>
+public static class Letterhead
+{
+    public const int MaxLogoBytes = 300 * 1024;
+
+    public static string CheckLogo(string? dataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl)) return ""; // removing the logo
+        var m = System.Text.RegularExpressions.Regex.Match(dataUrl, @"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$");
+        if (!m.Success) throw new AppException("Use a PNG, JPG or WebP picture for the logo.");
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(m.Groups[2].Value); }
+        catch (FormatException) { throw new AppException("That picture couldn’t be read. Try another file."); }
+        if (bytes.Length > MaxLogoBytes) throw new AppException("That logo is too large. Use one under 300 KB.");
+        var ok = m.Groups[1].Value switch
+        {
+            "png" => bytes is [0x89, 0x50, 0x4E, 0x47, ..],
+            "jpeg" => bytes is [0xFF, 0xD8, 0xFF, ..],
+            _ => bytes.Length > 12 && bytes[..4].SequenceEqual("RIFF"u8.ToArray()) && bytes[8..12].SequenceEqual("WEBP"u8.ToArray()),
+        };
+        if (!ok) throw new AppException("That file isn’t the picture it says it is. Use a PNG, JPG or WebP.");
+        return dataUrl;
+    }
+}
+
 public static class Clock
 {
     /// <summary>Today in Kenya (EAT, UTC+3; no daylight saving).</summary>

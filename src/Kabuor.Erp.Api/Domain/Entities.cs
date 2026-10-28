@@ -16,6 +16,10 @@ public sealed class Company
     public string Phone { get; set; } = "";
     public string Email { get; set; } = "";
     public string County { get; set; } = "";
+    /// <summary>Street, building and P.O. Box, as printed under the name on invoices, waybills and reports.</summary>
+    public string Address { get; set; } = "";
+    /// <summary>The business's logo for its letterhead: a small PNG/JPEG/WebP data URL, resized in the browser.</summary>
+    public string Logo { get; set; } = "";
     public bool VatRegistered { get; set; } = true;
     /// <summary>The business's public address for its shop and customer portal (/s/{slug}); unique.</summary>
     public string Slug { get; set; } = "";

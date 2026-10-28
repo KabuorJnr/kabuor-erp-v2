@@ -624,6 +624,10 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<DateOnly?>("AccountingLockDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("AwaitingFirstPayment")
                         .HasColumnType("boolean");
 
@@ -647,6 +651,10 @@ namespace Kabuor.Erp.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("KraPin")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Logo")
                         .IsRequired()
                         .HasColumnType("text");
 
