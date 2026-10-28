@@ -1,6 +1,7 @@
 // Printed documents. Invoices, quotes, waybills, purchase orders and reports go out on paper or as a saved PDF, so
-// they all carry the same letterhead (the business's logo, name, address, contacts and KRA PIN), the same layout and
-// the same footer. The document's number and title name the saved PDF ("Invoice INV-0012 · Amani Store.pdf").
+// they all carry the same two-level letterhead: Kabuor Technologies on top, the same on every document of every
+// business, and under it the business's own head (its logo, name, address, contacts and KRA PIN). Same layout and
+// footer too. The document's number and title name the saved PDF ("Invoice INV-0012 · Amani Store.pdf").
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
@@ -31,13 +32,38 @@ export function printAs(name: string) {
   window.print();
 }
 
-/** The top of every document: who it's from on the left, what it is on the right, then the brand rule. */
+/** The top level, constant on every document: Kabuor Technologies, whose system the business runs on. */
+function KabuorBand() {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2.5">
+        <img src="/mark.svg" alt="" className="h-9 w-auto" />
+        <p className="font-display text-base leading-[1.05] font-bold text-ink">
+          Kabuor
+          <span className="block text-xs font-semibold tracking-wide text-indigo">Technologies</span>
+        </p>
+      </div>
+      <p className="text-right text-2xs leading-snug text-muted">
+        <b className="font-semibold text-ink-2">Kabuor ERP</b>
+        <span className="block">Nairobi, Kenya</span>
+      </p>
+    </div>
+  );
+}
+
+/** The top of every document: Kabuor Technologies and the brand rule, then the business's own head with who it's
+ * from on the left and what it is on the right. */
 export function Letterhead({ title, number, facts = [] }: { title: string; number?: string; facts?: [string, ReactNode][] }) {
   const b = useLetterhead();
   const place = [b.address, b.county].filter(Boolean).join(', ');
   const contact = [prettyPhone(b.phone), b.email].filter(Boolean).join('  ·  ');
   return (
     <header className="break-inside-avoid">
+      <KabuorBand />
+      <div aria-hidden className="mt-3 mb-5 flex h-1 overflow-hidden rounded-full">
+        <span className="flex-1 bg-brand" />
+        <span className="w-20 bg-gold" />
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5">
         <div className="flex min-w-0 items-start gap-4">
           {b.logo ? (
@@ -74,10 +100,7 @@ export function Letterhead({ title, number, facts = [] }: { title: string; numbe
           )}
         </div>
       </div>
-      <div aria-hidden className="mt-5 flex h-1 overflow-hidden rounded-full">
-        <span className="flex-1 bg-brand" />
-        <span className="w-20 bg-gold" />
-      </div>
+      <div aria-hidden className="mt-5 border-t border-line" />
     </header>
   );
 }
@@ -92,14 +115,12 @@ export function DocBox({ label, children, className }: { label: string; children
   );
 }
 
-/** The bottom of every document: a line for the reader, and where it was made. */
+/** The bottom of every document: a line for the reader. (Kabuor Technologies is already at the top.) */
 export function DocFooter({ children }: { children?: ReactNode }) {
   return (
     <footer className="mt-10 flex break-inside-avoid flex-wrap items-end justify-between gap-3 border-t border-line pt-3 text-2xs text-muted">
       <div className="max-w-md">{children}</div>
-      <p className="flex items-center gap-1.5">
-        Prepared with <img src="/mark.svg" alt="" className="h-3.5 w-auto" /> <b className="font-semibold text-ink-2">Kabuor ERP</b>
-      </p>
+      <p>Kabuor Technologies · Kabuor ERP</p>
     </footer>
   );
 }
