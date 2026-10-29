@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { cn, dayYear, ksh, toCents } from '../lib/format';
+import { cn, dayYear, ksh, toCents, CURRENCIES } from '../lib/format';
 import { Chips, Empty, ErrorNote, Field, Loading, Sheet, Status } from './ui';
 
 export type UnitRow = { name: string; factor: string; price: string };
@@ -50,13 +50,14 @@ export function CustomerTerms({ customer, owes, onChange }: { customer: any; owe
   const lists = useApi<any[]>('/price-lists');
   const [limit, setLimit] = useState(customer.creditLimit ? String(customer.creditLimit / 100) : '');
   const [list, setList] = useState<string>(customer.priceListId ?? '');
+  const [currency, setCurrency] = useState<string>(customer.currency ?? '');
   const [state, setState] = useState({ busy: false, error: '', saved: false });
   const used = customer.creditLimit > 0 ? Math.min(100, Math.round((owes / customer.creditLimit) * 100)) : 0;
-  const dirty = toCents(limit) !== (customer.creditLimit ?? 0) || list !== (customer.priceListId ?? '');
+  const dirty = toCents(limit) !== (customer.creditLimit ?? 0) || list !== (customer.priceListId ?? '') || currency !== (customer.currency ?? '');
   const save = async () => {
     setState({ busy: true, error: '', saved: false });
     try {
-      await api(`/customers/${customer.id}`, { method: 'PUT', body: { ...customer, creditLimit: toCents(limit), priceListId: list || '00000000-0000-0000-0000-000000000000' } });
+      await api(`/customers/${customer.id}`, { method: 'PUT', body: { ...customer, creditLimit: toCents(limit), priceListId: list || '00000000-0000-0000-0000-000000000000', currency } });
       setState({ busy: false, error: '', saved: true });
       onChange();
     } catch (e) {
@@ -78,7 +79,7 @@ export function CustomerTerms({ customer, owes, onChange }: { customer: any; owe
       ) : (
         <p className="text-sm text-muted">No credit limit: any amount can go on credit.</p>
       )}
-      <p className="text-sm">{current ? <>Prices from <b>{current.name}</b></> : 'Shelf prices'}</p>
+      <p className="text-sm">{current ? <>Prices from <b>{current.name}</b></> : 'Shelf prices'}{customer.currency ? <>, invoiced in <b>{customer.currency}</b></> : null}</p>
       {editable && (
         <div className="space-y-3 border-t border-line pt-3">
           <Field label="Credit limit (KSh)" hint="Leave blank for no limit.">
@@ -88,6 +89,12 @@ export function CustomerTerms({ customer, owes, onChange }: { customer: any; owe
             <select className="field" value={list} onChange={(e) => setList(e.target.value)}>
               <option value="">Shelf prices</option>
               {lists.data?.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Invoice them in" hint="New invoices and quotes for them start in this currency. Your books stay in shillings.">
+            <select className="field" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="">Kenya shillings (KES)</option>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
           {state.error && <ErrorNote>{state.error}</ErrorNote>}

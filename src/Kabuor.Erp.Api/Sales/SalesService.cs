@@ -9,7 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Kabuor.Erp.Sales;
 
 public sealed record LineInput(Guid? ItemId, string? Description, decimal Quantity, long? UnitPrice, TaxType? TaxType, string? Unit = null);
-public sealed record SalesDocInput(SalesDocKind Kind, Guid CustomerId, DateOnly? IssueDate, int? DueInDays, string? Notes, List<LineInput> Lines, Guid? LocationId = null);
+/// <summary>Currency: empty or KES for shillings, else "USD" etc. with Rate (shillings per one unit); line prices are then in that currency.</summary>
+public sealed record SalesDocInput(SalesDocKind Kind, Guid CustomerId, DateOnly? IssueDate, int? DueInDays, string? Notes, List<LineInput> Lines, Guid? LocationId = null, string? Currency = null, decimal? Rate = null);
 
 public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtimsClient etims, InventoryService stock, RequestContext ctx)
 {
@@ -35,6 +36,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
             Notes = (input.Notes ?? "").Trim(),
             LocationId = input.LocationId is null ? null : (await stock.LocationOrDefault(input.LocationId)).Id,
         };
+        (doc.Currency, doc.Rate) = Currencies.Of(input.Currency, input.Rate); // the editor starts from the customer's usual currency
         await SetLines(doc, input.Lines, company.VatRegistered, customer.PriceListId);
         // Credit for the sale: the person who made it, and the link that first brought this customer.
         (doc.SalespersonUserId, doc.SalespersonName, doc.LinkId, doc.Channel) = (ctx.UserId, ctx.UserId is null ? "" : ctx.Actor, customer.FirstLinkId, customer.AcquisitionChannel);
@@ -44,13 +46,17 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
     }
 
     /// <summary>Lines with their prices: what the user typed, else the customer's price list, else the item's
-    /// own price; a bigger unit (a carton) uses its own price, or the base price times how many it holds.</summary>
+    /// own price; a bigger unit (a carton) uses its own price, or the base price times how many it holds.
+    /// On a foreign-currency document the prices are in that currency (a product's shilling price is converted at
+    /// the rate), and each line is also kept in shillings: the unit price at the rate, so quantity × price still
+    /// adds up for KRA.</summary>
     async Task SetLines(SalesDoc doc, List<LineInput> lines, bool vat, Guid? priceListId)
     {
         var ids = lines.Where(l => l.ItemId is not null).Select(l => l.ItemId!.Value).ToList();
         var items = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
         var units = await db.ItemUnits.Where(u => ids.Contains(u.ItemId)).ToListAsync();
         var listed = priceListId is null ? [] : await db.PriceListItems.Where(p => p.PriceListId == priceListId && ids.Contains(p.ItemId)).ToDictionaryAsync(p => p.ItemId, p => p.Price);
+        var foreign = doc.Currency.Length > 0;
         doc.Lines.Clear();
         foreach (var l in lines)
         {
@@ -64,17 +70,23 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
                 (unitName, factor, unitPrice) = (u.Name, u.Factor, u.Price > 0 && !listed.ContainsKey(item.Id) ? u.Price : null);
             }
             var basePrice = item is null ? (long?)null : listed.TryGetValue(item.Id, out var lp) ? lp : item.Price;
-            var price = l.UnitPrice ?? unitPrice ?? (basePrice is { } bp ? (long)Math.Round(bp * factor, MidpointRounding.AwayFromZero) : (long?)null) ?? throw new AppException("Give each line a price.");
+            var kesDefault = unitPrice ?? (basePrice is { } bp ? (long)Math.Round(bp * factor, MidpointRounding.AwayFromZero) : (long?)null);
+            var price = l.UnitPrice ?? (kesDefault is { } kd && foreign ? (long)Math.Round(kd / doc.Rate, MidpointRounding.AwayFromZero) : kesDefault) ?? throw new AppException("Give each line a price.");
             if (price < 0) throw new AppException("Prices can't be negative.");
             var type = l.TaxType ?? item?.TaxType ?? TaxType.B_Standard16;
-            var (net, tax, total) = Tax.Line(l.Quantity, price, type, vat);
+            var kesPrice = foreign ? Currencies.ToKes(price, doc.Rate) : price;
+            var (net, tax, total) = Tax.Line(l.Quantity, kesPrice, type, vat);
+            var (fxNet, fxTax, fxTotal) = foreign ? Tax.Line(l.Quantity, price, type, vat) : (0, 0, 0);
             var description = (l.Description ?? item?.Name ?? "").Trim();
             if (description.Length == 0) throw new AppException("Describe each line.");
-            doc.Lines.Add(new SalesLine { ItemId = item?.Id, Description = description, Quantity = l.Quantity, UnitPrice = price, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor });
+            doc.Lines.Add(new SalesLine { ItemId = item?.Id, Description = description, Quantity = l.Quantity, UnitPrice = kesPrice, TaxType = type, Net = net, Tax = tax, Total = total, Unit = unitName, UnitFactor = factor, FxUnitPrice = foreign ? price : 0, FxNet = fxNet, FxTax = fxTax, FxTotal = fxTotal });
         }
         doc.Net = doc.Lines.Sum(l => l.Net);
         doc.Tax = doc.Lines.Sum(l => l.Tax);
         doc.Total = doc.Lines.Sum(l => l.Total);
+        doc.FxNet = doc.Lines.Sum(l => l.FxNet);
+        doc.FxTax = doc.Lines.Sum(l => l.FxTax);
+        doc.FxTotal = doc.Lines.Sum(l => l.FxTotal);
     }
 
     public async Task<SalesDoc> Get(Guid id) =>
@@ -94,6 +106,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         doc.IssueDate = issue;
         doc.DueDate = doc.IssueDate.AddDays(Math.Clamp(input.DueInDays ?? doc.DueDate.DayNumber - doc.IssueDate.DayNumber, 0, 365));
         doc.Notes = (input.Notes ?? "").Trim();
+        (doc.Currency, doc.Rate) = Currencies.Of(input.Currency ?? doc.Currency, input.Rate ?? (input.Currency is null ? doc.Rate : null));
         db.SalesLines.RemoveRange(doc.Lines);
         await SetLines(doc, input.Lines ?? [], company.VatRegistered, customer.PriceListId);
         await db.SaveChangesAsync();
@@ -199,7 +212,7 @@ public sealed class SalesService(ErpDb db, Ledger ledger, Numbers numbers, IEtim
         if (q.Kind != SalesDocKind.Quote) throw new AppException("Only quotes can become invoices.");
         if (q.Status is SalesDocStatus.Accepted or SalesDocStatus.Void) throw new AppException("This quote has already been used or voided.");
         var inv = await Create(new SalesDocInput(SalesDocKind.Invoice, q.CustomerId, Clock.Today, null, q.Notes,
-            q.Lines.Select(l => new LineInput(l.ItemId, l.Description, l.Quantity, l.UnitPrice, l.TaxType, l.Unit)).ToList()));
+            q.Lines.Select(l => new LineInput(l.ItemId, l.Description, l.Quantity, q.Currency.Length > 0 ? l.FxUnitPrice : l.UnitPrice, l.TaxType, l.Unit)).ToList(), null, q.Currency, q.Rate));
         inv.FromQuoteId = q.Id;
         inv.InquiryId = q.InquiryId;
         inv.LinkId = q.LinkId;

@@ -45,6 +45,7 @@ public static class SystemAccounts
     public const string TaxWithheld = "TAX_WITHHELD";
     public const string BankCharges = "BANK_CHARGES";
     public const string ProductionAbsorbed = "PROD_ABSORBED";
+    public const string Fx = "FX";
 
     /// <summary>A starter chart of accounts in plain words. Owners can add their own beside these.</summary>
     public static IEnumerable<Account> Starter(Guid companyId) =>
@@ -70,6 +71,7 @@ public static class SystemAccounts
         new() { CompanyId = companyId, Code = "2360", Name = "Deductions to pay over (HELB, SACCOs, insurance)", Type = AccountType.Liability, SystemKey = DeductionsPayable },
         new() { CompanyId = companyId, Code = "3000", Name = "Owner's equity", Type = AccountType.Equity, SystemKey = Equity },
         new() { CompanyId = companyId, Code = "4000", Name = "Sales", Type = AccountType.Income, SystemKey = Sales },
+        new() { CompanyId = companyId, Code = "4900", Name = "Exchange gains and losses", Type = AccountType.Income, SystemKey = Fx },
         new() { CompanyId = companyId, Code = "5000", Name = "Cost of goods sold", Type = AccountType.Expense, SystemKey = CostOfSales },
         new() { CompanyId = companyId, Code = "5100", Name = "Stock adjustments (losses and finds)", Type = AccountType.Expense, SystemKey = StockAdjust },
         new() { CompanyId = companyId, Code = "5200", Name = "Production costs moved into stock", Type = AccountType.Expense, SystemKey = ProductionAbsorbed },
@@ -203,4 +205,15 @@ public sealed class Ledger(ErpDb db)
         Post(DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3)), $"{p.Reference} paid to {inv.Number}".Trim(), "Allocation", p.Id,
             (SystemAccounts.Unapplied, amount, 0),
             (SystemAccounts.Receivable, 0, amount));
+
+    /// <summary>Money applied to a foreign-currency invoice: the shillings that came in clear the shillings that part
+    /// of the invoice was booked at; more is an exchange gain, less a loss.</summary>
+    public Task PostFxAllocation(Payment p, SalesDoc inv, long amount, long booked, long fx)
+    {
+        var diff = amount - booked;
+        return Post(DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3)), $"{p.Reference} paid {inv.Currency} {fx / 100m:N2} to {inv.Number}".Trim(), "Allocation", p.Id,
+            (SystemAccounts.Unapplied, amount, 0),
+            (SystemAccounts.Fx, diff < 0 ? -diff : 0, diff > 0 ? diff : 0),
+            (SystemAccounts.Receivable, 0, booked));
+    }
 }

@@ -6,8 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp.Payments;
 
-public sealed record PaymentInput(PaymentMethod Method, long Amount, DateTimeOffset? ReceivedAt, string? Reference, string? PayerPhone, string? PayerName, string? AccountRef, Guid? CustomerId, Guid? InvoiceId);
-public sealed record AllocationInput(Guid InvoiceId, long Amount);
+/// <summary>Amount is always the shillings that came in. FxAmount: for a foreign-currency invoice, how much of it
+/// (in its currency) the money settles.</summary>
+public sealed record PaymentInput(PaymentMethod Method, long Amount, DateTimeOffset? ReceivedAt, string? Reference, string? PayerPhone, string? PayerName, string? AccountRef, Guid? CustomerId, Guid? InvoiceId, long? FxAmount = null);
+public sealed record AllocationInput(Guid InvoiceId, long Amount, long? FxAmount = null);
 
 /// <summary>Safaricom's C2B confirmation body (what a Paybill/Till payment looks like when it arrives).</summary>
 public sealed record MpesaC2B(string TransID, string TransAmount, string? TransTime, string BusinessShortCode, string? BillRefNumber, string? MSISDN, string? FirstName, string? MiddleName, string? LastName);
@@ -21,6 +23,9 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
         var reference = (input.Reference ?? "").Trim().ToUpperInvariant();
         if (reference.Length > 0 && await db.Payments.AnyAsync(p => p.Reference == reference))
             throw new AppException($"A payment with reference {reference} is already recorded.", 409);
+        // A foreign-currency invoice is checked before the money is recorded, so a refusal leaves nothing half-done.
+        var target = input.InvoiceId is { } tid ? await db.SalesDocs.SingleOrDefaultAsync(d => d.Id == tid) ?? throw new AppException("That invoice no longer exists.") : null;
+        if (target is { Currency.Length: > 0 }) CheckFx(target, input.FxAmount);
         var p = new Payment
         {
             Method = input.Method,
@@ -37,11 +42,8 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
         await db.SaveChangesAsync();
         await hooks.Raise("payment.received", new { p.Id, method = p.Method.ToString(), p.Amount, p.Reference, p.PayerPhone, p.PayerName, p.AccountRef, p.ReceivedAt });
 
-        if (input.InvoiceId is { } invoiceId)
-        {
-            var inv = await db.SalesDocs.SingleOrDefaultAsync(d => d.Id == invoiceId) ?? throw new AppException("That invoice no longer exists.");
-            await Allocate(p.Id, [new AllocationInput(inv.Id, Math.Min(p.Amount, inv.Balance))], $"user: {actor}");
-        }
+        if (target is not null)
+            await Allocate(p.Id, [target.Currency.Length > 0 ? new AllocationInput(target.Id, p.Amount, input.FxAmount) : new AllocationInput(target.Id, Math.Min(p.Amount, target.Balance))], $"user: {actor}");
         else await AutoMatch(p);
         // Money nobody could place: the matching agent looks at it within a minute instead of at its next hour.
         if (p.Status != PaymentStatus.Matched) await Agents.AgentKick.Kick(db, "matching");
@@ -66,7 +68,9 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
 
     async Task<List<OpenInvoice>> OpenInvoices() =>
         (await db.SalesDocs
-            .Where(d => d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid))
+            // Foreign-currency invoices are left out: the shillings that arrive never equal the balance, so only a
+            // person who knows how much of the invoice came can apply them.
+            .Where(d => d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid) && d.Currency == "")
             .Select(d => new { d.Id, d.Number, d.CustomerId, CNo = d.Customer!.Number, CName = d.Customer.Name, CPhone = d.Customer.Phone, d.Total, d.Paid, d.DueDate })
             .ToListAsync())
         .Select(d => new OpenInvoice(d.Id, d.Number, d.CustomerId, d.CNo, d.CName, d.CPhone, d.Total - d.Paid, d.DueDate))
@@ -114,18 +118,41 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
         {
             var inv = invoices.GetValueOrDefault(a.InvoiceId) ?? throw new AppException("One of those invoices no longer exists.");
             if (inv.Kind != SalesDocKind.Invoice || inv.Status is SalesDocStatus.Draft or SalesDocStatus.Void) throw new AppException($"{inv.Number} isn't an issued invoice.");
-            if (a.Amount > inv.Balance) throw new AppException($"{inv.Number} only has {inv.Balance / 100m:N2} left to pay.");
-            inv.Paid += a.Amount;
-            inv.Status = inv.Balance == 0 ? SalesDocStatus.Paid : SalesDocStatus.PartPaid;
-            p.Allocations.Add(new PaymentAllocation { SalesDocId = inv.Id, Amount = a.Amount, MatchedBy = matchedBy });
+            if (inv.Currency.Length > 0)
+            {
+                // The part of the invoice settled is cleared at the shillings it was booked at; the last payment
+                // clears whatever is left, so nothing is stranded by rounding.
+                var fx = CheckFx(inv, a.FxAmount);
+                var booked = fx == inv.FxBalance ? inv.Balance : Math.Min(inv.Balance, Currencies.ToKes(fx, inv.Rate));
+                inv.Paid += booked;
+                inv.FxPaid += fx;
+                inv.Status = inv.FxBalance == 0 ? SalesDocStatus.Paid : SalesDocStatus.PartPaid;
+                p.Allocations.Add(new PaymentAllocation { SalesDocId = inv.Id, Amount = a.Amount, FxAmount = fx, MatchedBy = matchedBy });
+                await ledger.PostFxAllocation(p, inv, a.Amount, booked, fx);
+            }
+            else
+            {
+                if (a.Amount > inv.Balance) throw new AppException($"{inv.Number} only has {inv.Balance / 100m:N2} left to pay.");
+                inv.Paid += a.Amount;
+                inv.Status = inv.Balance == 0 ? SalesDocStatus.Paid : SalesDocStatus.PartPaid;
+                p.Allocations.Add(new PaymentAllocation { SalesDocId = inv.Id, Amount = a.Amount, MatchedBy = matchedBy });
+                await ledger.PostAllocation(p, inv, a.Amount);
+            }
             p.Allocated += a.Amount;
             p.CustomerId ??= inv.CustomerId;
-            await ledger.PostAllocation(p, inv, a.Amount);
         }
         p.Status = p.Unallocated == 0 ? PaymentStatus.Matched : PaymentStatus.PartlyMatched;
         await db.SaveChangesAsync();
         foreach (var inv in invoices.Values.Where(i => i.Status == SalesDocStatus.Paid))
             await hooks.Raise("invoice.paid", new { inv.Id, inv.Number, inv.Total, inv.Paid, externalRef = inv.ClientRef.StartsWith("api:") ? inv.ClientRef[4..] : null, payment = p.Reference });
         return p;
+    }
+
+    /// <summary>How much of a foreign-currency invoice a payment settles: required, above 0, and no more than is owed.</summary>
+    static long CheckFx(SalesDoc inv, long? fxAmount)
+    {
+        if (fxAmount is not { } fx || fx <= 0) throw new AppException($"{inv.Number} is in {inv.Currency}. Say how many {inv.Currency} this payment covers.");
+        if (fx > inv.FxBalance) throw new AppException($"{inv.Number} only has {inv.Currency} {inv.FxBalance / 100m:N2} left to pay.");
+        return fx;
     }
 }

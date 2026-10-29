@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Ban, Smartphone, FileCheck2, Loader2, MessageCircle, Pencil, Printer, RefreshCw, Send, Wallet, Sparkles } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { cn, dateTime, dayYear, ksh, msisdn, prettyPhone, toCents } from '../lib/format';
+import { cn, dateTime, dayYear, ksh, money, msisdn, prettyPhone, rateText, toCents } from '../lib/format';
 import { DocStatus } from './Invoices';
 import { RequestPayment } from '../components/MpesaPrompt';
 import { ErrorNote, Field, Loading, Sheet, Status } from '../components/ui';
@@ -54,13 +54,20 @@ function Withheld({ doc, onDone }: { doc: any; onDone: () => void }) {
 }
 
 function RecordPayment({ doc, open, onClose, onDone }: { doc: any; open: boolean; onClose: () => void; onDone: () => void }) {
-  const [f, setF] = useState({ method: 'Mpesa', amount: String((doc.total - doc.paid) / 100), reference: '', receivedAt: '' });
+  const cur: string = doc.currency ?? '';
+  const fxBalance = doc.fxTotal - doc.fxPaid;
+  const [f, setF] = useState({ method: cur ? 'Bank' : 'Mpesa', amount: cur ? '' : String((doc.total - doc.paid) / 100), fx: cur ? String(fxBalance / 100) : '', reference: '', receivedAt: '' });
   const [state, setState] = useState({ busy: false, error: '' });
+  // Abroad: the part of the invoice this settles was booked at the invoice's rate; the shillings that landed may differ.
+  const fxCents = toCents(f.fx);
+  const booked = !cur ? 0 : fxCents >= fxBalance ? doc.total - doc.paid : Math.min(doc.total - doc.paid, Math.round(fxCents * doc.rate));
+  const landed = toCents(f.amount);
+  const diff = landed - booked;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setState({ busy: true, error: '' });
     try {
-      await api('/payments', { body: { method: f.method, amount: toCents(f.amount), reference: f.reference, receivedAt: f.receivedAt ? new Date(f.receivedAt).toISOString() : null, customerId: doc.customerId, invoiceId: doc.id } });
+      await api('/payments', { body: { method: f.method, amount: toCents(f.amount), fxAmount: cur ? fxCents : null, reference: f.reference, receivedAt: f.receivedAt ? new Date(f.receivedAt).toISOString() : null, customerId: doc.customerId, invoiceId: doc.id } });
       onDone();
       onClose();
     } catch (err) {
@@ -81,9 +88,27 @@ function RecordPayment({ doc, open, onClose, onDone }: { doc: any; open: boolean
             ))}
           </div>
         </div>
-        <Field label="Amount (KSh)" hint={`Still to pay: ${ksh(doc.total - doc.paid)}`}>
-          <input className="field num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required />
-        </Field>
+        {cur ? (
+          <>
+            <Field label={`${cur} this pays`} hint={`Still to pay: ${money(fxBalance, cur)}`}>
+              <input className="field num" inputMode="decimal" value={f.fx} onChange={(e) => setF({ ...f, fx: e.target.value })} required />
+            </Field>
+            <Field label="Shillings that landed (KSh)" hint="What your bank credited after converting, from the statement.">
+              <input className="field num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required placeholder={`About ${ksh(booked)} at the invoice's rate`} />
+            </Field>
+            {fxCents > 0 && landed > 0 && (
+              <p className="rounded-md bg-paper px-3 py-2 text-xs text-muted">
+                That's {rateText(Math.round((landed / fxCents) * 100) / 100)} a {cur}, against {rateText(doc.rate)} on the invoice:{' '}
+                {diff === 0 ? 'no exchange difference.' : <b className={diff > 0 ? 'text-good' : 'text-bad'}>{diff > 0 ? 'a gain' : 'a loss'} of {ksh(Math.abs(diff))}</b>}
+                {diff !== 0 && ', posted to exchange gains and losses.'}
+              </p>
+            )}
+          </>
+        ) : (
+          <Field label="Amount (KSh)" hint={`Still to pay: ${ksh(doc.total - doc.paid)}`}>
+            <input className="field num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required />
+          </Field>
+        )}
         <Field label={f.method === 'Mpesa' ? 'M-Pesa code' : f.method === 'Bank' ? 'Bank reference' : 'Receipt number'} hint={f.method === 'Mpesa' ? 'From the SMS, e.g. SJK4H7L2PQ' : 'Optional'}>
           <input className="field uppercase" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} required={f.method === 'Mpesa'} />
         </Field>
@@ -92,7 +117,7 @@ function RecordPayment({ doc, open, onClose, onDone }: { doc: any; open: boolean
         </Field>
         {state.error && <ErrorNote>{state.error}</ErrorNote>}
         <button className="btn btn-primary w-full py-3" disabled={state.busy}>
-          {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Record {ksh(toCents(f.amount))}
+          {state.busy && <Loader2 className="h-4 w-4 animate-spin" />} Record {cur ? money(fxCents, cur) : ksh(toCents(f.amount))}
         </button>
       </form>
     </Sheet>
@@ -224,10 +249,16 @@ export default function InvoiceView() {
   const d = data.document;
   const invoice = d.kind === 'Invoice';
   const balance = d.total - d.paid;
+  // A foreign-currency document reads in its currency; the shillings it's booked at are shown under the totals.
+  const cur: string = d.currency ?? '';
+  const m = (cents: number) => money(cents, cur);
+  const docTotal = cur ? d.fxTotal : d.total;
+  const docPaid = cur ? d.fxPaid : d.paid;
+  const docBalance = docTotal - docPaid;
   const issued = d.status !== 'Draft' && d.status !== 'Void';
   // VAT shown per rate (16%, 8%) the way KRA reads an invoice; rates that charge nothing aren't listed.
-  const vatByRate = [...(d.lines as any[]).reduce((m: Map<string, number>, l: any) => (l.tax ? m.set(TAX_LABEL[l.taxType], (m.get(TAX_LABEL[l.taxType]) ?? 0) + l.tax) : m), new Map<string, number>())];
-  if (!vatByRate.length && d.tax) vatByRate.push(['', d.tax]);
+  const vatByRate = [...(d.lines as any[]).reduce((acc: Map<string, number>, l: any) => { const t = cur ? l.fxTax : l.tax; return t ? acc.set(TAX_LABEL[l.taxType], (acc.get(TAX_LABEL[l.taxType]) ?? 0) + t) : acc; }, new Map<string, number>())];
+  if (!vatByRate.length && (cur ? d.fxTax : d.tax)) vatByRate.push(['', cur ? d.fxTax : d.tax]);
 
   const act = async (name: string, path: string, after?: (r: any) => void) => {
     setState({ busy: name, error: '' });
@@ -241,10 +272,10 @@ export default function InvoiceView() {
   };
 
   const phone = msisdn(d.customer?.phone);
-  const payLine = data.payTo.paybill ? `Pay by M-Pesa: Paybill ${data.payTo.paybill}, account ${d.number}.` : `Please quote ${d.number} when you pay.`;
+  const payLine = data.payTo.paybill && !cur ? `Pay by M-Pesa: Paybill ${data.payTo.paybill}, account ${d.number}.` : `Please quote ${d.number} when you pay.`;
   const waText = invoice
-    ? `Hello ${d.customer?.name}, here is invoice ${d.number} from ${session?.company.name} for ${ksh(balance)}${d.dueDate ? `, due ${dayYear(d.dueDate)}` : ''}. ${payLine} Thank you.`
-    : `Hello ${d.customer?.name}, here is our quote ${d.number} for ${ksh(d.total)}, valid until ${dayYear(d.dueDate)}. Reply to confirm and we'll get started. Thank you.`;
+    ? `Hello ${d.customer?.name}, here is invoice ${d.number} from ${session?.company.name} for ${m(docBalance)}${d.dueDate ? `, due ${dayYear(d.dueDate)}` : ''}. ${payLine} Thank you.`
+    : `Hello ${d.customer?.name}, here is our quote ${d.number} for ${m(docTotal)}, valid until ${dayYear(d.dueDate)}. Reply to confirm and we'll get started. Thank you.`;
 
   return (
     <>
@@ -261,7 +292,7 @@ export default function InvoiceView() {
             <Link to={`/customers/${d.customerId}`} className="font-semibold text-ink hover:text-brand">
               {d.customer?.name}
             </Link>
-            {invoice && issued && <> · {balance > 0 ? <>still to pay <b className="num text-ink">{ksh(balance)}</b> of {ksh(d.total)}</> : <>paid in full</>}</>}
+            {invoice && issued && <> · {balance > 0 ? <>still to pay <b className="num text-ink">{m(docBalance)}</b> of {m(docTotal)}</> : <>paid in full</>}</>}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -285,7 +316,7 @@ export default function InvoiceView() {
               <MessageCircle className="h-4 w-4" /> Send on WhatsApp
             </a>
           )}
-          {invoice && issued && balance > 0 && can(session, 'sell') && data.payTo.prompt && (
+          {invoice && issued && balance > 0 && !cur && can(session, 'sell') && data.payTo.prompt && (
             <button className="btn btn-mpesa" onClick={() => setPrompting(true)}>
               <Smartphone className="h-4 w-4" /> Ask for M-Pesa
             </button>
@@ -349,8 +380,8 @@ export default function InvoiceView() {
             {/* What the reader came for, in the brand colour: what to pay and by when. */}
             <section className={cn('break-inside-avoid rounded-md p-4', invoice && issued && balance <= 0 ? 'bg-good-soft text-good' : 'bg-brand text-white')}>
               <p className="text-2xs font-semibold tracking-wide uppercase opacity-80">{!invoice ? 'Quote total' : issued && balance <= 0 ? 'Paid in full' : d.paid > 0 ? 'Balance due' : 'Amount due'}</p>
-              <p className="num mt-1 font-display text-2xl font-bold">{ksh(invoice ? (issued ? Math.max(balance, 0) : d.total) : d.total)}</p>
-              <p className="mt-0.5 text-xs opacity-90">{!invoice ? `Valid until ${dayYear(d.dueDate)}` : issued && balance <= 0 ? `Thank you. Total ${ksh(d.total)}` : `By ${dayYear(d.dueDate)}`}</p>
+              <p className="num mt-1 font-display text-2xl font-bold">{m(invoice ? (issued ? Math.max(docBalance, 0) : docTotal) : docTotal)}</p>
+              <p className="mt-0.5 text-xs opacity-90">{!invoice ? `Valid until ${dayYear(d.dueDate)}` : issued && balance <= 0 ? `Thank you. Total ${m(docTotal)}` : `By ${dayYear(d.dueDate)}`}</p>
             </section>
           </div>
 
@@ -375,9 +406,9 @@ export default function InvoiceView() {
                       {l.quantity}
                       {l.unit && <span className="text-muted"> {l.unit}</span>}
                     </td>
-                    <td className="num text-right">{ksh(l.unitPrice)}</td>
+                    <td className="num text-right">{m(cur ? l.fxUnitPrice : l.unitPrice)}</td>
                     <td className="text-right text-muted">{TAX_LABEL[l.taxType]}</td>
-                    <td className="num text-right font-semibold">{ksh(l.total)}</td>
+                    <td className="num text-right font-semibold">{m(cur ? l.fxTotal : l.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -396,29 +427,37 @@ export default function InvoiceView() {
             <dl className="w-full max-w-72 space-y-1.5 text-sm break-inside-avoid">
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Subtotal (before VAT)</dt>
-                <dd className="num">{ksh(d.net)}</dd>
+                <dd className="num">{m(cur ? d.fxNet : d.net)}</dd>
               </div>
               {vatByRate.map(([rate, tax]) => (
                 <div key={rate} className="flex justify-between gap-4">
                   <dt className="text-muted">VAT {rate}</dt>
-                  <dd className="num">{ksh(tax)}</dd>
+                  <dd className="num">{m(tax)}</dd>
                 </div>
               ))}
               <div className="flex justify-between gap-4 border-t-2 border-ink pt-2 text-base font-bold">
                 <dt>Total</dt>
-                <dd className="num">{ksh(d.total)}</dd>
+                <dd className="num">{m(docTotal)}</dd>
               </div>
               {d.paid > 0 && (
                 <>
                   <div className="flex justify-between gap-4 text-good">
                     <dt>Paid</dt>
-                    <dd className="num">−{ksh(d.paid)}</dd>
+                    <dd className="num">−{m(docPaid)}</dd>
                   </div>
                   <div className="flex justify-between gap-4 rounded-sm bg-brand-soft px-2 py-1.5 font-bold">
                     <dt>Balance due</dt>
-                    <dd className="num">{ksh(balance)}</dd>
+                    <dd className="num">{m(docBalance)}</dd>
                   </div>
                 </>
+              )}
+              {/* KRA reads a tax invoice in shillings: the amounts it's signed and booked at. */}
+              {cur && (
+                <div className="mt-2 space-y-0.5 rounded-sm bg-paper px-2 py-1.5 text-xs text-muted">
+                  <p className="font-semibold text-ink-2">In Kenya shillings at {rateText(d.rate)} per {cur}</p>
+                  <div className="flex justify-between gap-4"><span>Total</span><span className="num">{ksh(d.total)}</span></div>
+                  {d.tax > 0 && <div className="flex justify-between gap-4"><span>of which VAT</span><span className="num">{ksh(d.tax)}</span></div>}
+                </div>
               )}
             </dl>
           </div>
@@ -472,8 +511,9 @@ export default function InvoiceView() {
                     <li key={i} className="text-sm">
                       <div className="flex justify-between gap-2">
                         <b>{p.method === 'Mpesa' ? 'M-Pesa' : p.method}</b>
-                        <span className="num font-semibold">{ksh(p.amount)}</span>
+                        <span className="num font-semibold">{cur ? m(p.fxAmount) : ksh(p.amount)}</span>
                       </div>
+                      {cur && <p className="num text-xs text-muted">{ksh(p.amount)} landed</p>}
                       <p className="text-xs text-muted">
                         {p.reference && `${p.reference} · `}
                         {dateTime(p.receivedAt)}
@@ -483,7 +523,7 @@ export default function InvoiceView() {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-sm text-muted">None yet. M-Pesa payments with account {d.number} will appear here by themselves.</p>
+                <p className="mt-2 text-sm text-muted">{cur ? `None yet. When the ${cur} land, record what your bank credited.` : `None yet. M-Pesa payments with account ${d.number} will appear here by themselves.`}</p>
               )}
             </section>
           )}
@@ -493,7 +533,7 @@ export default function InvoiceView() {
               {d.etimsControlCode.startsWith('TEST-') && <p className="mt-2 text-xs text-muted">Test signature (eTIMS sandbox). Live signing starts after KRA certifies the integration.</p>}
             </section>
           )}
-          {invoice && (d.status === 'Sent' || d.status === 'PartPaid') && can(session, 'finance') && (
+          {invoice && !cur && (d.status === 'Sent' || d.status === 'PartPaid') && can(session, 'finance') && (
             <button className="btn btn-ghost w-full" onClick={() => setWithholding(true)}>
               <FileCheck2 className="h-4 w-4" /> Customer withheld tax
             </button>
