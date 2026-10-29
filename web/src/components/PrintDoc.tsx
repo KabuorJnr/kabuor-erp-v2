@@ -36,13 +36,7 @@ export function printAs(name: string) {
 function KabuorBand() {
   return (
     <div className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-2.5">
-        <img src="/mark.svg" alt="" className="h-9 w-auto" />
-        <p className="font-display text-base leading-[1.05] font-bold text-ink">
-          Kabuor
-          <span className="block text-xs font-semibold tracking-wide text-indigo">Technologies</span>
-        </p>
-      </div>
+      <img src="/brand/kabuor-technologies-logo-blue.svg" alt="Kabuor Technologies" className="h-9 w-auto" />
       <p className="text-right text-2xs leading-snug text-muted">
         <b className="font-semibold text-ink-2">Kabuor ERP</b>
         <span className="block">Nairobi, Kenya</span>

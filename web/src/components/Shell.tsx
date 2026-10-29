@@ -154,16 +154,11 @@ export default function Shell({ session }: { session: Session }) {
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[15rem_1fr] print:block">
       <aside className="sticky top-0 hidden h-svh flex-col border-r border-line bg-white px-3 py-4 lg:flex print:!hidden">
-        <div className="flex items-center gap-2.5 px-2">
-          <img src="/mark.svg" alt="" className="h-8 w-8" />
-          <div className="min-w-0 leading-tight">
-            <p className="font-display text-[15px] font-bold">
-              {session.user.isPlatformAdmin ? 'Kabuor Platform' : 'Kabuor ERP'}
-            </p>
-            <p className="truncate text-xs text-muted">
-              {session.user.isPlatformAdmin ? 'Platform Admin Console' : session.company.name}
-            </p>
-          </div>
+        <div className="min-w-0 px-2 leading-tight">
+          <img src="/brand/kabuor-erp-logo-blue.svg" alt="Kabuor ERP" className="h-5 w-auto" />
+          <p className="mt-1.5 truncate text-xs text-muted">
+            {session.user.isPlatformAdmin ? 'Platform Admin Console' : session.company.name}
+          </p>
         </div>
         <nav className="mt-6 min-h-0 flex-1 overflow-y-auto pb-2" aria-label="Main">
           {navList()}
@@ -198,7 +193,7 @@ export default function Shell({ session }: { session: Session }) {
       {/* Phone top bar */}
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-white/95 px-4 py-3 backdrop-blur lg:hidden print:hidden">
         <div className="flex min-w-0 items-center gap-2">
-          <img src="/mark.svg" alt="" className="h-7 w-7" />
+          <img src="/brand/kabuor-erp-symbol-blue.svg" alt="" className="h-6 w-auto shrink-0" />
           <span className="truncate font-display font-bold">
             {session.user.isPlatformAdmin ? 'Kabuor Platform' : session.company.name}
           </span>
