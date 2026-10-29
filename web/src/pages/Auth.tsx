@@ -10,9 +10,8 @@ export function Frame({ children }: { children: React.ReactNode }) {
     <div className="grid min-h-svh lg:grid-cols-[1fr_1.1fr]">
       <section className="relative hidden overflow-hidden bg-ink p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute -top-40 -right-40 h-[32rem] w-[32rem] rounded-full bg-indigo/40 blur-3xl" />
-        <div className="relative flex items-center gap-2.5">
-          <img src="/mark.svg" alt="" className="h-9 w-9" />
-          <span className="font-display text-lg font-bold">Kabuor ERP</span>
+        <div className="relative">
+          <img src="/brand/kabuor-erp-logo-white.svg" alt="Kabuor ERP" className="h-7 w-auto" />
         </div>
         <div className="relative max-w-md">
           <h1 className="font-display text-5xl leading-[1.05] font-bold tracking-tight">Run the whole business from one place.</h1>
@@ -34,9 +33,8 @@ export function Frame({ children }: { children: React.ReactNode }) {
       </section>
       <section className="grid place-items-center px-5 py-10">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <img src="/mark.svg" alt="" className="h-8 w-8" />
-            <span className="font-display font-bold">Kabuor ERP</span>
+          <div className="mb-8 lg:hidden">
+            <img src="/brand/kabuor-erp-logo-blue.svg" alt="Kabuor ERP" className="h-6 w-auto" />
           </div>
           {children}
         </div>
