@@ -45,6 +45,21 @@ public class DriverLinkTests(ErpFactory factory) : IClassFixture<ErpFactory>
     static string Token(JsonElement link) => link.GetProperty("url").GetString()!.Split("/d/")[1];
 
     [Fact]
+    public async Task The_site_lets_the_drivers_page_ask_for_location_and_the_map_load_its_tiles()
+    {
+        // The browser refuses geolocation outright when Permissions-Policy says geolocation=(), and map tiles when
+        // the CSP leaves out their host; production adds the same headers from vercel.json, so both are checked.
+        var res = await factory.CreateClient().GetAsync("/api/health");
+        Assert.Contains("geolocation=(self)", res.Headers.GetValues("Permissions-Policy").Single());
+        Assert.Contains("https://tile.openstreetmap.org", res.Headers.GetValues("Content-Security-Policy").Single());
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "vercel.json"))) dir = dir.Parent;
+        var vercel = File.ReadAllText(Path.Combine(dir!.FullName, "vercel.json"));
+        Assert.Contains("geolocation=(self)", vercel);
+        Assert.Contains("https://tile.openstreetmap.org", vercel);
+    }
+
+    [Fact]
     public async Task A_dispatcher_runs_the_fleet_and_sees_nothing_else()
     {
         var owner = await Owner();

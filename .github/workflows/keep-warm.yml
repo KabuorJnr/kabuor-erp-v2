@@ -1,0 +1,19 @@
+# Keeps the live ERP awake. Its host scales an idle app down to nothing: the next person then waited about
+# 19 seconds for the first page, and the background work (agents, webhooks, eTIMS retries) stopped until they came.
+# A request every 10 minutes keeps an instance running. Set the repository variable ERP_URL if the address changes.
+name: Keep warm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ask the ERP if it's ready
+        env:
+          ERP_URL: ${{ vars.ERP_URL || 'https://erp.kabuor-technologies.company' }}
+        run: curl -fsS --retry 2 --max-time 60 -o /dev/null -w "%{http_code} in %{time_total}s\n" "$ERP_URL/api/health/ready"

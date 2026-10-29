@@ -1,12 +1,13 @@
 // Privacy notice and terms of service, written for Kenyan law (Data Protection Act 2019, Tax Procedures Act).
 // Plain language first: a shop owner should understand what happens to their data and their customers' data.
-// The contact email and hosting region come from the server's settings (Legal:Email, Legal:HostingRegion),
+// The contact email, the host and the database region come from the server's settings (Legal:Email, Legal:Hosting,
+// Legal:HostingRegion),
 // so they're never guessed here. Have a Kenyan advocate review both before relying on them.
 import { Link } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useApi } from '../lib/api';
 
-type Info = { email: string; hostingRegion: string; updated: string };
+type Info = { email: string; hosting: string; hostingRegion: string; updated: string };
 
 function Page({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -22,11 +23,11 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
 
 function useInfo(): Info {
   const { data } = useApi<Info>('/legal');
-  return data ?? { email: '', hostingRegion: '', updated: '' };
+  return data ?? { email: '', hosting: '', hostingRegion: '', updated: '' };
 }
 
 const Contact = ({ email }: { email: string }) =>
-  email ? <a className="font-semibold text-brand underline" href={`mailto:${email}`}>{email}</a> : <>the contact details on the Kabuor Builds website</>;
+  email ? <a className="font-semibold text-brand underline" href={`mailto:${email}`}>{email}</a> : <>the contact details on <a className="font-semibold text-brand underline" href="https://www.kabuor-technologies.company/#contact">kabuor-technologies.company</a></>;
 
 export function Privacy() {
   const info = useInfo();
@@ -64,7 +65,7 @@ export function Privacy() {
 
       <h2>Who else sees it</h2>
       <ul>
-        <li><b>Hosting</b>: the application runs on Render (Frankfurt, Germany) and the database on Neon{info.hostingRegion ? ` (${info.hostingRegion})` : ''}. Data is therefore stored outside Kenya.</li>
+        <li><b>Hosting</b>: the application runs on {info.hosting || 'a cloud host'} and the database on Neon{info.hostingRegion ? ` (${info.hostingRegion})` : ''}. Data is therefore stored outside Kenya.</li>
         <li><b>KRA</b> (Kenya): invoices are sent to eTIMS when your business is VAT-registered.</li>
         <li><b>Safaricom</b> (Kenya): when you use M-Pesa features (payment notices, prompts, subscriptions).</li>
         <li><b>Africa’s Talking</b> (Kenya): to send sign-in codes and messages by SMS, when SMS is switched on.</li>
