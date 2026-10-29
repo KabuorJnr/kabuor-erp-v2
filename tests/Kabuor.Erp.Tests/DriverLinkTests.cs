@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 // The dispatch office and drivers' links: a Dispatcher works the fleet and nothing else; a driver's link opens one
 // trip, shares location only while the trip is on the road, confirms its own drops, and stops working when it ends.
 using System.Net;
@@ -126,6 +128,18 @@ public class DriverLinkTests(ErpFactory factory) : IClassFixture<ErpFactory>
         await Ok(await c.PostAsync($"/api/dispatch/trips/{id}/complete", null));
         Assert.Equal(HttpStatusCode.Conflict, (await driver.PostAsJsonAsync($"/api/drive/{token}/ping", new { lat = -0.09, lng = 34.77 })).StatusCode);
         Assert.Empty((await Ok(await c.GetAsync("/api/dispatch/live"))).GetProperty("trips").EnumerateArray());
+
+        // 90 days on, the trail and the trip's last position are gone (the privacy notice's promise).
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Kabuor.Erp.Data.ErpDb>();
+        var (pings, trips) = await Kabuor.Erp.Dispatch.DriverTrailRetention.Prune(db, DateTimeOffset.UtcNow.AddDays(Kabuor.Erp.Dispatch.DriverTrailRetention.KeepDays + 1));
+        Assert.True(pings >= 1 && trips >= 1);
+        Assert.False(await db.DriverPings.IgnoreQueryFilters().AnyAsync(p => p.TripId == id));
+        var kept = await db.DispatchTrips.IgnoreQueryFilters().SingleAsync(t => t.Id == id);
+        Assert.Null(kept.LastLat);
+        Assert.Null(kept.LastPingAt);
+        // The proof of delivery keeps its place: it's the business's record.
+        Assert.Equal(-0.0921, (await db.DeliveryItems.IgnoreQueryFilters().SingleAsync(d => d.Id == drop)).PodLat!.Value, 4);
     }
 
     [Fact]

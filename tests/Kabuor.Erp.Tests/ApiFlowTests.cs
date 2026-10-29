@@ -27,6 +27,7 @@ public class ErpFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Erp", ConnectionString);
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Agents:Disabled", "true"); // tests run agents explicitly
+        builder.UseSetting("Retention:Disabled", "true"); // and clean-ups
         // Most tests start working straight after signing up; paying to start has its own tests (PayToStartTests).
         builder.UseSetting("Billing:PayToStart", PayToStart ? "true" : "false");
     }
