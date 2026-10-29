@@ -1,6 +1,12 @@
 # Running Kabuor ERP in production
 
 ## Where it runs
+- **Live today:** https://erp.kabuor-technologies.company is served by Vercel from `vercel.json` (the API as a
+  container, the web app beside it), with the database on Neon. Vercel adds the security headers in `vercel.json`
+  on top of the app's own, so a header the app needs (geolocation for the driver's link, map tiles) has to be
+  allowed in both. An idle Vercel app is scaled down, so `.github/workflows/keep-warm.yml` asks it every 10 minutes.
+  The privacy notice names the host from `LEGAL__HOSTING` (default "Vercel (United States)"): change it if the app
+  moves. The Render blueprint below is the always-on alternative.
 - **App:** Render web service `kabuor-erp` from the Dockerfile (`render.yaml` is the blueprint). Every push to `main`
   deploys; Render switches traffic only once `/api/health/ready` answers (the database is reachable). Use an
   always-on instance (Starter or above): free instances sleep, which stops agents, webhooks, M-Pesa callbacks and
