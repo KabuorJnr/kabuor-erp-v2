@@ -24,7 +24,7 @@ export function Frame({ children }: { children: React.ReactNode }) {
           </ul>
         </div>
         <div className="relative flex flex-wrap items-center gap-3 text-xs text-white/60">
-          <span>Kabuor Technologies · Websites by Kabuor Builds · Made in Kenya</span>
+          <span>Kabuor Technologies</span>
           <span>·</span>
           <Link to="/terms" className="hover:text-white">Terms</Link>
           <span>·</span>
