@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Plus } from 'lucide-react';
 import { can, useApi, useSession } from '../lib/api';
-import { daysBetween, day, ksh, todayIso } from '../lib/format';
+import { daysBetween, day, ksh, todayIso, money } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { Chips, Empty, ErrorNote, Loading, PageHeader, SearchBox, Status } from '../components/ui';
 
-export type DocRow = { id: string; kind: 'Invoice' | 'Quote'; number: string; status: string; issueDate: string; dueDate: string; total: number; paid: number; etimsStatus: string; customer: string; customerId: string };
+export type DocRow = { id: string; kind: 'Invoice' | 'Quote'; number: string; status: string; issueDate: string; dueDate: string; total: number; paid: number; currency?: string; fxTotal?: number; fxPaid?: number; etimsStatus: string; customer: string; customerId: string };
 type ListData = { counts: Record<string, number>; page: { items: DocRow[]; total: number } };
 
 /** Status in plain words, with how late an unpaid invoice is. */
@@ -83,7 +83,7 @@ export function InvoiceList({ kind }: { kind: 'Invoice' | 'Quote' }) {
                     </span>
                   </span>
                   <span className="text-right">
-                    <b className="num block">{ksh(r.status === 'Paid' || !invoice ? r.total : r.total - r.paid)}</b>
+                    <b className="num block">{r.currency ? money(r.status === 'Paid' || !invoice ? r.fxTotal : r.fxTotal! - r.fxPaid!, r.currency) : ksh(r.status === 'Paid' || !invoice ? r.total : r.total - r.paid)}</b>
                     <DocStatus d={r} />
                   </span>
                 </Link>
@@ -115,9 +115,9 @@ export function InvoiceList({ kind }: { kind: 'Invoice' | 'Quote' }) {
                   <td className="px-4 py-3">
                     <DocStatus d={r} />
                   </td>
-                  <td className="num px-4 py-3 text-right">{ksh(r.total)}</td>
+                  <td className="num px-4 py-3 text-right">{money(r.currency ? r.fxTotal : r.total, r.currency)}</td>
                   {/* Only what is actually owed stands out; paid, void and draft rows show a quiet dash, the same way. */}
-                  {invoice && <td className="num px-4 py-3 text-right font-semibold">{r.status === 'Void' || r.status === 'Draft' || r.total - r.paid <= 0 ? <span className="font-normal text-faint">—</span> : ksh(r.total - r.paid)}</td>}
+                  {invoice && <td className="num px-4 py-3 text-right font-semibold">{r.status === 'Void' || r.status === 'Draft' || r.total - r.paid <= 0 ? <span className="font-normal text-faint">—</span> : money(r.currency ? r.fxTotal! - r.fxPaid! : r.total - r.paid, r.currency)}</td>}
                 </tr>
               ))}
             </tbody>

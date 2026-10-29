@@ -17,6 +17,7 @@ public sealed class WithholdingService(ErpDb db, Ledger ledger, RequestContext c
     {
         var inv = await db.SalesDocs.SingleOrDefaultAsync(d => d.Id == invoiceId) ?? throw new AppException("Not found.", 404);
         if (inv.Kind != SalesDocKind.Invoice || inv.Status is SalesDocStatus.Draft or SalesDocStatus.Void) throw new AppException("Only an issued invoice can have tax withheld.");
+        if (inv.Currency.Length > 0) throw new AppException($"{inv.Number} is in {inv.Currency}. Withholding certificates are for shilling invoices.");
         if (input.Amount <= 0) throw new AppException("Enter the amount withheld.");
         if (input.Amount > inv.Balance) throw new AppException($"That's more than is left to pay on {inv.Number} ({inv.Balance / 100m:N2}).");
         var certificate = (input.Certificate ?? "").Trim().ToUpperInvariant();

@@ -213,6 +213,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<SalesDoc>().HasIndex(x => new { x.CompanyId, x.LinkId });
         b.Entity<SalesDoc>().HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalesDocId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<SalesDoc>().Ignore(x => x.Balance);
+        b.Entity<SalesDoc>().Ignore(x => x.FxBalance);
+        b.Entity<SalesDoc>().Property(x => x.Rate).HasPrecision(18, 6);
         // Two people paying the same invoice at the same moment: the second save fails instead of overpaying.
         b.Entity<SalesDoc>().Property(x => x.Paid).IsConcurrencyToken();
         b.Entity<SalesDoc>().Property(x => x.Status).IsConcurrencyToken();

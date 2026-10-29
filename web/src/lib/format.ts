@@ -11,6 +11,12 @@ export const kshShort = (cents: number) => {
   const s = v >= 1e6 ? `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e4 ? `${Math.round(v / 1e3)}K` : whole.format(v);
   return `${cents < 0 ? '−' : ''}KSh ${s}`;
 };
+/** The currencies an invoice can be in besides shillings (the same list as the server's Currencies.cs). */
+export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UGX', 'TZS', 'RWF', 'ZAR', 'AED', 'CNY', 'INR'] as const;
+/** An amount in a document's currency: "USD 1,250.00"; shillings (no currency) as ksh() shows them. */
+export const money = (cents: number | null | undefined, currency?: string | null) => (currency ? `${currency} ${exact.format((cents ?? 0) / 100)}` : ksh(cents));
+/** "129.5" → "129.50", a rate as people read it off CBK's page. */
+export const rateText = (rate: number) => rate.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 /** "1,250.50" typed by a person → 125050 cents. */
 export const toCents = (text: string) => Math.round(Number(String(text).replace(/[^\d.]/g, '') || 0) * 100);
 export const fromCents = (cents: number) => (cents / 100).toString();

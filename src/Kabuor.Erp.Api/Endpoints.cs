@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kabuor.Erp;
 
-public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null);
+public sealed record CustomerInput(string Name, string? Phone, string? Email, string? KraPin, string? Address, long? CreditLimit, string? Notes, bool? MarketingOptOut = null, Guid? PriceListId = null, string? Currency = null);
 public sealed record ItemInput(string Name, string? Sku, ItemKind? Kind, string? Unit, long Price, TaxType? TaxType, bool? Active, bool? TrackStock, decimal? ReorderLevel, string? EtimsClassCode = null, bool? TrackBatches = null, string? Brand = null, string? Barcode = null);
 public sealed record CompanyInput(string Name, string? KraPin, string? Phone, string? Email, string? County, bool VatRegistered, string? MpesaShortcode, bool? PreventNegativeStock = null, string? Industry = null, DateOnly? AccountingLockDate = null, string? Address = null);
 public sealed record LogoInput(string? DataUrl);
@@ -62,7 +62,7 @@ public static class Endpoints
             payToStart = Kabuor.Erp.Billing.Plans.PayToStart(config),
             plans = Kabuor.Erp.Billing.Plans.All(config).Select(p => new { p.Id, p.Name, p.Monthly }),
         });
-        api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "21 October 2026" });
+        api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hosting = config["Legal:Hosting"] ?? "Vercel (United States)", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "29 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
         api.MapPost("/mpesa/stk/{key}", async (string key, System.Text.Json.Nodes.JsonObject body, ErpDb db, RequestContext ctx, StkService stk) =>
@@ -119,7 +119,7 @@ public static class Endpoints
             }
             var rows = await query.Select(c => new
             {
-                c.Id, c.Number, c.Name, c.Phone, c.Email, c.KraPin, c.PriceListId, c.CreditLimit,
+                c.Id, c.Number, c.Name, c.Phone, c.Email, c.KraPin, c.PriceListId, c.CreditLimit, c.Currency,
                 owes = db.SalesDocs.Where(d => d.CustomerId == c.Id && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid)).Sum(d => d.Total - d.Paid),
                 overdue = db.SalesDocs.Where(d => d.CustomerId == c.Id && d.Kind == SalesDocKind.Invoice && (d.Status == SalesDocStatus.Sent || d.Status == SalesDocStatus.PartPaid) && d.DueDate < today).Sum(d => d.Total - d.Paid),
             }).ToListAsync();
@@ -223,7 +223,7 @@ public static class Endpoints
             };
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.Number).Skip(s).Take(t)
-                .Select(d => new { d.Id, d.Kind, d.Number, d.Status, d.IssueDate, d.DueDate, d.Total, d.Tax, d.Paid, d.EtimsStatus, customer = d.Customer!.Name, customerId = d.CustomerId })
+                .Select(d => new { d.Id, d.Kind, d.Number, d.Status, d.IssueDate, d.DueDate, d.Total, d.Tax, d.Paid, d.Currency, d.FxTotal, d.FxPaid, d.EtimsStatus, customer = d.Customer!.Name, customerId = d.CustomerId })
                 .ToListAsync();
             return new { counts, page = new Page<object>(rows.Cast<object>().ToList(), total, s, t) };
         });
@@ -231,11 +231,15 @@ public static class Endpoints
         {
             var d = await s.Get(id);
             var paidBy = await db.PaymentAllocations.Where(a => a.SalesDocId == id)
-                .Join(db.Payments, a => a.PaymentId, p => p.Id, (a, p) => new { a.Amount, a.MatchedBy, a.At, p.Method, p.Reference, p.ReceivedAt }).ToListAsync();
+                .Join(db.Payments, a => a.PaymentId, p => p.Id, (a, p) => new { a.Amount, a.FxAmount, a.MatchedBy, a.At, p.Method, p.Reference, p.ReceivedAt }).ToListAsync();
             var company = await db.Companies.SingleAsync(c => c.Id == db.CompanyId);
             var prompt = company.StkShortcode.Length > 0 && company.StkConsumerKey.Length > 0 && company.StkPasskey.Length > 0;
             return new { document = d, payments = paidBy, payTo = new { paybill = company.MpesaShortcode, account = d.Number, prompt } };
         });
+        // The rate each currency was last invoiced at, to start the next invoice from (the person checks it against CBK).
+        docs.MapGet("/rates", async (ErpDb db) =>
+            (await db.SalesDocs.Where(d => d.Currency != "").OrderByDescending(d => d.CreatedAt).Select(d => new { d.Currency, d.Rate, d.IssueDate }).Take(500).ToListAsync())
+                .GroupBy(d => d.Currency).Select(g => new { currency = g.Key, rate = g.First().Rate, on = g.First().IssueDate }).ToList());
         docs.MapPost("", async (SalesDocInput input, SalesService s) => Results.Created("", await s.Create(input))).RequireAuthorization(Policies.Sell);
         docs.MapPut("/{id:guid}", (Guid id, SalesDocInput input, SalesService s) => s.Update(id, input)).RequireAuthorization(Policies.Sell);
         docs.MapPost("/{id:guid}/issue", async (Guid id, SalesService s, PaymentService payments, RequestContext ctx, bool? overLimit) =>
@@ -467,6 +471,7 @@ public static class Endpoints
         if (phone.Length > 0 && await db.Customers.AnyAsync(x => x.Phone == phone && x.Id != c.Id))
             throw new AppException("Another customer already has that phone number.", 409);
         (c.Name, c.Phone, c.Email, c.KraPin, c.Address, c.Notes) = (name, phone, (input.Email ?? "").Trim(), pin, (input.Address ?? "").Trim(), (input.Notes ?? "").Trim());
+        if (input.Currency is not null) c.Currency = Currencies.Code(input.Currency);
         c.CreditLimit = Math.Max(0, input.CreditLimit ?? c.CreditLimit);
         c.MarketingOptOut = input.MarketingOptOut ?? c.MarketingOptOut;
         // Guid.Empty takes the customer off their price list.

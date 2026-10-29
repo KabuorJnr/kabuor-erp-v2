@@ -262,7 +262,7 @@ app.Use(async (ctx, next) =>
     h.XContentTypeOptions = "nosniff";
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
     h.XFrameOptions = "DENY";
-    h["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()";
+    h["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(self)"; // the driver's trip link shares its location
     h["Cross-Origin-Opener-Policy"] = "same-origin";
     h["Cross-Origin-Resource-Policy"] = "same-origin";
     h["X-Permitted-Cross-Domain-Policies"] = "none";
