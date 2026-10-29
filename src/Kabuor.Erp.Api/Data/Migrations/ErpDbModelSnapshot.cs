@@ -754,6 +754,10 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<long>("CreditLimit")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1930,6 +1934,9 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid");
 
+                    b.Property<long>("FxAmount")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("MatchedBy")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2548,6 +2555,10 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uuid");
 
@@ -2579,6 +2590,18 @@ namespace Kabuor.Erp.Data.Migrations
 
                     b.Property<Guid?>("FromQuoteId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("FxNet")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxPaid")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxTax")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxTotal")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid?>("InquiryId")
                         .HasColumnType("uuid");
@@ -2613,6 +2636,10 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<long>("Paid")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<string>("SalespersonName")
                         .IsRequired()
@@ -2664,6 +2691,18 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<long>("FxNet")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxTax")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("FxUnitPrice")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid?>("ItemId")
                         .HasColumnType("uuid");

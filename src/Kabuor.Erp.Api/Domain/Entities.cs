@@ -162,6 +162,8 @@ public sealed class Customer : ICompanyOwned
     public long CreditLimit { get; set; }
     /// <summary>Wholesale, a distributor's own prices…: their invoices start from this list instead of the shelf price.</summary>
     public Guid? PriceListId { get; set; }
+    /// <summary>The currency they are usually invoiced in ("USD"; empty for shillings): new invoices start in it.</summary>
+    public string Currency { get; set; } = "";
     public string Notes { get; set; } = "";
     /// <summary>Asked not to get marketing messages (Data Protection Act): never included in campaigns.</summary>
     public bool MarketingOptOut { get; set; }
@@ -258,6 +260,15 @@ public sealed class SalesDoc : ICompanyOwned
     public long Tax { get; set; }
     public long Total { get; set; }
     public long Paid { get; set; }
+    /// <summary>Invoiced in another currency ("USD"; empty for shillings). Net, Tax, Total and Paid stay in shillings at
+    /// <see cref="Rate"/>, so the books, VAT and eTIMS are in KES; the Fx amounts are what the customer sees and owes.</summary>
+    public string Currency { get; set; } = "";
+    /// <summary>Shillings per one unit of <see cref="Currency"/>, fixed when the document is made (1 for shillings).</summary>
+    public decimal Rate { get; set; } = 1;
+    public long FxNet { get; set; }
+    public long FxTax { get; set; }
+    public long FxTotal { get; set; }
+    public long FxPaid { get; set; }
     public string Notes { get; set; } = "";
     public Guid? FromQuoteId { get; set; }
     /// <summary>Where stocked items leave from (the default store when empty).</summary>
@@ -282,6 +293,7 @@ public sealed class SalesDoc : ICompanyOwned
     public List<SalesLine> Lines { get; set; } = [];
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Balance => Total - Paid;
+    public long FxBalance => FxTotal - FxPaid;
 }
 
 public sealed class SalesLine : ICompanyOwned
@@ -303,6 +315,11 @@ public sealed class SalesLine : ICompanyOwned
     /// <summary>Sold in a bigger unit ("carton" of 24): Quantity is in that unit; stock moves Quantity × UnitFactor.</summary>
     public string Unit { get; set; } = "";
     public decimal UnitFactor { get; set; } = 1;
+    /// <summary>On a foreign-currency document: the line as the customer sees it, in that currency (cents).</summary>
+    public long FxUnitPrice { get; set; }
+    public long FxNet { get; set; }
+    public long FxTax { get; set; }
+    public long FxTotal { get; set; }
 }
 
 public enum PaymentMethod
@@ -348,6 +365,8 @@ public sealed class PaymentAllocation : ICompanyOwned
     public Guid PaymentId { get; set; }
     public Guid SalesDocId { get; set; }
     public long Amount { get; set; }
+    /// <summary>On a foreign-currency invoice: how much of it, in that currency, this payment settled.</summary>
+    public long FxAmount { get; set; }
     public string MatchedBy { get; set; } = ""; // "auto: account number", "user: Wanjiku", "assistant"
     public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
 }

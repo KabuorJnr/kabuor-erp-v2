@@ -1,14 +1,15 @@
 // Making a quote or invoice. The person decides: who, what, how much, and when it's due.
-// Totals and VAT update as they type; prices are VAT-inclusive, the way Kenyan businesses quote.
+// Totals and VAT update as they type; prices are VAT-inclusive, the way Kenyan businesses quote. A customer abroad
+// can be invoiced in their currency: prices are typed in it, and the shillings it goes into the books at show beside.
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Loader2, Plus, Trash2, UserPlus } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { cn, ksh, prettyPhone, toCents } from '../lib/format';
+import { CURRENCIES, cn, dayYear, ksh, money, prettyPhone, rateText, toCents } from '../lib/format';
 import { ErrorNote, Field, Loading, PageHeader } from '../components/ui';
 
 type Item = { id: string; name: string; price: number; taxType: string; unit: string };
-type Customer = { id: string; number: string; name: string; phone: string; owes?: number; priceListId?: string | null; creditLimit?: number };
+type Customer = { id: string; number: string; name: string; phone: string; owes?: number; priceListId?: string | null; creditLimit?: number; currency?: string };
 type Unit = { itemId: string; name: string; factor: number; price: number };
 // `auto`: the price came from the product (shelf, price list or unit), so it follows a change of customer or unit.
 type Line = { key: number; itemId: string | null; description: string; quantity: string; price: string; taxType: string; unit?: string; auto?: boolean };
@@ -108,11 +109,14 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
   const items = useApi<Item[]>('/items');
   const units = useApi<Unit[]>('/items/units');
   const lists = useApi<{ id: string; name: string; prices: { itemId: string; price: number }[] }[]>('/price-lists');
+  const rates = useApi<{ currency: string; rate: number; on: string }[]>('/sales/rates');
   const [kind, setKind] = useState(defaultKind);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [lines, setLines] = useState<Line[]>([blank()]);
   const [due, setDue] = useState(defaultKind === 'Quote' ? 14 : 7);
   const [notes, setNotes] = useState('');
+  const [currency, setCurrency] = useState(''); // '' is shillings
+  const [rate, setRate] = useState('');
   const [state, setState] = useState<{ busy: '' | 'draft' | 'issue'; error: string }>({ busy: '', error: '' });
   const [savedId, setSavedId] = useState<string | null>(null);
   const vat = session?.company.vatRegistered ?? true;
@@ -123,22 +127,32 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
     if (!d) return;
     setKind(d.kind);
     setCustomer(d.customer);
-    setLines(d.lines.map((l: any) => ({ key: nextKey++, itemId: l.itemId, description: l.description, quantity: String(l.quantity), price: String(l.unitPrice / 100), taxType: l.taxType, unit: l.unit || undefined })));
+    setCurrency(d.currency ?? '');
+    setRate(d.currency ? String(d.rate) : '');
+    setLines(d.lines.map((l: any) => ({ key: nextKey++, itemId: l.itemId, description: l.description, quantity: String(l.quantity), price: String((d.currency ? l.fxUnitPrice : l.unitPrice) / 100), taxType: l.taxType, unit: l.unit || undefined })));
     setDue(Math.round((Date.parse(d.dueDate) - Date.parse(d.issueDate)) / 864e5));
     setNotes(d.notes);
   }, [existing.data]);
 
+  const foreign = currency !== '';
+  const r = Number(rate) || 0;
+  const lastRate = rates.data?.find((x) => x.currency === currency);
+  // Totals in the invoice's currency, and (abroad) the shillings it's booked at: each unit price at the rate, the way
+  // the server keeps quantity × price adding up for KRA.
   const totals = useMemo(() => {
     let total = 0;
     let tax = 0;
+    let kes = 0;
     for (const l of lines) {
-      const t = Math.round((Number(l.quantity) || 0) * toCents(l.price));
+      const q = Number(l.quantity) || 0;
+      const t = Math.round(q * toCents(l.price));
       const b = vat ? bps(l.taxType) : 0;
       total += t;
       tax += b ? Math.round((t * b) / (10000 + b)) : 0;
+      kes += Math.round(q * Math.round(toCents(l.price) * (foreign ? r : 1)));
     }
-    return { total, tax, net: total - tax };
-  }, [lines, vat]);
+    return { total, tax, net: total - tax, kes };
+  }, [lines, vat, foreign, r]);
 
   const set = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const list = lists.data?.find((x) => x.id === customer?.priceListId);
@@ -148,24 +162,46 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
     if (!it) return 0;
     const listed = onList?.prices.find((p) => p.itemId === itemId)?.price;
     const u = unit ? units.data?.find((x) => x.itemId === itemId && x.name === unit) : undefined;
-    if (!u) return listed ?? it.price;
-    return listed != null ? Math.round(listed * u.factor) : u.price > 0 ? u.price : Math.round(it.price * u.factor);
+    const kes = !u ? (listed ?? it.price) : listed != null ? Math.round(listed * u.factor) : u.price > 0 ? u.price : Math.round(it.price * u.factor);
+    return inCurrency(kes);
   };
+  // A product's shilling price, in the invoice's currency at its rate (the same rounding as the server).
+  const inCurrency = (kes: number, cur = currency, at = r) => (!cur ? kes : at > 0 ? Math.round(kes / at) : NaN);
+  // No rate yet: a product's price is left blank rather than shown in shillings under another currency.
+  const priceText = (cents: number) => (Number.isFinite(cents) ? String(cents / 100) : '');
   const pickItem = (key: number, text: string) => {
     const it = items.data?.find((i) => i.name.toLowerCase() === text.trim().toLowerCase());
-    set(key, it ? { itemId: it.id, description: it.name, price: String(priceOf(it.id, undefined) / 100), taxType: it.taxType, unit: undefined, auto: true } : { itemId: null, description: text, unit: undefined });
+    set(key, it ? { itemId: it.id, description: it.name, price: priceText(priceOf(it.id, undefined)), taxType: it.taxType, unit: undefined, auto: true } : { itemId: null, description: text, unit: undefined });
   };
   const pickCustomer = (c: Customer | null) => {
     setCustomer(c);
     const next = lists.data?.find((x) => x.id === c?.priceListId);
-    setLines((ls) => ls.map((l) => (l.itemId && l.auto ? { ...l, price: String(priceOf(l.itemId, l.unit, next) / 100) } : l)));
+    // A new document starts in the customer's usual currency, at the rate it was last invoiced at.
+    if (c && !id && (c.currency ?? '') !== currency) return pickCurrency(c.currency ?? '', next);
+    setLines((ls) => ls.map((l) => (l.itemId && l.auto ? { ...l, price: priceText(priceOf(l.itemId, l.unit, next)) } : l)));
   };
-  const over = customer?.creditLimit && customer.owes != null && kind === 'Invoice' ? customer.owes + totals.total - customer.creditLimit : 0;
+  // Changing the currency re-prices lines that came from a product; prices typed by hand are left for the person.
+  const pickCurrency = (cur: string, onList = list, at?: number) => {
+    const nextRate = at ?? (cur ? (rates.data?.find((x) => x.currency === cur)?.rate ?? 0) : 0);
+    setCurrency(cur);
+    if (at === undefined) setRate(cur && nextRate ? String(nextRate) : '');
+    setLines((ls) => ls.map((l) => {
+      if (!l.itemId || !l.auto) return l;
+      const it = items.data?.find((i) => i.id === l.itemId);
+      if (!it) return l;
+      const listed = onList?.prices.find((p) => p.itemId === l.itemId)?.price;
+      const u = l.unit ? units.data?.find((x) => x.itemId === l.itemId && x.name === l.unit) : undefined;
+      const kes = !u ? (listed ?? it.price) : listed != null ? Math.round(listed * u.factor) : u.price > 0 ? u.price : Math.round(it.price * u.factor);
+      return { ...l, price: priceText(inCurrency(kes, cur, nextRate)) };
+    }));
+  };
+  const over = customer?.creditLimit && customer.owes != null && kind === 'Invoice' ? customer.owes + totals.kes - customer.creditLimit : 0;
 
   const save = async (issue: boolean, allowOver = false) => {
     if (!customer) return setState({ busy: '', error: 'Choose a customer first.' });
     const filled = lines.filter((l) => l.description.trim() || l.price);
     if (!filled.length) return setState({ busy: '', error: 'Add at least one line.' });
+    if (foreign && !(r > 0)) return setState({ busy: '', error: `Enter today's rate: how many shillings one ${currency} is worth.` });
     setState({ busy: issue ? 'issue' : 'draft', error: '' });
     try {
       const body = {
@@ -173,6 +209,8 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
         customerId: customer.id,
         dueInDays: due,
         notes,
+        currency: currency || 'KES',
+        rate: foreign ? r : null,
         lines: filled.map((l) => ({ itemId: l.itemId, description: l.description, quantity: Number(l.quantity) || 0, unitPrice: toCents(l.price), taxType: l.taxType, unit: l.unit })),
       };
       // A draft saved by an earlier try (e.g. stopped by the credit limit) is updated, not duplicated.
@@ -201,7 +239,7 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
       </datalist>
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
-          <section className="card space-y-4 p-4 sm:p-5">
+          <section className="@container card space-y-4 p-4 sm:p-5">
             <Field label="Customer">
               <CustomerPicker value={customer} onChange={pickCustomer} />
             </Field>
@@ -221,6 +259,22 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
                 ))}
               </div>
             </div>
+            <div className="grid gap-3 @lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] @lg:items-start">
+              <Field label="Currency">
+                <select className="field" value={currency} onChange={(e) => pickCurrency(e.target.value)} aria-label="Currency">
+                  <option value="">Kenya shillings (KES)</option>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              {foreign && (
+                <Field label={`Rate today: 1 ${currency} =`} hint={lastRate ? `Last used ${rateText(lastRate.rate)} on ${dayYear(lastRate.on)}. Check it against CBK's rate.` : "Use CBK's rate for today, or your bank's."}>
+                  <div className="relative">
+                    <input className="field num pr-12" inputMode="decimal" value={rate} onChange={(e) => (setRate(e.target.value), pickCurrency(currency, list, Number(e.target.value) || 0))} placeholder="e.g. 129.50" aria-label={`Shillings per ${currency}`} />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm text-muted">KSh</span>
+                  </div>
+                </Field>
+              )}
+            </div>
           </section>
 
           {/* A container: the line becomes one row only when this card is wide enough for it (beside the menu and the
@@ -230,7 +284,7 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
             <div className="mt-3 hidden grid-cols-[minmax(12rem,1fr)_4.5rem_7rem_7.5rem_7rem_2.25rem] gap-2 text-xs font-semibold text-muted @3xl:grid">
               <span>Item or description</span>
               <span>Qty</span>
-              <span>Price (KSh)</span>
+              <span>Price ({currency || 'KSh'})</span>
               <span>Tax</span>
               <span className="text-right">Amount</span>
               <span />
@@ -243,7 +297,7 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
                     <div className="col-span-2 flex gap-2 @3xl:col-span-1">
                       <input className="field min-w-0 flex-1" list="items" value={l.description} onChange={(e) => pickItem(l.key, e.target.value)} placeholder="Type or pick an item" aria-label={`Line ${i + 1} item`} />
                       {l.itemId && units.data?.some((u) => u.itemId === l.itemId) && (
-                        <select className="field w-28 shrink-0" value={l.unit ?? ''} aria-label={`Line ${i + 1} unit`} onChange={(e) => { const unit = e.target.value || undefined; set(l.key, { unit, price: String(priceOf(l.itemId!, unit) / 100), auto: true }); }}>
+                        <select className="field w-28 shrink-0" value={l.unit ?? ''} aria-label={`Line ${i + 1} unit`} onChange={(e) => { const unit = e.target.value || undefined; set(l.key, { unit, price: priceText(priceOf(l.itemId!, unit)), auto: true }); }}>
                           <option value="">{items.data?.find((x) => x.id === l.itemId)?.unit ?? 'each'}</option>
                           {units.data.filter((u) => u.itemId === l.itemId).map((u) => <option key={u.name} value={u.name}>{u.name} ({u.factor})</option>)}
                         </select>
@@ -254,7 +308,7 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
                       <input className="field num" inputMode="decimal" value={l.quantity} onChange={(e) => set(l.key, { quantity: e.target.value })} aria-label={`Line ${i + 1} quantity`} />
                     </label>
                     <label className="min-w-0">
-                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Price (KSh)</span>
+                      <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Price ({currency || 'KSh'})</span>
                       <input className="field num" inputMode="decimal" value={l.price} onChange={(e) => set(l.key, { price: e.target.value, auto: false })} placeholder="0" aria-label={`Line ${i + 1} price including VAT`} />
                     </label>
                     <label className="min-w-0">
@@ -269,7 +323,7 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
                     </label>
                     <span className="num self-end pb-2.5 text-right font-semibold @3xl:self-center @3xl:pb-0">
                       <span className="mb-1 block text-xs font-semibold text-muted @3xl:hidden">Amount</span>
-                      {ksh(amount)}
+                      {money(amount, currency)}
                     </span>
                     <button type="button" onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))} className="col-span-2 grid h-9 w-9 place-items-center justify-self-end rounded-full text-muted hover:bg-bad-soft hover:text-bad @3xl:col-span-1" aria-label={`Remove line ${i + 1}`}>
                       <Trash2 className="h-4 w-4" />
@@ -295,17 +349,22 @@ export default function InvoiceEditor({ kind: defaultKind }: { kind: 'Invoice' |
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <dt className="text-muted">Before VAT</dt>
-                <dd className="num">{ksh(totals.net)}</dd>
+                <dd className="num">{money(totals.net, currency)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted">VAT</dt>
-                <dd className="num">{ksh(totals.tax)}</dd>
+                <dd className="num">{money(totals.tax, currency)}</dd>
               </div>
               <div className="flex justify-between border-t border-line pt-2 text-base">
                 <dt className="font-semibold">Total</dt>
-                <dd className="num font-display text-xl font-bold">{ksh(totals.total)}</dd>
+                <dd className="num font-display text-xl font-bold">{money(totals.total, currency)}</dd>
               </div>
             </dl>
+            {foreign && (
+              <p className="mt-2 rounded-md bg-paper px-3 py-2 text-xs text-muted">
+                {r > 0 ? <>Goes into your books, VAT return and eTIMS as <b className="num text-ink">{ksh(totals.kes)}</b> at {rateText(r)}. When they pay, any difference from the shillings that land is an exchange gain or loss.</> : <>Enter the rate to see the shillings this goes into your books at.</>}
+              </p>
+            )}
             {over > 0 && <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">This takes {customer!.name} {ksh(over)} over their {ksh(customer!.creditLimit!)} credit limit. {can(session, 'finance') ? 'You can still issue it.' : 'The owner or accountant has to allow it, or take a payment first.'}</p>}
             {state.error && <div className="mt-3"><ErrorNote>{state.error}</ErrorNote></div>}
             {state.error.includes('limit') && can(session, 'finance') && (

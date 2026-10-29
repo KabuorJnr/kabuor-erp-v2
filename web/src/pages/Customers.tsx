@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Loader2, MessageCircle, Phone, Plus } from 'lucide-react';
 import { api, can, useApi, useSession } from '../lib/api';
-import { dateTime, day, ksh, msisdn, prettyPhone } from '../lib/format';
+import { CURRENCIES, dateTime, day, ksh, msisdn, prettyPhone } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { DocStatus } from './Invoices';
 import { CustomerTerms } from '../components/Trade';
@@ -15,7 +15,7 @@ type Row = { id: string; number: string; name: string; phone: string; email: str
 
 function NewCustomer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const [f, setF] = useState({ name: '', phone: '', email: '', kraPin: '', address: '' });
+  const [f, setF] = useState({ name: '', phone: '', email: '', kraPin: '', address: '', currency: '' });
   const [state, setState] = useState({ busy: false, error: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
   const submit = async (e: React.FormEvent) => {
@@ -45,6 +45,12 @@ function NewCustomer({ open, onClose }: { open: boolean; onClose: () => void }) 
         </Field>
         <Field label="Address or location">
           <input className="field" value={f.address} onChange={set('address')} placeholder="e.g. Tom Mboya St, Nairobi" />
+        </Field>
+        <Field label="Invoice them in" hint="For customers abroad. Your books stay in shillings.">
+          <select className="field" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })}>
+            <option value="">Kenya shillings (KES)</option>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </Field>
         {state.error && <ErrorNote>{state.error}</ErrorNote>}
         <button className="btn btn-primary w-full py-3" disabled={state.busy}>
