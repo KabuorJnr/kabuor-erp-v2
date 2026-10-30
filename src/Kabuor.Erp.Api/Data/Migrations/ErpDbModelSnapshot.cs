@@ -3257,6 +3257,89 @@ namespace Kabuor.Erp.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Kabuor.Erp.Domain.VerifiedShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LenderContact")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LenderName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Months")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ExpiresAt");
+
+                    b.HasIndex("CompanyId", "TokenHash");
+
+                    b.ToTable("VerifiedShares");
+                });
+
+            modelBuilder.Entity("Kabuor.Erp.Domain.VerifiedShareView", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Agent")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IpHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ShareId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ShareId", "At");
+
+                    b.ToTable("VerifiedShareViews");
+                });
+
             modelBuilder.Entity("Kabuor.Erp.Domain.WithholdingCertificate", b =>
                 {
                     b.Property<Guid>("Id")

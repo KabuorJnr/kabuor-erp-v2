@@ -51,6 +51,7 @@ import LedgerPage from './pages/Ledger';
 import MonthlyReport from './pages/MonthlyReport';
 import Dashboards from './pages/Dashboards';
 import Verified from './pages/Verified';
+import VerifiedView from './pages/VerifiedView';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -71,6 +72,7 @@ function App() {
       <Routes>
         <Route path="/signup" element={<SignUp />} />
         <Route path="/d/:token" element={<Drive />} />
+        <Route path="/v/:token" element={<VerifiedView />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/s/:slug" element={<Shop />} />
         <Route path="/terms" element={<Terms />} />
@@ -92,6 +94,7 @@ function App() {
       <Route path="s/:slug" element={<Shop />} />
       <Route path="terms" element={<Terms />} />
       <Route path="d/:token" element={<Drive />} />
+      <Route path="v/:token" element={<VerifiedView />} />
       <Route element={<Shell session={session} />}>
         <Route
           index

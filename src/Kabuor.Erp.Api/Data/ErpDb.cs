@@ -89,6 +89,8 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<DeliveryItem> DeliveryItems => Set<DeliveryItem>();
     public DbSet<DriverPing> DriverPings => Set<DriverPing>();
+    public DbSet<VerifiedShare> VerifiedShares => Set<VerifiedShare>();
+    public DbSet<VerifiedShareView> VerifiedShareViews => Set<VerifiedShareView>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -273,6 +275,9 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<Campaign>().HasMany(x => x.Recipients).WithOne().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Campaign>().Property(x => x.Status).IsConcurrencyToken();
         b.Entity<CampaignRecipient>().HasIndex(x => new { x.CompanyId, x.CampaignId });
+        b.Entity<VerifiedShare>().HasIndex(x => new { x.CompanyId, x.TokenHash });
+        b.Entity<VerifiedShare>().HasIndex(x => new { x.CompanyId, x.ExpiresAt });
+        b.Entity<VerifiedShareView>().HasIndex(x => new { x.CompanyId, x.ShareId, x.At });
 
         // Enums as readable text, so the data makes sense to anyone reading the database.
         // SQLite (local development only) can't sort or compare DateTimeOffset, so there they're stored as
@@ -321,7 +326,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
 
     // Never copied into the audit trail (which the owner and accountant can read): passwords, keys and the secrets
     // behind two-step sign-in, M-Pesa prompts, KRA eTIMS and signed webhooks. The log says they changed, not to what.
-    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey", "TotpSecret", "RecoveryCodes", "StkConsumerKey", "StkConsumerSecret", "StkPasskey", "CmcKey", "Secret", "DriverToken"];
+    static readonly HashSet<string> Secret = ["PasswordHash", "MpesaCallbackKey", "TotpSecret", "RecoveryCodes", "StkConsumerKey", "StkConsumerSecret", "StkPasskey", "CmcKey", "Secret", "DriverToken", "TokenHash"];
 
     void StampAndAudit()
     {
