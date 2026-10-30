@@ -96,6 +96,7 @@ builder.Services.AddScoped<Numbers>();
 builder.Services.AddScoped<SalesService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<Kabuor.Erp.Verified.VerifiedService>();
 builder.Services.AddScoped<ReportExports>();
 builder.Services.AddScoped<Kabuor.Erp.Finance.FinanceService>();
 builder.Services.AddScoped<AuthService>();
@@ -445,6 +446,7 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 Endpoints.Map(app);
 IntelligenceEndpoints.Map(app);
 AssetEndpoints.Map(app);
+VerifiedEndpoints.Map(app);
 PlatformEndpoints.Map(app);
 // An API address that matches nothing says so in JSON, instead of falling through to the web app's page below and
 // handing a screen HTML where it expected data. Reads only, like the page fallback: a catch-all that took any method

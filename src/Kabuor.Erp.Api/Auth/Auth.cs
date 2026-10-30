@@ -34,6 +34,8 @@ public static class Policies
     public const string FleetView = "fleet.view"; // vehicles, trips, waybills and the live map
     public const string Fleet = "fleet";          // plan and send out trips, driver links, proof of delivery
     public const string Admin = "admin";          // users and company settings
+    public const string VerifiedView = "verified.view";   // Kabuor Verified: the proof of revenue and eTIMS
+    public const string VerifiedShare = "verified.share"; // sharing that proof with a lender: the owner alone
 
     public static readonly Dictionary<string, Role[]> Roles = new()
     {
@@ -53,6 +55,8 @@ public static class Policies
         [FleetView] = [Role.Owner, Role.Accountant, Role.Storekeeper, Role.Procurement, Role.Viewer, Role.Dispatcher],
         [Fleet] = [Role.Owner, Role.Accountant, Role.Storekeeper, Role.Procurement, Role.Dispatcher],
         [Admin] = [Role.Owner],
+        [VerifiedView] = [Role.Owner, Role.Accountant],
+        [VerifiedShare] = [Role.Owner],
     };
 
     public static bool Allows(this Role role, string policy) => Roles[policy].Contains(role);
