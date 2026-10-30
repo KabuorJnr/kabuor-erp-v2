@@ -50,6 +50,7 @@ import Finance from './pages/Finance';
 import LedgerPage from './pages/Ledger';
 import MonthlyReport from './pages/MonthlyReport';
 import Dashboards from './pages/Dashboards';
+import Verified from './pages/Verified';
 
 /** A page outside this person's role: say so plainly instead of showing a half-loaded screen. */
 function Need({ p, children }: { p: Permission; children: React.ReactNode }) {
@@ -146,6 +147,7 @@ function App() {
         <Route path="campaigns/:id" element={<Need p="crm"><CampaignView /></Need>} />
         <Route path="money-in" element={<Need p="sales.view"><Payments /></Need>} />
         <Route path="reports" element={<Need p="reports"><Reports /></Need>} />
+        <Route path="verified" element={<Need p="verified.view"><Verified /></Need>} />
         <Route path="reports/monthly" element={<Need p="reports"><MonthlyReport /></Need>} />
         <Route path="dashboards" element={<Need p="reports"><Dashboards /></Need>} />
         <Route path="finance" element={<Need p="reports"><Finance /></Need>} />

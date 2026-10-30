@@ -90,6 +90,7 @@ export default function Shell({ session }: { session: Session }) {
             can(session, 'finance') && { to: '/reconcile', label: 'Reconcile', icon: ListChecks },
             can(session, 'reports') && { to: '/finance/ledger', label: 'Accounts & ledger', icon: BookOpen },
             can(session, 'reports') && { to: '/reports', label: t('Reports'), icon: BarChart3 },
+            can(session, 'verified.view') && { to: '/verified', label: 'Verified', icon: ShieldCheck },
           ],
         },
         {

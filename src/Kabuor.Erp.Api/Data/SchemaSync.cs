@@ -147,7 +147,9 @@ public static partial class SchemaSync
                     if (column is null || have.Contains(column)) continue;
                     var type = p.GetColumnType();
                     var notNull = !p.IsNullable;
+                    var enumType = Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType;
                     var fallback = p.Name == "UnitFactor" ? "'1.0'" // lines from before units: one base unit each
+                        : enumType.IsEnum && type.Contains("TEXT", StringComparison.OrdinalIgnoreCase) ? $"'{Enum.GetNames(enumType)[0]}'" // enums are stored by name
                         : type.Contains("TEXT", StringComparison.OrdinalIgnoreCase) ? "''" : "0";
                     await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {type}{(notNull ? $" NOT NULL DEFAULT {fallback}" : "")}");
                 }
