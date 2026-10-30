@@ -232,7 +232,7 @@ public static class PosEndpoints
                 AccountRef: doc.Number,
                 CustomerId: customer.Id,
                 InvoiceId: doc.Id
-            ), ctx.Actor);
+            ), ctx.Actor, PaymentSource.Till);
 
             // 5. Update the till's tallies
             if (input.PaymentMethod == PaymentMethod.Cash) session.CashSales += doc.Total;

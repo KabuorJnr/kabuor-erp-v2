@@ -14,10 +14,12 @@ public sealed record AllocationInput(Guid InvoiceId, long Amount, long? FxAmount
 /// <summary>Safaricom's C2B confirmation body (what a Paybill/Till payment looks like when it arrives).</summary>
 public sealed record MpesaC2B(string TransID, string TransAmount, string? TransTime, string BusinessShortCode, string? BillRefNumber, string? MSISDN, string? FirstName, string? MiddleName, string? LastName);
 
-public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrations.WebhookService hooks)
+public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrations.WebhookService hooks, IConfiguration config)
 {
-    /// <summary>Records money in and posts it. Then pays the chosen invoice, or tries to match it automatically.</summary>
-    public async Task<Payment> Record(PaymentInput input, string actor)
+    /// <summary>Records money in and posts it. Then pays the chosen invoice, or tries to match it automatically.
+    /// <paramref name="source"/> says how it arrived (the caller knows; a request body never decides it), and for an
+    /// M-Pesa callback <paramref name="callbackIp"/> is the address that delivered it.</summary>
+    public async Task<Payment> Record(PaymentInput input, string actor, PaymentSource source = PaymentSource.Manual, System.Net.IPAddress? callbackIp = null)
     {
         if (input.Amount <= 0) throw new AppException("Enter an amount above 0.");
         var reference = (input.Reference ?? "").Trim().ToUpperInvariant();
@@ -36,6 +38,9 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
             PayerName = (input.PayerName ?? "").Trim(),
             AccountRef = (input.AccountRef ?? "").Trim(),
             CustomerId = input.CustomerId,
+            Source = source,
+            CallbackIp = callbackIp?.ToString() ?? "",
+            FromSafaricom = source is PaymentSource.MpesaConfirmation or PaymentSource.MpesaPrompt && SafaricomCallers.IsSafaricom(callbackIp, config),
         };
         db.Payments.Add(p);
         await ledger.PostReceipt(p);
@@ -51,7 +56,7 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
     }
 
     /// <summary>A Paybill/Till payment from Safaricom. Safe to receive twice: the M-Pesa receipt is unique.</summary>
-    public async Task<Payment?> FromMpesa(MpesaC2B c)
+    public async Task<Payment?> FromMpesa(MpesaC2B c, System.Net.IPAddress? callbackIp = null)
     {
         var reference = c.TransID.Trim().ToUpperInvariant();
         if (await db.Payments.AnyAsync(p => p.Reference == reference)) return null; // Safaricom retried
@@ -63,7 +68,7 @@ public sealed class PaymentService(ErpDb db, Ledger ledger, Kabuor.Erp.Integrati
         var name = string.Join(' ', new[] { c.FirstName, c.MiddleName, c.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
         var phone = Phones.ToMsisdn(c.MSISDN) ?? (c.MSISDN ?? ""); // Safaricom may send a hashed MSISDN; kept as is
         var customer = phone.Length > 0 ? await db.Customers.Where(x => x.Phone == phone).Select(x => (Guid?)x.Id).FirstOrDefaultAsync() : null;
-        return await Record(new PaymentInput(PaymentMethod.Mpesa, (long)Math.Round(shillings * 100), when, reference, phone, name, c.BillRefNumber, customer, null), "M-Pesa");
+        return await Record(new PaymentInput(PaymentMethod.Mpesa, (long)Math.Round(shillings * 100), when, reference, phone, name, c.BillRefNumber, customer, null), "M-Pesa", PaymentSource.MpesaConfirmation, callbackIp);
     }
 
     async Task<List<OpenInvoice>> OpenInvoices() =>

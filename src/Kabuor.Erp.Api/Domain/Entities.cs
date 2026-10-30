@@ -338,6 +338,10 @@ public enum PaymentStatus
 }
 
 /// <summary>Money in. M-Pesa payments arrive by themselves from Safaricom; others are recorded by staff.</summary>
+/// <summary>How a payment reached the books. Only Safaricom-sourced ones from Safaricom's servers count as proof of
+/// revenue (Kabuor Verified); everything else was typed, uploaded or reported, and may be right but proves nothing.</summary>
+public enum PaymentSource { Unknown, Manual, Till, StatementImport, ConnectedSystem, MpesaConfirmation, MpesaPrompt }
+
 public sealed class Payment : ICompanyOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -354,6 +358,12 @@ public sealed class Payment : ICompanyOwned
     public string AccountRef { get; set; } = "";
     public Guid? CustomerId { get; set; }
     public PaymentStatus Status { get; set; } = PaymentStatus.Unmatched;
+    /// <summary>Set by the server where the payment is created; never taken from a request body.</summary>
+    public PaymentSource Source { get; set; } = PaymentSource.Unknown;
+    /// <summary>The address that delivered an M-Pesa callback (confirmation or prompt result).</summary>
+    public string CallbackIp { get; set; } = "";
+    /// <summary>An M-Pesa callback that came from one of Safaricom's callback addresses (SafaricomCallers).</summary>
+    public bool FromSafaricom { get; set; }
     public List<PaymentAllocation> Allocations { get; set; } = [];
     public long Unallocated => Amount - Allocated;
 }

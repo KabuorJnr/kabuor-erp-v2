@@ -133,7 +133,7 @@ public sealed class StkService(ErpDb db, PaymentService payments, SecretBox box,
         (await db.MpesaRequests.Where(r => r.SalesDocId == invoiceId).ToListAsync()).OrderByDescending(r => r.CreatedAt).Take(10).ToList();
 
     /// <summary>Safaricom's answer. Paid: recorded against the invoice (once, even if Safaricom retries).</summary>
-    public async Task Callback(Company company, JsonObject body)
+    public async Task Callback(Company company, JsonObject body, System.Net.IPAddress? callbackIp = null)
     {
         var (checkout, paid, receipt, amount, phone, note) = Daraja.Read(body);
         var r = await db.MpesaRequests.SingleOrDefaultAsync(x => x.CheckoutId == checkout);
@@ -147,7 +147,7 @@ public sealed class StkService(ErpDb db, PaymentService payments, SecretBox box,
         var doc = await db.SalesDocs.SingleAsync(d => d.Id == r.SalesDocId);
         (r.Status, r.Receipt, r.PaidAt) = (MpesaRequestStatus.Paid, receipt, DateTimeOffset.UtcNow);
         if (!await db.Payments.AnyAsync(p => p.Reference == receipt.ToUpperInvariant()))
-            await payments.Record(new PaymentInput(PaymentMethod.Mpesa, amount > 0 ? amount : r.Amount, DateTimeOffset.UtcNow, receipt, Phones.ToMsisdn(phone) ?? r.Phone, "", doc.Number, doc.CustomerId, doc.Id), "M-Pesa prompt");
+            await payments.Record(new PaymentInput(PaymentMethod.Mpesa, amount > 0 ? amount : r.Amount, DateTimeOffset.UtcNow, receipt, Phones.ToMsisdn(phone) ?? r.Phone, "", doc.Number, doc.CustomerId, doc.Id), "M-Pesa prompt", PaymentSource.MpesaPrompt, callbackIp);
         await db.SaveChangesAsync();
     }
 }

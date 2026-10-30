@@ -8,7 +8,17 @@ import { cn, dateTime, ksh, prettyPhone, toCents } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { Chips, Empty, ErrorNote, Field, Loading, PageHeader, SearchBox, Sheet, Status } from '../components/ui';
 
-type Payment = { id: string; method: string; amount: number; allocated: number; receivedAt: string; reference: string; payerPhone: string; payerName: string; accountRef: string; status: string };
+type Payment = { id: string; method: string; amount: number; allocated: number; receivedAt: string; reference: string; payerPhone: string; payerName: string; accountRef: string; status: string; source?: string; fromSafaricom?: boolean; callbackIp?: string };
+
+/** Where a payment came from, in the words a lender would use: only what Safaricom's servers sent counts as proof. */
+export function SourceLabel({ p }: { p: Pick<Payment, 'source' | 'fromSafaricom' | 'callbackIp'> }) {
+  const mpesa = p.source === 'MpesaConfirmation' || p.source === 'MpesaPrompt';
+  if (p.fromSafaricom) return <span className="text-xs font-semibold text-good">Confirmed by Safaricom</span>;
+  if (mpesa && !p.callbackIp) return <span className="text-xs text-muted">From M-Pesa (before address checks)</span>;
+  if (mpesa) return <span className="text-xs font-semibold text-bad">Not from Safaricom’s servers</span>;
+  const words: Record<string, string> = { StatementImport: 'From a statement upload', ConnectedSystem: 'Reported by a connected app', Till: 'Recorded at the till', Manual: 'Entered by hand' };
+  return <span className="text-xs text-muted">{words[p.source ?? ''] ?? 'Source not yet known'}</span>;
+}
 type Suggestion = { reason: string; auto: boolean; allocations: { invoiceId: string; invoiceNumber: string; amount: number }[] } | null;
 
 function MatchCard({ p, onDone }: { p: Payment; onDone: () => void }) {
@@ -52,6 +62,7 @@ function MatchCard({ p, onDone }: { p: Payment; onDone: () => void }) {
             {p.reference && ` ${p.reference}`} · {dateTime(p.receivedAt)}
             {p.payerName && p.payerPhone && ` · ${prettyPhone(p.payerPhone)}`}
           </p>
+          <SourceLabel p={p} />
           {p.accountRef && (
             <p className="mt-1 text-sm">
               Typed as account: <b className="rounded bg-paper px-1.5 py-0.5 font-mono text-xs">{p.accountRef}</b>
@@ -155,7 +166,7 @@ export default function Payments() {
     const id = setTimeout(() => setQuery(q), 250);
     return () => clearTimeout(id);
   }, [q]);
-  const { data, error, reload } = useApi<{ counts: { all: number; toMatch: number; matched: number }; page: { items: Payment[]; total: number } }>(`/payments?status=${status}&q=${encodeURIComponent(query)}&take=50`);
+  const { data, error, reload } = useApi<{ counts: { all: number; toMatch: number; matched: number; confirmed?: number }; page: { items: Payment[]; total: number } }>(`/payments?status=${status}&q=${encodeURIComponent(query)}&take=50`);
   const rows = data?.page.items ?? [];
   const toMatchTotal = status === 'to-match' ? rows.reduce((s, p) => s + p.amount - p.allocated, 0) : 0;
 
@@ -192,7 +203,7 @@ export default function Payments() {
       />
       {retry.note && <p className="mb-3 text-sm font-medium text-muted">{retry.note}</p>}
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <Chips label="Filter payments" value={status} onChange={setStatus} options={[['to-match', t('To match'), data?.counts.toMatch], ['matched', t('Matched'), data?.counts.matched], ['all', t('All'), data?.counts.all]]} />
+        <Chips label="Filter payments" value={status} onChange={setStatus} options={[['to-match', t('To match'), data?.counts.toMatch], ['matched', t('Matched'), data?.counts.matched], ['confirmed', 'Confirmed by Safaricom', data?.counts.confirmed], ['all', t('All'), data?.counts.all]]} />
         <SearchBox value={q} onChange={setQ} placeholder="Search M-Pesa code, name, phone or account" />
       </div>
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -221,6 +232,9 @@ export default function Payments() {
                 <span className="text-sm text-muted">
                   {p.reference && `${p.reference} · `}
                   {dateTime(p.receivedAt)}
+                </span>
+                <span className="block">
+                  <SourceLabel p={p} />
                 </span>
               </span>
               <span className="text-right">

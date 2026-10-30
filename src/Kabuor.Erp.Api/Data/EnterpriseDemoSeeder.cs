@@ -197,6 +197,7 @@ public static class EnterpriseDemoSeeder
                     Amount = inv1Total,
                     Allocated = inv1Total,
                     Method = PaymentMethod.Mpesa,
+                    Source = PaymentSource.Manual, // demo data is never proof
                     Reference = $"QGH{i + 1:D2}987{i * 3:D3}",
                     Status = PaymentStatus.Matched,
                     ReceivedAt = DateTimeOffset.UtcNow.AddDays(-6 - (i % 14)),
