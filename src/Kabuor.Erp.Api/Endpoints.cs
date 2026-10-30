@@ -65,18 +65,18 @@ public static class Endpoints
         api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hosting = config["Legal:Hosting"] ?? "Vercel (United States)", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "30 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
-        api.MapPost("/mpesa/stk/{key}", async (string key, System.Text.Json.Nodes.JsonObject body, ErpDb db, RequestContext ctx, StkService stk) =>
+        api.MapPost("/mpesa/stk/{key}", async (string key, System.Text.Json.Nodes.JsonObject body, ErpDb db, RequestContext ctx, StkService stk, HttpContext http) =>
         {
             var company = await db.Companies.SingleOrDefaultAsync(c => c.MpesaCallbackKey == key);
             if (company is null) return Results.NotFound();
             using var activity = ErpTelemetry.StartPaymentActivity("StkCallback", "mpesa", company.Id);
             (ctx.CompanyId, ctx.Actor) = (company.Id, "M-Pesa");
-            await stk.Callback(company, body);
+            await stk.Callback(company, body, http.Connection.RemoteIpAddress);
             return MpesaAck();
         });
         var mpesa = api.MapGroup("/mpesa/c2b/{key}");
         mpesa.MapPost("/validation", () => MpesaAck());
-        mpesa.MapPost("/confirmation", async (string key, MpesaC2B body, ErpDb db, RequestContext ctx, PaymentService payments, ILogger<PaymentService> log) =>
+        mpesa.MapPost("/confirmation", async (string key, MpesaC2B body, ErpDb db, RequestContext ctx, PaymentService payments, ILogger<PaymentService> log, HttpContext http, IConfiguration config) =>
         {
             var company = await db.Companies.SingleOrDefaultAsync(c => c.MpesaCallbackKey == key);
             if (company is null) return Results.NotFound();
@@ -87,7 +87,10 @@ public static class Endpoints
             }
             using var activity = ErpTelemetry.StartPaymentActivity("C2BConfirmation", "mpesa", company.Id, body.TransID);
             (ctx.CompanyId, ctx.Actor) = (company.Id, "M-Pesa");
-            var payment = await payments.FromMpesa(body);
+            var from = http.Connection.RemoteIpAddress;
+            // Recorded either way (money mustn't go missing), but only counts as confirmed when Safaricom sent it.
+            if (!SafaricomCallers.IsSafaricom(from, config)) log.LogWarning("M-Pesa confirmation for company {Company} came from {Ip}, not a Safaricom callback address", company.Id, from);
+            var payment = await payments.FromMpesa(body, from);
             if (payment is not null)
             {
                 ErpTelemetry.RecordPayment("mpesa", payment.Amount, true, company.Id);
@@ -274,9 +277,10 @@ public static class Endpoints
                 var like = $"%{q.Trim()}%";
                 query = query.Where(p => EF.Functions.Like(p.Reference, like) || EF.Functions.Like(p.PayerName, like) || EF.Functions.Like(p.PayerPhone, like) || EF.Functions.Like(p.AccountRef, like));
             }
-            var counts = new { all = await query.CountAsync(), toMatch = await query.CountAsync(p => p.Status != PaymentStatus.Matched), matched = await query.CountAsync(p => p.Status == PaymentStatus.Matched) };
+            var counts = new { all = await query.CountAsync(), toMatch = await query.CountAsync(p => p.Status != PaymentStatus.Matched), matched = await query.CountAsync(p => p.Status == PaymentStatus.Matched), confirmed = await query.CountAsync(p => p.FromSafaricom) };
             if (status == "to-match") query = query.Where(p => p.Status != PaymentStatus.Matched);
             if (status == "matched") query = query.Where(p => p.Status == PaymentStatus.Matched);
+            if (status == "confirmed") query = query.Where(p => p.FromSafaricom);
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(p => p.ReceivedAt).Skip(s).Take(t).ToListAsync();
             return new { counts, page = new Page<Payment>(rows, total, s, t) };

@@ -1880,11 +1880,18 @@ namespace Kabuor.Erp.Data.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("CallbackIp")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("FromSafaricom")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Method")
                         .IsRequired()
@@ -1905,6 +1912,10 @@ namespace Kabuor.Erp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1914,6 +1925,8 @@ namespace Kabuor.Erp.Data.Migrations
                     b.HasIndex("CompanyId", "Reference")
                         .IsUnique()
                         .HasFilter("\"Reference\" <> ''");
+
+                    b.HasIndex("CompanyId", "Source", "ReceivedAt");
 
                     b.HasIndex("CompanyId", "Status", "ReceivedAt");
 

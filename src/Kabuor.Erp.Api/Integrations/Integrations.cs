@@ -264,7 +264,7 @@ public static class IntegrationEndpoints
                 // The shop already took the money by M-Pesa: use the payment Safaricom told us about, or record it.
                 var paid = await db.Payments.SingleOrDefaultAsync(p => p.Reference == receipt);
                 if (paid is not null) await payments.Allocate(paid.Id, [new AllocationInput(doc.Id, Math.Min(paid.Unallocated, doc.Total))], "API");
-                else await payments.Record(new PaymentInput(PaymentMethod.Mpesa, input.AmountPaid ?? doc.Total, DateTimeOffset.UtcNow, receipt, phone, customer.Name, doc.Number, customer.Id, doc.Id), "API");
+                else await payments.Record(new PaymentInput(PaymentMethod.Mpesa, input.AmountPaid ?? doc.Total, DateTimeOffset.UtcNow, receipt, phone, customer.Name, doc.Number, customer.Id, doc.Id), "API", PaymentSource.ConnectedSystem);
             }
             await db.SaveChangesAsync();
             await tx.CommitAsync();

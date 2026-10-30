@@ -220,6 +220,7 @@ public sealed class ErpDb(DbContextOptions<ErpDb> options, RequestContext ctx) :
         b.Entity<SalesDoc>().Property(x => x.Status).IsConcurrencyToken();
         b.Entity<Payment>().HasIndex(x => new { x.CompanyId, x.Reference }).IsUnique().HasFilter("\"Reference\" <> ''");
         b.Entity<Payment>().HasIndex(x => new { x.CompanyId, x.Status, x.ReceivedAt });
+        b.Entity<Payment>().HasIndex(x => new { x.CompanyId, x.Source, x.ReceivedAt });
         b.Entity<Payment>().HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Payment>().Ignore(x => x.Unallocated);
         b.Entity<Payment>().Property(x => x.Allocated).IsConcurrencyToken();

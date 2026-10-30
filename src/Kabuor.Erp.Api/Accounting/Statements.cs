@@ -227,7 +227,7 @@ public sealed class StatementService(ErpDb db, Ledger ledger, PaymentService pay
         if (l.MoneyIn <= 0) throw new AppException("Only money in can be recorded as a payment.");
         var reference = l.Reference.Length > 0 ? l.Reference : $"STMT-{l.Date:yyyyMMdd}-{l.Id.ToString()[..6].ToUpperInvariant()}";
         var p = await payments.Record(new PaymentInput(MethodFor(l.Account), l.MoneyIn, new DateTimeOffset(l.Date.ToDateTime(new TimeOnly(12, 0)), TimeSpan.FromHours(3)), reference, null,
-            string.IsNullOrWhiteSpace(input.PayerName) ? l.Description : input.PayerName, l.Description, input.CustomerId, null), ctx.Actor);
+            string.IsNullOrWhiteSpace(input.PayerName) ? l.Description : input.PayerName, l.Description, input.CustomerId, null), ctx.Actor, PaymentSource.StatementImport);
         (l.Status, l.MatchKind, l.MatchId) = (StatementLineStatus.Matched, "Payment", p.Id);
         await db.SaveChangesAsync();
         return new { payment = p.Id, p.Status };
