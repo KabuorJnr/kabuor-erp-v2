@@ -62,7 +62,7 @@ public static class Endpoints
             payToStart = Kabuor.Erp.Billing.Plans.PayToStart(config),
             plans = Kabuor.Erp.Billing.Plans.All(config).Select(p => new { p.Id, p.Name, p.Monthly }),
         });
-        api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hosting = config["Legal:Hosting"] ?? "Vercel (United States)", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "29 October 2026" });
+        api.MapGet("/legal", (IConfiguration config) => new { email = config["Legal:Email"] ?? "", hosting = config["Legal:Hosting"] ?? "Vercel (United States)", hostingRegion = config["Legal:HostingRegion"] ?? "", updated = config["Legal:Updated"] ?? "30 October 2026" });
 
         // ---------- M-Pesa (Safaricom calls these; no login, the URL carries the company's secret key) ----------
         api.MapPost("/mpesa/stk/{key}", async (string key, System.Text.Json.Nodes.JsonObject body, ErpDb db, RequestContext ctx, StkService stk) =>
