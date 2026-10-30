@@ -122,6 +122,7 @@ export function Privacy() {
           <li>Payment details Safaricom sends us when someone pays your Paybill or Till: the amount, M-Pesa receipt, phone number and name.</li>
           <li>Drivers’ locations, if you use fleet tracking: while a trip is on the road and the driver has its link open, the phone shares where it is (position, speed, direction) every few seconds, and where each delivery was confirmed. Nothing is shared before the trip leaves or after it ends.</li>
           <li>Basic technical logs (time, address of the request, errors) to keep the service secure and working.</li>
+          <li>Verified report shares and view logs, if you share figures with lenders: the lender's name, when and who created or revoked the share, and each view's time, a salted hash of the visitor's IP address (never the raw IP), and a summary of their device or browser.</li>
           <li>If you use tracking links and the online shop: which link someone clicked, a random browser id (cookie <code>kv</code>), the link they came through (cookie <code>kref</code>), whether it was a phone, and what they asked. No advertising cookies are used. Your sign-in is kept in your browser’s storage, not a cookie.</li>
         </ul>
       ),
@@ -161,6 +162,7 @@ export function Privacy() {
             <li><b>OpenStreetMap</b> (United Kingdom), for the live map: the browser showing the map fetches its map pictures from OpenStreetMap, which sees that browser’s address. Drivers’ locations are not sent to it.</li>
             <li><b>GitHub</b> (United States): the nightly database backup, encrypted before it leaves our servers and kept 30 days.</li>
             <li><b>Sentry</b>: error reports, set up not to include personal data such as names, emails or request addresses.</li>
+            <li><b>Lenders you choose</b>: when the business owner creates a verified report link, the named lender sees aggregated totals and counts only (confirmed M-Pesa revenue, payer counts, and KRA eTIMS signing rates), never customer names, phone numbers or invoice lines, until the share ends or is revoked.</li>
             <li>Anyone the law requires us to share with, such as a court order.</li>
           </ul>
           <p>We give account owners 30 days’ notice in the app before adding or replacing one of these providers.</p>
@@ -185,6 +187,7 @@ export function Privacy() {
           <li><b>Your records</b>: while your account is open, reviewed at least once a year (regulation 19). Tax law (Tax Procedures Act, section 23) requires business records to be kept for at least five years, so export or keep yours for that long.</li>
           <li><b>When you close your account</b>: you have 30 days to export your records; we then delete or anonymise them, at the latest 90 days after closing, unless you ask us to keep them longer or the law requires it. Backups roll off 30 days after that.</li>
           <li><b>Drivers’ locations</b>: a trip’s trail is deleted 90 days after it was recorded, and a finished trip’s last position 90 days after its last update. Where a delivery was confirmed stays with that delivery, as part of your records.</li>
+          <li><b>Verified shares and view records</b>: kept while your account is open, because they record explicit consent under sections 30 and 32 of the Data Protection Act, 2019.</li>
           <li><b>Technical logs</b>: kept by our hosting provider for as long as it needs to run and secure the service.</li>
         </ul>
       ),
@@ -326,6 +329,11 @@ export function Terms() {
       id: 'liability',
       title: 'Liability',
       body: <p>We are responsible for running the service with reasonable care and skill. We are not liable for indirect losses (such as lost profit) or for losses caused by information you entered, by KRA, Safaricom or other services being unavailable, or by events outside our control. Our total liability in any year is limited to what you paid us in the 12 months before the claim. Nothing here limits rights you have under the Consumer Protection Act, 2012, or other law that can’t be excluded.</p>,
+    },
+    {
+      id: 'verified',
+      title: 'Verified reports',
+      body: <p>The business owner alone chooses whether to share figures with a lender, which lender sees them, and for how long. Kabuor ERP provides verified facts (money confirmed by Safaricom and KRA-signed invoices), not credit scores, risk ratings, or lending decisions. Your business is responsible for telling a lender about anything the figures don't show, such as other liabilities, cash transactions, or upcoming costs.</p>,
     },
     {
       id: 'ending',

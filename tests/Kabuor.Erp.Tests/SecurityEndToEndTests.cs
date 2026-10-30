@@ -36,6 +36,7 @@ public class SecurityEndToEndTests(ErpFactory factory) : IClassFixture<ErpFactor
         "/api/mpesa/stk/{key}", "/api/mpesa/c2b/{key}/validation", "/api/mpesa/c2b/{key}/confirmation",
         "/api/{**path}",
         "/api/drive/{token}/", "/api/drive/{token}/ping", "/api/drive/{token}/drops/{dropId:guid}",
+        "/api/verified/s/{token}", "/api/verified/key",
     ];
     // The public API (/api/v1) answers to an API key the owner made, checked on every call.
     static bool IsPublic(string pattern) => Public.Contains(pattern) || pattern.StartsWith("/api/public/{slug}") || pattern.StartsWith("/api/v1/");

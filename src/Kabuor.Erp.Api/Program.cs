@@ -190,6 +190,9 @@ builder.Services.AddRateLimiter(o =>
     // A driver's phone sends its location every 15 seconds or so for a whole shift: counted per link, with room to spare.
     o.AddPolicy("drive", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Request.Path.Value?.Split('/').ElementAtOrDefault(3) ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(15) }));
 
+    // Public lender verified report links: 120 requests per 15 minutes per token.
+    o.AddPolicy("verified_share", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Request.Path.Value?.Split('/').ElementAtOrDefault(4) ?? "?", _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(15) }));
+
     // Global flood protection across all API routes
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
     {

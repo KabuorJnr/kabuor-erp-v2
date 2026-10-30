@@ -761,3 +761,32 @@ public sealed class DeliveryItem : ICompanyOwned
     public double? PodLng { get; set; }
 }
 
+/// <summary>Owner-approved share of verified revenue and eTIMS compliance with a named lender.</summary>
+public sealed class VerifiedShare : ICompanyOwned
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public required string LenderName { get; set; }
+    public string LenderContact { get; set; } = "";
+    public int Months { get; set; }
+    public string TokenHash { get; set; } = "";
+    public Guid CreatedByUserId { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+    public string? RevokedBy { get; set; }
+}
+
+/// <summary>Access record of a lender opening a shared verified report.</summary>
+public sealed class VerifiedShareView : ICompanyOwned
+{
+    public long Id { get; set; }
+    public Guid CompanyId { get; set; }
+    public Guid ShareId { get; set; }
+    public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
+    public string IpHash { get; set; } = "";
+    public string Agent { get; set; } = "";
+}
+
+

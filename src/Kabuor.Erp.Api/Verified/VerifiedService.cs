@@ -28,15 +28,18 @@ public sealed class VerifiedService(ErpDb db)
     sealed record Row(long Amount, DateTimeOffset ReceivedAt, PaymentSource Source, bool FromSafaricom, PaymentMethod Method, string PayerPhone);
 
     /// <summary>The last <paramref name="months"/> whole months plus this month so far.</summary>
-    public async Task<VerifiedSummary> Summary(int months)
+    public async Task<VerifiedSummary> Summary(int months, Guid? companyId = null)
     {
         if (!Periods.Contains(months)) throw new AppException("Choose 3, 6 or 12 months.");
+        var targetCompanyId = companyId ?? db.CompanyId;
         var today = Clock.Today;
         var thisMonth = new DateOnly(today.Year, today.Month, 1);
         var first = thisMonth.AddMonths(-months);
         var from = new DateTimeOffset(first.ToDateTime(TimeOnly.MinValue), Eat);
 
-        var query = db.Payments.AsNoTracking();
+        var query = companyId.HasValue
+            ? db.Payments.IgnoreQueryFilters().Where(p => p.CompanyId == targetCompanyId).AsNoTracking()
+            : db.Payments.AsNoTracking();
         if (db.Database.IsNpgsql()) query = query.Where(p => p.ReceivedAt >= from);
         var rows = (await query.Select(p => new Row(p.Amount, p.ReceivedAt, p.Source, p.FromSafaricom, p.Method, p.PayerPhone)).ToListAsync())
             .Where(p => p.ReceivedAt >= from).ToList(); // SQLite can't compare DateTimeOffset in a query
@@ -54,8 +57,15 @@ public sealed class VerifiedService(ErpDb db)
             return new VerifiedMonth(m.ToString("yyyy-MM"), m == thisMonth, sum, allSum, Share(sum, allSum), Payers(ok), TopFive(ok));
         }).ToList();
 
-        var company = await db.Companies.AsNoTracking().SingleAsync(c => c.Id == db.CompanyId);
-        var own = (await db.Users.AsNoTracking().Select(u => u.Phone).ToListAsync()).Append(company.Phone)
+        var companyQuery = companyId.HasValue
+            ? db.Companies.IgnoreQueryFilters().AsNoTracking()
+            : db.Companies.AsNoTracking();
+        var company = await companyQuery.SingleAsync(c => c.Id == targetCompanyId);
+
+        var usersQuery = companyId.HasValue
+            ? db.Users.IgnoreQueryFilters().Where(u => u.CompanyId == targetCompanyId).AsNoTracking()
+            : db.Users.AsNoTracking();
+        var own = (await usersQuery.Select(u => u.Phone).ToListAsync()).Append(company.Phone)
             .Select(Phones.ToMsisdn).OfType<string>().ToHashSet();
         var ownNumbers = full.Where(r => Phones.ToMsisdn(r.PayerPhone) is { } m && own.Contains(m)).Sum(r => r.Amount);
         var notFromSafaricom = rows.Where(r => r.Source is PaymentSource.MpesaConfirmation or PaymentSource.MpesaPrompt && !r.FromSafaricom).Sum(r => r.Amount);
@@ -63,7 +73,7 @@ public sealed class VerifiedService(ErpDb db)
         var bySource = rows.GroupBy(r => r.Source).OrderByDescending(g => g.Sum(r => r.Amount))
             .Select(g => new VerifiedSource(g.Key, g.Sum(r => r.Amount), g.Count(), g.Where(r => r.FromSafaricom).Sum(r => r.Amount))).ToList();
 
-        var etims = await Etims(company, first, today);
+        var etims = await Etims(company, first, today, targetCompanyId, companyId.HasValue);
         var summary = new VerifiedSummary(
             months, first.ToString("yyyy-MM-dd"), today.ToString("yyyy-MM-dd"),
             full.Sum(r => r.Amount) / months, Payers(full), TopFive(full), monthList[^1].Confirmed,
@@ -71,10 +81,13 @@ public sealed class VerifiedService(ErpDb db)
         return summary with { Fixes = Fixes(summary, rows, confirmed) };
     }
 
-    async Task<VerifiedEtims> Etims(Company company, DateOnly from, DateOnly to)
+    async Task<VerifiedEtims> Etims(Company company, DateOnly from, DateOnly to, Guid targetCompanyId, bool ignoreFilters)
     {
         if (!company.VatRegistered) return new VerifiedEtims(false, 0, 0, 0, 0, 0);
-        var docs = await db.SalesDocs.AsNoTracking()
+        var query = ignoreFilters
+            ? db.SalesDocs.IgnoreQueryFilters().Where(d => d.CompanyId == targetCompanyId).AsNoTracking()
+            : db.SalesDocs.AsNoTracking();
+        var docs = await query
             .Where(d => d.Kind == SalesDocKind.Invoice && d.Status != SalesDocStatus.Draft && d.Status != SalesDocStatus.Void && d.IssueDate >= from && d.IssueDate <= to)
             .Select(d => new { d.EtimsStatus, d.EtimsControlCode }).ToListAsync();
         var issued = docs.Count(d => d.EtimsStatus != EtimsStatus.NotRequired);
